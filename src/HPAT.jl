@@ -1,0 +1,5 @@
+module HPAT
+
+# package code goes here
+
+end # module
