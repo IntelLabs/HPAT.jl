@@ -8,12 +8,13 @@ using CompilerTools.OptFramework
 using CompilerTools.OptFramework.OptPass
 using ParallelAccelerator
 using ParallelAccelerator.Driver
-
+using CompilerTools.AstWalker
 
 export hpat, @acc, @noacc
 
 
 include("distributed-pass.jl")
+include("capture-api.jl")
 
 function ns_to_sec(x)
   x / 1000000000.0
@@ -28,9 +29,17 @@ function toDistributedPass(func :: GlobalRef, ast :: Expr, signature :: Tuple)
   return code
 end
 
+"""
+A macro pass that translates extensions such as DataSource()
+"""
+function captureHPAT(func, ast, sig)
+  AstWalk(ast, CaptureAPI.process_node, nothing)
+  return ast
+end
 
 # initialize set of compiler passes HPAT runs
-const hpat = [ OptPass(captureOperators, PASS_MACRO),
+const hpat = [ OptPass(captureHPAT, PASS_MACRO),
+               OptPass(captureOperators, PASS_MACRO),
                OptPass(toCartesianArray, PASS_MACRO),
                OptPass(toDomainIR, PASS_TYPED),
                OptPass(toParallelIR, PASS_TYPED),
