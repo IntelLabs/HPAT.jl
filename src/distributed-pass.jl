@@ -28,28 +28,33 @@ module DistributedPass
 #using Debug
 
 import Base.show
-import ..ParallelAccelerator
+
 using CompilerTools
 import CompilerTools.DebugMsg
 DebugMsg.init()
+
 using CompilerTools.AstWalker
 import CompilerTools.ReadWriteSet
 using CompilerTools.LambdaHandling
 using CompilerTools.Helper
-import ..ParallelIR
-import ..ParallelIR.isArrayType
-import ..ParallelIR.getParforNode
-import ..ParallelIR.isAllocation
-import ..ParallelIR.TypedExpr
-import ..ParallelIR.get_alloc_shape
 
-import ..ParallelIR.ISCAPTURED
-import ..ParallelIR.ISASSIGNED
-import ..ParallelIR.ISASSIGNEDBYINNERFUNCTION
-import ..ParallelIR.ISCONST
-import ..ParallelIR.ISASSIGNEDONCE
-import ..ParallelIR.ISPRIVATEPARFORLOOP
-import ..ParallelIR.PIRReduction
+import HPAT
+
+using ParallelAccelerator
+import ParallelAccelerator.ParallelIR
+import ParallelAccelerator.ParallelIR.isArrayType
+import ParallelAccelerator.ParallelIR.getParforNode
+import ParallelAccelerator.ParallelIR.isAllocation
+import ParallelAccelerator.ParallelIR.TypedExpr
+import ParallelAccelerator.ParallelIR.get_alloc_shape
+
+import ParallelAccelerator.ParallelIR.ISCAPTURED
+import ParallelAccelerator.ParallelIR.ISASSIGNED
+import ParallelAccelerator.ParallelIR.ISASSIGNEDBYINNERFUNCTION
+import ParallelAccelerator.ParallelIR.ISCONST
+import ParallelAccelerator.ParallelIR.ISASSIGNEDONCE
+import ParallelAccelerator.ParallelIR.ISPRIVATEPARFORLOOP
+import ParallelAccelerator.ParallelIR.PIRReduction
 
 dist_ir_funcs = Set([:__hps_data_source_HDF5_open,:__hps_data_source_HDF5_read,:__hps_kmeans,
                         :__hps_data_source_TXT_open,:__hps_data_source_TXT_read, :__hps_LinearRegression, :__hps_NaiveBayes, 
@@ -113,7 +118,7 @@ type ArrDistInfo
     end
 end
 
-function show(io::IO, pnode::ParallelAccelerator.DistributedPass.ArrDistInfo)
+function show(io::IO, pnode::HPAT.DistributedPass.ArrDistInfo)
     print(io,"seq:",pnode.isSequential," sizes:", pnode.dim_sizes)
 end
 
@@ -137,7 +142,7 @@ type DistPassState
     end
 end
 
-function show(io::IO, pnode::ParallelAccelerator.DistributedPass.DistPassState)
+function show(io::IO, pnode::HPAT.DistributedPass.DistPassState)
     println(io,"DistPassState arrs_dist_info:")
     for i in pnode.arrs_dist_info
         println(io,"  ", i)
