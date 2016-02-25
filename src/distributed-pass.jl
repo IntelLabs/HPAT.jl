@@ -23,7 +23,7 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
 THE POSSIBILITY OF SUCH DAMAGE.
 =#
 
-module DistributedIR
+module DistributedPass
 
 #using Debug
 
@@ -58,21 +58,21 @@ dist_ir_funcs = Set([:__hps_data_source_HDF5_open,:__hps_data_source_HDF5_read,:
 
 # ENTRY to distributedIR
 function from_root(function_name, ast :: Expr)
-    @assert ast.head == :lambda "Input to DistributedIR should be :lambda Expr"
-    @dprintln(1,"Starting main DistributedIR.from_root.  function = ", function_name, " ast = ", ast)
+    @assert ast.head == :lambda "Input to DistributedPass should be :lambda Expr"
+    @dprintln(1,"Starting main DistributedPass.from_root.  function = ", function_name, " ast = ", ast)
 
     linfo = CompilerTools.LambdaHandling.lambdaExprToLambdaVarInfo(ast)
     lives = CompilerTools.LivenessAnalysis.from_expr(ast, ParallelIR.pir_live_cb, linfo)
-    state::DistIrState = initDistState(linfo,lives)
+    state::DistPassState = initDistState(linfo,lives)
     
     # find if an array should be partitioned, sequential, or shared
     getArrayDistributionInfo(ast, state)
     
     # transform body
-    @assert ast.args[3].head==:body "DistributedIR: invalid lambda input"
+    @assert ast.args[3].head==:body "DistributedPass: invalid lambda input"
     body = TypedExpr(ast.args[3].typ, :body, from_toplevel_body(ast.args[3].args, state)...)
     new_ast = CompilerTools.LambdaHandling.LambdaVarInfoToLambdaExpr(state.LambdaVarInfo, body)
-    @dprintln(1,"DistributedIR.from_root returns function = ", function_name, " ast = ", new_ast)
+    @dprintln(1,"DistributedPass.from_root returns function = ", function_name, " ast = ", new_ast)
     # ast = from_expr(ast)
     return new_ast
 end
@@ -82,13 +82,13 @@ function getArrayDistributionInfo(ast, state)
     
     while true
         dist_arrays = []
-        @dprintln(3,"DistIR state before array info walk: ",state)
+        @dprintln(3,"DistPass state before array info walk: ",state)
         AstWalk(ast, get_arr_dist_info, state)
-        @dprintln(3,"DistIR state after array info walk: ",state)
+        @dprintln(3,"DistPass state after array info walk: ",state)
             # all arrays not marked sequential are distributable at this point 
         for arr in keys(state.arrs_dist_info)
             if state.arrs_dist_info[arr].isSequential==false
-                @dprintln(2,"DistIR distributable parfor array: ", arr)
+                @dprintln(2,"DistPass distributable parfor array: ", arr)
                 push!(dist_arrays,arr)
             end
         end
@@ -99,7 +99,7 @@ function getArrayDistributionInfo(ast, state)
         before_dist_arrays = dist_arrays
     end
     state.dist_arrays = before_dist_arrays
-    @dprintln(3,"DistIR state dist_arrays after array info walk: ",state.dist_arrays)
+    @dprintln(3,"DistPass state dist_arrays after array info walk: ",state.dist_arrays)
 end
 
 type ArrDistInfo
@@ -113,12 +113,12 @@ type ArrDistInfo
     end
 end
 
-function show(io::IO, pnode::ParallelAccelerator.DistributedIR.ArrDistInfo)
+function show(io::IO, pnode::ParallelAccelerator.DistributedPass.ArrDistInfo)
     print(io,"seq:",pnode.isSequential," sizes:", pnode.dim_sizes)
 end
 
-# information about AST gathered and used in DistributedIR
-type DistIrState
+# information about AST gathered and used in DistributedPass
+type DistPassState
     # information about all arrays
     arrs_dist_info::Dict{SymGen, ArrDistInfo}
     parfor_info::Dict{Int, Array{SymGen,1}}
@@ -131,27 +131,27 @@ type DistIrState
     tuple_table              :: Dict{SymGen,Array{Union{SymGen,Int},1}}
     max_label :: Int # holds the max number of all LabelNodes
 
-    function DistIrState(linfo, lives)
+    function DistPassState(linfo, lives)
         new(Dict{SymGen, Array{ArrDistInfo,1}}(), Dict{Int, Array{SymGen,1}}(), linfo, Int[], SymGen[],0, lives, 
              Dict{SymGen,Array{Union{SymGen,Int},1}}(),0)
     end
 end
 
-function show(io::IO, pnode::ParallelAccelerator.DistributedIR.DistIrState)
-    println(io,"DistIrState arrs_dist_info:")
+function show(io::IO, pnode::ParallelAccelerator.DistributedPass.DistPassState)
+    println(io,"DistPassState arrs_dist_info:")
     for i in pnode.arrs_dist_info
         println(io,"  ", i)
     end
-    println(io,"DistIrState parfor_info:")
+    println(io,"DistPassState parfor_info:")
     for i in pnode.parfor_info
         println(io,"  ", i)
     end
-    println(io,"DistIrState seq_parfors:")
+    println(io,"DistPassState seq_parfors:")
     for i in pnode.seq_parfors
         print(io," ", i)
     end
     println(io,"")
-    println(io,"DistIrState dist_arrays:")
+    println(io,"DistPassState dist_arrays:")
     for i in pnode.dist_arrays
         print(io," ", i)
     end
@@ -159,7 +159,7 @@ function show(io::IO, pnode::ParallelAccelerator.DistributedIR.DistIrState)
 end
 
 function initDistState(linfo::LambdaVarInfo, lives)
-    state = DistIrState(linfo, lives)
+    state = DistPassState(linfo, lives)
     
     #params = linfo.input_params
     vars = linfo.var_defs
@@ -194,17 +194,17 @@ end
 """
 mark sequential arrays
 """
-function get_arr_dist_info(node::Expr, state::DistIrState, top_level_number, is_top_level, read)
+function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, is_top_level, read)
     head = node.head
     # arrays written in parfors are ok for now
     
-    @dprintln(3,"DistIR arr info walk Expr node: ", node)
+    @dprintln(3,"DistPass arr info walk Expr node: ", node)
     if head==:(=)
         lhs = toSymGen(node.args[1])
         rhs = node.args[2]
         if isAllocation(rhs)
             state.arrs_dist_info[lhs].dim_sizes = get_alloc_shape(rhs.args[2:end])
-            @dprintln(3,"DistIR arr info dim_sizes update: ", state.arrs_dist_info[lhs].dim_sizes)
+            @dprintln(3,"DistPass arr info dim_sizes update: ", state.arrs_dist_info[lhs].dim_sizes)
         elseif isa(rhs,SymAllGen)
             rhs = toSymGen(rhs)
             if haskey(state.arrs_dist_info, rhs)
@@ -212,7 +212,7 @@ function get_arr_dist_info(node::Expr, state::DistIrState, top_level_number, is_
                 # lhs and rhs are sequential if either is sequential
                 seq = state.arrs_dist_info[lhs].isSequential || state.arrs_dist_info[rhs].isSequential
                 state.arrs_dist_info[lhs].isSequential = state.arrs_dist_info[rhs].isSequential = seq
-                @dprintln(3,"DistIR arr info dim_sizes update: ", state.arrs_dist_info[lhs].dim_sizes)
+                @dprintln(3,"DistPass arr info dim_sizes update: ", state.arrs_dist_info[lhs].dim_sizes)
             end
         elseif isa(rhs,Expr) && rhs.head==:call && in(rhs.args[1], dist_ir_funcs)
             func = rhs.args[1]
@@ -220,12 +220,12 @@ function get_arr_dist_info(node::Expr, state::DistIrState, top_level_number, is_
                 # only reshape() with constant tuples handled
                 if haskey(state.tuple_table, rhs.args[3])
                     state.arrs_dist_info[lhs].dim_sizes = state.tuple_table[rhs.args[3]]
-                    @dprintln(3,"DistIR arr info dim_sizes update: ", state.arrs_dist_info[lhs].dim_sizes)
+                    @dprintln(3,"DistPass arr info dim_sizes update: ", state.arrs_dist_info[lhs].dim_sizes)
                     # lhs and rhs are sequential if either is sequential
                     seq = state.arrs_dist_info[lhs].isSequential || state.arrs_dist_info[rhs.args[2]].isSequential
                     state.arrs_dist_info[lhs].isSequential = state.arrs_dist_info[rhs.args[2]].isSequential = seq
                 else
-                    @dprintln(3,"DistIR arr info reshape tuple not found: ", rhs.args[3])
+                    @dprintln(3,"DistPass arr info reshape tuple not found: ", rhs.args[3])
                     state.arrs_dist_info[lhs].isSequential = state.arrs_dist_info[rhs.args[2]].isSequential = true
                 end
             elseif rhs.args[1]==TopNode(:tuple)
@@ -237,9 +237,9 @@ function get_arr_dist_info(node::Expr, state::DistIrState, top_level_number, is_
                 end 
                 if ok
                     state.tuple_table[lhs]=rhs.args[2:end]
-                    @dprintln(3,"DistIR arr info tuple constant: ", lhs," ",rhs.args[2:end])
+                    @dprintln(3,"DistPass arr info tuple constant: ", lhs," ",rhs.args[2:end])
                 else
-                    @dprintln(3,"DistIR arr info tuple not constant: ", lhs," ",rhs.args[2:end])
+                    @dprintln(3,"DistPass arr info tuple not constant: ", lhs," ",rhs.args[2:end])
                 end 
             elseif func==GlobalRef(Base.LinAlg,:gemm_wrapper!)
                 # determine output dimensions
@@ -261,18 +261,18 @@ function get_arr_dist_info(node::Expr, state::DistIrState, top_level_number, is_
                 # first input is sequential but output is parallel if the second input is partitioned but not transposed
                 # e.g. w*points
                 elseif !state.arrs_dist_info[arr2].isSequential && !t2
-                    @dprintln(3,"DistIR arr info gemm first input is sequential: ", arr1)
+                    @dprintln(3,"DistPass arr info gemm first input is sequential: ", arr1)
                     state.arrs_dist_info[arr1].isSequential = true
                 # otherwise, no known pattern found, every array is sequential
                 else
-                    @dprintln(3,"DistIR arr info gemm all sequential: ", arr1," ", arr2)
+                    @dprintln(3,"DistPass arr info gemm all sequential: ", arr1," ", arr2)
                     state.arrs_dist_info[arr1].isSequential = true
                     state.arrs_dist_info[arr2].isSequential = true
                     seq = true
                 end
                 
                 if seq
-                    @dprintln(3,"DistIR arr info gemm output is sequential: ", lhs," ",rhs.args[2])
+                    @dprintln(3,"DistPass arr info gemm output is sequential: ", lhs," ",rhs.args[2])
                 end
                 state.arrs_dist_info[lhs].isSequential = state.arrs_dist_info[rhs.args[2]].isSequential = seq
             end
@@ -292,7 +292,7 @@ function get_arr_dist_info(node::Expr, state::DistIrState, top_level_number, is_
         seq = false
         
         if length(parfor.arrays_read_past_index)!=0 || length(parfor.arrays_written_past_index)!=0 
-            @dprintln(2,"DistIR arr info walk parfor sequential: ", node)
+            @dprintln(2,"DistPass arr info walk parfor sequential: ", node)
             for arr in allArrs
                 seq = true
             end
@@ -302,7 +302,7 @@ function get_arr_dist_info(node::Expr, state::DistIrState, top_level_number, is_
         for arr in keys(rws.readSet.arrays)
              index = rws.readSet.arrays[arr]
              if length(index)!=1 || toSymGen(index[1][end])!=toSymGen(indexVariable)
-                @dprintln(2,"DistIR arr info walk arr read index sequential: ", index, " ", indexVariable)
+                @dprintln(2,"DistPass arr info walk arr read index sequential: ", index, " ", indexVariable)
                 seq = true
              end
         end
@@ -310,14 +310,14 @@ function get_arr_dist_info(node::Expr, state::DistIrState, top_level_number, is_
         for arr in keys(rws.writeSet.arrays)
              index = rws.writeSet.arrays[arr]
              if length(index)!=1 || toSymGen(index[1][end])!=toSymGen(indexVariable)
-                @dprintln(2,"DistIR arr info walk arr write index sequential: ", index, " ", indexVariable)
+                @dprintln(2,"DistPass arr info walk arr write index sequential: ", index, " ", indexVariable)
                 seq = true
              end
         end
         for arr in allArrs
             if state.arrs_dist_info[arr].isSequential ||
                         !isEqualDimSize(state.arrs_dist_info[arr].dim_sizes, state.arrs_dist_info[allArrs[1]].dim_sizes)
-                    @dprintln(2,"DistIR parfor check array: ", arr," seq: ", state.arrs_dist_info[arr].isSequential)
+                    @dprintln(2,"DistPass parfor check array: ", arr," seq: ", state.arrs_dist_info[arr].isSequential)
                     seq = true
             end
         end
@@ -333,15 +333,15 @@ function get_arr_dist_info(node::Expr, state::DistIrState, top_level_number, is_
     elseif head==:call && in(node.args[1], dist_ir_funcs)
         func = node.args[1]
         if func==:__hps_data_source_HDF5_read || func==:__hps_data_source_TXT_read
-            @dprintln(2,"DistIR arr info walk data source read ", node)
+            @dprintln(2,"DistPass arr info walk data source read ", node)
             # will be parallel IO, intentionally do nothing
         elseif func==:__hps_kmeans
-            @dprintln(2,"DistIR arr info walk kmeans ", node)
+            @dprintln(2,"DistPass arr info walk kmeans ", node)
             # first array is cluster output and is sequential
             # second array is input matrix and is parallel
             state.arrs_dist_info[node.args[2]].isSequential = true
         elseif func==:__hps_LinearRegression || func==:__hps_NaiveBayes
-            @dprintln(2,"DistIR arr info walk LinearRegression/NaiveBayes ", node)
+            @dprintln(2,"DistPass arr info walk LinearRegression/NaiveBayes ", node)
             # first array is cluster output and is sequential
             # second array is input matrix and is parallel
             # third array is responses and is parallel
@@ -362,7 +362,7 @@ function get_arr_dist_info(node::Expr, state::DistIrState, top_level_number, is_
         
         for var in all_vars
             if haskey(state.arrs_dist_info, var)
-                @dprintln(2,"DistIR arr info walk array in sequential code: ", var, " ", node)
+                @dprintln(2,"DistPass arr info walk array in sequential code: ", var, " ", node)
                 
                 state.arrs_dist_info[var].isSequential = true
             end
@@ -373,7 +373,7 @@ function get_arr_dist_info(node::Expr, state::DistIrState, top_level_number, is_
 end
 
 
-function get_arr_dist_info(ast::Any, state::DistIrState, top_level_number, is_top_level, read)
+function get_arr_dist_info(ast::Any, state::DistPassState, top_level_number, is_top_level, read)
     return CompilerTools.AstWalker.ASTWALK_RECURSE
 end
 
@@ -410,7 +410,7 @@ function eqSize(a::Any, b::Any)
 end
 
 # nodes are :body of AST
-function from_toplevel_body(nodes::Array{Any,1}, state::DistIrState)
+function from_toplevel_body(nodes::Array{Any,1}, state::DistPassState)
     state.max_label = ParallelIR.getMaxLabel(state.max_label, nodes)
     res::Array{Any,1} = genDistributedInit(state)
     for node in nodes
@@ -421,7 +421,7 @@ function from_toplevel_body(nodes::Array{Any,1}, state::DistIrState)
 end
 
 
-function from_expr(node::Expr, state::DistIrState)
+function from_expr(node::Expr, state::DistPassState)
     head = node.head
     if head==:(=)
         return from_assignment(node, state)
@@ -436,12 +436,12 @@ function from_expr(node::Expr, state::DistIrState)
 end
 
 
-function from_expr(node::Any, state::DistIrState)
+function from_expr(node::Any, state::DistPassState)
     return [node]
 end
 
 # generates initialization code for distributed execution
-function genDistributedInit(state::DistIrState)
+function genDistributedInit(state::DistPassState)
     initCall = Expr(:call,TopNode(:hps_dist_init))
     numPesCall = Expr(:call,TopNode(:hps_dist_num_pes))
     nodeIdCall = Expr(:call,TopNode(:hps_dist_node_id))
@@ -455,15 +455,15 @@ function genDistributedInit(state::DistIrState)
     return Any[initCall; num_pes_assign; node_id_assign]
 end
 
-function from_assignment(node::Expr, state::DistIrState)
-    @assert node.head==:(=) "DistributedIR invalid assignment head"
+function from_assignment(node::Expr, state::DistPassState)
+    @assert node.head==:(=) "DistributedPass invalid assignment head"
     lhs = node.args[1]
     rhs = node.args[2]
     
     if isAllocation(rhs)
         arr = toSymGen(lhs)
         if in(arr, state.dist_arrays)
-            @dprintln(3,"DistIR allocation array: ", arr)
+            @dprintln(3,"DistPass allocation array: ", arr)
             #shape = get_alloc_shape(node.args[2].args[2:end])
             #old_size = shape[end]
             dim_sizes = state.arrs_dist_info[arr].dim_sizes
@@ -498,7 +498,7 @@ function from_assignment(node::Expr, state::DistIrState)
     elseif isa(rhs,Expr) && rhs.head==:call && rhs.args[1]==GlobalRef(Base,:reshape)
         arr = toSymGen(lhs)
         if in(arr, state.dist_arrays)
-            @dprintln(3,"DistIR reshape array: ", arr)
+            @dprintln(3,"DistPass reshape array: ", arr)
             dim_sizes = state.arrs_dist_info[arr].dim_sizes
             # generate array division
             # simple 1D partitioning of last dimension, more general partitioning needed
@@ -544,7 +544,7 @@ function from_assignment(node::Expr, state::DistIrState)
                 # e.g. labels*points'
                 if !state.arrs_dist_info[arr1].isSequential && !state.arrs_dist_info[arr2].isSequential && t2 && !t1 &&
                             state.arrs_dist_info[lhs].isSequential
-                    @dprintln(3,"DistIR translating gemm reduce: ", node)
+                    @dprintln(3,"DistPass translating gemm reduce: ", node)
                     # rhs.args[1] = :__hps_gemm_reduce
                     # allocate temporary array for local gemm values
                     alloc_args = Array(Any,2)
@@ -576,9 +576,9 @@ function from_assignment(node::Expr, state::DistIrState)
                 # first input is sequential but output is parallel if the second input is partitioned but not transposed
                 # e.g. w*points
                 elseif state.arrs_dist_info[arr1].isSequential && !state.arrs_dist_info[arr2].isSequential && !t2 && !state.arrs_dist_info[lhs].isSequential
-                    @dprintln(3,"DistIR arr info gemm first input is sequential: ", arr1)
+                    @dprintln(3,"DistPass arr info gemm first input is sequential: ", arr1)
                     #rhs.args[1] = :__hps_gemm_broadcast
-                    @dprintln(3,"DistIR translating gemm broadcast: ", node)
+                    @dprintln(3,"DistPass translating gemm broadcast: ", node)
                 # otherwise, no known pattern found
                 end
     else
@@ -588,16 +588,16 @@ function from_assignment(node::Expr, state::DistIrState)
 end
 
 function from_parfor(node::Expr, state)
-    @assert node.head==:parfor "DistributedIR invalid parfor head"
+    @assert node.head==:parfor "DistributedPass invalid parfor head"
 
     parfor = node.args[1]
 
     if !in(parfor.unique_id, state.seq_parfors)
-        @dprintln(3,"DistIR translating parfor: ", parfor.unique_id)
+        @dprintln(3,"DistPass translating parfor: ", parfor.unique_id)
         # TODO: assuming 1st loop nest is the last dimension
         loopnest = parfor.loopNests[1]
         # TODO: build a constant table and check the loop variables at this stage
-        # @assert loopnest.lower==1 && loopnest.step==1 "DistIR only simple PIR loops supported now"
+        # @assert loopnest.lower==1 && loopnest.step==1 "DistPass only simple PIR loops supported now"
 
         loop_start_var = symbol("__hps_loop_start_"*string(getDistNewID(state)))
         loop_end_var = symbol("__hps_loop_end_"*string(getDistNewID(state)))
@@ -608,7 +608,7 @@ function from_parfor(node::Expr, state)
         CompilerTools.LambdaHandling.addLocalVar(loop_div_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
 
         #first_arr = state.parfor_info[parfor.unique_id][1]; 
-        #@dprintln(3,"DistIR parfor first array ", first_arr)
+        #@dprintln(3,"DistPass parfor first array ", first_arr)
         #global_size = state.arrs_dist_info[first_arr].dim_sizes[1]
 
         # some parfors have no arrays
@@ -665,7 +665,7 @@ function from_parfor(node::Expr, state)
             size_expr = Expr(:(=), bcast_size_var, Expr(:call,:*,1,state.arrs_dist_info[write_arr].dim_sizes...))
             bcast_expr = Expr(:call,:__hps_dist_broadcast, write_arr, bcast_size_var)
 
-            @dprintln(3,"DistIR rand() in sequential parfor ", parfor)
+            @dprintln(3,"DistPass rand() in sequential parfor ", parfor)
             return [goto_node; node; label_node; size_expr; bcast_expr]
         end
     end
@@ -679,12 +679,12 @@ end
 
 function from_call(node::Expr, state)
     @assert node.head==:call "Invalid call node"
-    @dprintln(2,"DistIR from_call ", node)
+    @dprintln(2,"DistPass from_call ", node)
 
     func = node.args[1]
     if (func==:__hps_data_source_HDF5_read || func==:__hps_data_source_TXT_read) && in(toSymGen(node.args[3]), state.dist_arrays)
         arr = toSymGen(node.args[3])
-        @dprintln(3,"DistIR data source for array: ", arr)
+        @dprintln(3,"DistPass data source for array: ", arr)
         
         arr_id = state.arrs_dist_info[arr].arr_id 
         
@@ -695,7 +695,7 @@ function from_call(node::Expr, state)
         return [node]
     elseif func==:__hps_kmeans && in(toSymGen(node.args[3]), state.dist_arrays)
         arr = toSymGen(node.args[3])
-        @dprintln(3,"DistIR kmeans call for array: ", arr)
+        @dprintln(3,"DistPass kmeans call for array: ", arr)
         
         arr_id = state.arrs_dist_info[arr].arr_id 
         
@@ -708,7 +708,7 @@ function from_call(node::Expr, state)
     elseif (func==:__hps_LinearRegression || func==:__hps_NaiveBayes) && in(toSymGen(node.args[3]), state.dist_arrays) && in(toSymGen(node.args[4]), state.dist_arrays)
         arr1 = toSymGen(node.args[3])
         arr2 = toSymGen(node.args[4])
-        @dprintln(3,"DistIR LinearRegression/NaiveBayes call for arrays: ", arr1," ", arr2)
+        @dprintln(3,"DistPass LinearRegression/NaiveBayes call for arrays: ", arr1," ", arr2)
         
         arr1_id = state.arrs_dist_info[arr1].arr_id 
         arr2_id = state.arrs_dist_info[arr2].arr_id 
@@ -782,4 +782,4 @@ function gen_dist_reductions(reductions::Array{PIRReduction,1}, state)
     return res
 end
 
-end # DistributedIR
+end # DistributedPass
