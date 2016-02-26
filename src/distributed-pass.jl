@@ -604,9 +604,9 @@ function from_parfor(node::Expr, state)
         # TODO: build a constant table and check the loop variables at this stage
         # @assert loopnest.lower==1 && loopnest.step==1 "DistPass only simple PIR loops supported now"
 
-        loop_start_var = symbol("__hps_loop_start_"*string(getDistNewID(state)))
-        loop_end_var = symbol("__hps_loop_end_"*string(getDistNewID(state)))
-        loop_div_var = symbol("__hps_loop_div_"*string(getDistNewID(state)))
+        loop_start_var = symbol("__hps_loop_start_"*string(parfor.unique_id))
+        loop_end_var = symbol("__hps_loop_end_"*string(parfor.unique_id))
+        loop_div_var = symbol("__hps_loop_div_"*string(parfor.unique_id))
 
         CompilerTools.LambdaHandling.addLocalVar(loop_start_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
         CompilerTools.LambdaHandling.addLocalVar(loop_end_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)

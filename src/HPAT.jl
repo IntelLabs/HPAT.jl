@@ -14,6 +14,7 @@ export hpat, @acc, @noacc
 
 
 include("distributed-pass.jl")
+include("domain-pass.jl")
 include("capture-api.jl")
 
 function ns_to_sec(x)
@@ -31,7 +32,7 @@ end
 
 function runDomainPass(func :: GlobalRef, ast :: Expr, signature :: Tuple)
   dir_start = time_ns()
-  code = DistributedPass.from_root(string(func.name), ast)
+  code = DomainPass.from_root(string(func.name), ast)
   dir_time = time_ns() - dir_start
   @dprintln(3, "Distributed code = ", code)
   @dprintln(1, "accelerate: DistributedPass conversion time = ", ns_to_sec(dir_time))
