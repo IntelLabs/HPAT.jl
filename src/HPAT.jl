@@ -1,5 +1,7 @@
 module HPAT
 
+ENV["CGEN_MPI_COMPILE"]=1
+
 using CompilerTools.DebugMsg
 DebugMsg.init()
 
