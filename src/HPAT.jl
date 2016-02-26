@@ -44,6 +44,11 @@ export hpat, @acc, @noacc
 include("distributed-pass.jl")
 include("domain-pass.jl")
 include("capture-api.jl")
+include("cgen-hpat-pattern-match.jl")
+
+# add HPAT pattern matching code generators to CGen
+ParallelAccelerator.CGen.setExternalPatternMatchCall(CGenPatternMatch.pattern_match_call)
+ParallelAccelerator.CGen.setExternalPatternMatchAssignment(CGenPatternMatch.from_assignment_match_dist)
 
 function ns_to_sec(x)
   x / 1000000000.0

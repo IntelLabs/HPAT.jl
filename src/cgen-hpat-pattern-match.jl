@@ -25,6 +25,12 @@ THE POSSIBILITY OF SUCH DAMAGE.
 
 module CGenPatternMatch
 
+import ParallelAccelerator.ParallelIR.DelayedFunc
+import CompilerTools.DebugMsg
+using CompilerTools.LambdaHandling
+using CompilerTools.Helper
+DebugMsg.init()
+
 #using Debug
 
 function pattern_match_call_dist_init(f::TopNode)
@@ -87,7 +93,7 @@ function pattern_match_call_dist_allreduce(f::TopNode, var::SymAllGen, reduction
         var = toSymGen(var)
         c_var = from_expr(var)
         c_output = from_expr(output)
-        var_typ = lstate.symboltable[var]
+        var_typ = ParallelAccelerator.CGen.getSymType(var)
         is_array =  var_typ<:Array
         if is_array
             var_typ = eltype(var_typ)
@@ -135,7 +141,7 @@ function pattern_match_call_dist_bcast(f::Symbol, var::SymAllGen, size::Symbol)
         mpi_type = ""
         var = toSymGen(var)
         c_var = from_expr(var)
-        var_typ = lstate.symboltable[var]
+        var_typ = ParallelAccelerator.CGen.getSymType(var)
         is_array =  var_typ<:Array
         if is_array
             var_typ = eltype(var_typ)
@@ -842,6 +848,7 @@ function pattern_match_call_naive_bayes(f::ANY, coeff_out::ANY, arr::ANY, arr2::
 end
 
 function pattern_match_call(ast::Array{Any, 1})
+
     @dprintln(3,"hpat pattern matching ",ast)
     s = ""
     if length(ast)==1
