@@ -79,7 +79,6 @@ function pattern_match_hps_dist_calls(state, env, lhs::SymGen, rhs::Expr)
                 state.data_source_counter += 1
                 dsrc_num = state.data_source_counter
                 dsrc_id_var = addGenSym(Int64, state.linfo)
-                updateDef(state, dsrc_id_var, dsrc_num)
                 emitStmt(state, mk_expr(Int64, :(=), dsrc_id_var, dsrc_num))
                 # get array type
                 arr_typ = getType(lhs, state.linfo)
@@ -94,19 +93,16 @@ function pattern_match_hps_dist_calls(state, env, lhs::SymGen, rhs::Expr)
                 # assume 1D for now
                 arr_size_var = addGenSym(H5SizeArr_t, state.linfo)
                 size_call = mk_call(:__hps_data_source_HDF5_size, [dsrc_id_var, lhs])
-                updateDef(state, arr_size_var, size_call)
                 emitStmt(state, mk_expr(arr_size_var, :(=), arr_size_var, size_call))
                 # generate array allocation
                 size_expr = Any[]
                 for i in dims:-1:1
                     size_i = addGenSym(Int64, state.linfo)
                     size_i_call = mk_call(:__hps_get_H5_dim_size, [arr_size_var, i])
-                    updateDef(state, size_i, size_i_call)
                     emitStmt(state, mk_expr(Int64, :(=), size_i, size_i_call))
                     push!(size_expr, size_i)
                 end
                 arrdef = type_expr(arr_typ, mk_alloc(state, elem_typ, size_expr))
-                updateDef(state, lhs, arrdef)
                 emitStmt(state, mk_expr(arr_typ, :(=), lhs, arrdef))
                 # generate read call
                 read_call = mk_call(:__hps_data_source_HDF5_read, [dsrc_id_var, lhs])
@@ -118,7 +114,6 @@ function pattern_match_hps_dist_calls(state, env, lhs::SymGen, rhs::Expr)
                 state.data_source_counter += 1
                 dsrc_num = state.data_source_counter
                 dsrc_id_var = addGenSym(Int64, state.linfo)
-                updateDef(state, dsrc_id_var, dsrc_num)
                 emitStmt(state, mk_expr(Int64, :(=), dsrc_id_var, dsrc_num))
                 # get array type
                 arr_typ = getType(lhs, state.linfo)
@@ -132,19 +127,16 @@ function pattern_match_hps_dist_calls(state, env, lhs::SymGen, rhs::Expr)
                 # arr_size_var = addGenSym(Tuple, state.linfo)
                 arr_size_var = addGenSym(SizeArr_t, state.linfo)
                 size_call = mk_call(:__hps_data_source_TXT_size, [dsrc_id_var, lhs])
-                updateDef(state, arr_size_var, size_call)
                 emitStmt(state, mk_expr(arr_size_var, :(=), arr_size_var, size_call))
                 # generate array allocation
                 size_expr = Any[]
                 for i in dims:-1:1
                     size_i = addGenSym(Int64, state.linfo)
                     size_i_call = mk_call(:__hps_get_TXT_dim_size, [arr_size_var, i])
-                    updateDef(state, size_i, size_i_call)
                     emitStmt(state, mk_expr(Int64, :(=), size_i, size_i_call))
                     push!(size_expr, size_i)
                 end
                 arrdef = type_expr(arr_typ, mk_alloc(state, elem_typ, size_expr))
-                updateDef(state, lhs, arrdef)
                 emitStmt(state, mk_expr(arr_typ, :(=), lhs, arrdef))
                 # generate read call
                 read_call = mk_call(:__hps_data_source_TXT_read, [dsrc_id_var, lhs])
