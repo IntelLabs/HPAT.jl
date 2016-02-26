@@ -20,7 +20,16 @@ function ns_to_sec(x)
   x / 1000000000.0
 end
 
-function toDistributedPass(func :: GlobalRef, ast :: Expr, signature :: Tuple)
+function runDistributedPass(func :: GlobalRef, ast :: Expr, signature :: Tuple)
+  dir_start = time_ns()
+  code = DistributedPass.from_root(string(func.name), ast)
+  dir_time = time_ns() - dir_start
+  @dprintln(3, "Distributed code = ", code)
+  @dprintln(1, "accelerate: DistributedPass conversion time = ", ns_to_sec(dir_time))
+  return code
+end
+
+function runDomainPass(func :: GlobalRef, ast :: Expr, signature :: Tuple)
   dir_start = time_ns()
   code = DistributedPass.from_root(string(func.name), ast)
   dir_time = time_ns() - dir_start
@@ -41,9 +50,10 @@ end
 const hpat = [ OptPass(captureHPAT, PASS_MACRO),
                OptPass(captureOperators, PASS_MACRO),
                OptPass(toCartesianArray, PASS_MACRO),
+               OptPass(runDomainPass, PASS_TYPED),
                OptPass(toDomainIR, PASS_TYPED),
                OptPass(toParallelIR, PASS_TYPED),
-               OptPass(toDistributedPass, PASS_TYPED),
+               OptPass(runDistributedPass, PASS_TYPED),
                OptPass(toFlatParfors, PASS_TYPED),
                OptPass(toCGen, PASS_TYPED) ]
 
