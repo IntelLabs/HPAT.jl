@@ -91,7 +91,7 @@ end
 function from_assignment(node::Expr, state)
     
     # pattern match distributed calls that need domain translation
-    matched::Array{Any,1} = pattern_match_hps_dist_calls(node.args[1], node.args[2], state)
+    matched::Array{Any,1} = pattern_match_hpat_dist_calls(node.args[1], node.args[2], state)
     # matched is an expression, :not_matched head is used if not matched 
     if length(matched)!=0
         return matched
@@ -100,14 +100,14 @@ function from_assignment(node::Expr, state)
     end
 end
 
-function pattern_match_hps_dist_calls(lhs::SymGen, rhs::Expr, state)
+function pattern_match_hpat_dist_calls(lhs::SymGen, rhs::Expr, state)
     # example of data source call: 
-    # :((top(typeassert))((top(convert))(Array{Float64,1},(ParallelAccelerator.API.__hps_data_source_HDF5)("/labels","./test.hdf5")),Array{Float64,1})::Array{Float64,1})
+    # :((top(typeassert))((top(convert))(Array{Float64,1},(ParallelAccelerator.API.__hpat_data_source_HDF5)("/labels","./test.hdf5")),Array{Float64,1})::Array{Float64,1})
     if rhs.head==:call && length(rhs.args)>=2 && isCall(rhs.args[2])
         in_call = rhs.args[2]
         if length(in_call.args)>=3 && isCall(in_call.args[3]) 
             inner_call = in_call.args[3]
-            if isa(inner_call.args[1],GlobalRef) && inner_call.args[1].name==:__hps_data_source_HDF5
+            if isa(inner_call.args[1],GlobalRef) && inner_call.args[1].name==:__hpat_data_source_HDF5
                 res = Any[]
                 dprintln(3,"data source found ", inner_call)
                 hdf5_var = inner_call.args[2]
@@ -123,29 +123,29 @@ function pattern_match_hps_dist_calls(lhs::SymGen, rhs::Expr, state)
                 elem_typ = eltype(arr_typ)
                 # generate open call
                 # lhs is dummy argument so ParallelIR wouldn't reorder
-                open_call = mk_call(:__hps_data_source_HDF5_open, [dsrc_id_var, hdf5_var, hdf5_file, lhs])
+                open_call = mk_call(:__hpat_data_source_HDF5_open, [dsrc_id_var, hdf5_var, hdf5_file, lhs])
                 push!(res, open_call)
                 # generate array size call
                 # arr_size_var = addGenSym(Tuple, state.linfo)
                 # assume 1D for now
                 arr_size_var = addGenSym(ParallelAccelerator.H5SizeArr_t, state.linfo)
-                size_call = mk_call(:__hps_data_source_HDF5_size, [dsrc_id_var, lhs])
+                size_call = mk_call(:__hpat_data_source_HDF5_size, [dsrc_id_var, lhs])
                 push!(res, TypedExpr(arr_size_var, :(=), arr_size_var, size_call))
                 # generate array allocation
                 size_expr = Any[]
                 for i in dims:-1:1
                     size_i = addGenSym(Int64, state.linfo)
-                    size_i_call = mk_call(:__hps_get_H5_dim_size, [arr_size_var, i])
+                    size_i_call = mk_call(:__hpat_get_H5_dim_size, [arr_size_var, i])
                     push!(res, TypedExpr(Int64, :(=), size_i, size_i_call))
                     push!(size_expr, size_i)
                 end
                 arrdef = TypedExpr(arr_typ, :alloc, elem_typ, size_expr)
                 push!(res, TypedExpr(arr_typ, :(=), lhs, arrdef))
                 # generate read call
-                read_call = mk_call(:__hps_data_source_HDF5_read, [dsrc_id_var, lhs])
+                read_call = mk_call(:__hpat_data_source_HDF5_read, [dsrc_id_var, lhs])
                 push!(res, read_call)
                 return res
-            elseif isa(inner_call.args[1],GlobalRef) && inner_call.args[1].name==:__hps_data_source_TXT
+            elseif isa(inner_call.args[1],GlobalRef) && inner_call.args[1].name==:__hpat_data_source_TXT
                 dprintln(3,"data source found ", inner_call)
                 res = Any[]
                 txt_file = inner_call.args[2]
@@ -160,38 +160,38 @@ function pattern_match_hps_dist_calls(lhs::SymGen, rhs::Expr, state)
                 elem_typ = eltype(arr_typ)
                 # generate open call
                 # lhs is dummy argument so ParallelIR wouldn't reorder
-                open_call = mk_call(:__hps_data_source_TXT_open, [dsrc_id_var, txt_file, lhs])
+                open_call = mk_call(:__hpat_data_source_TXT_open, [dsrc_id_var, txt_file, lhs])
                 push!(res, open_call)
                 # generate array size call
                 # arr_size_var = addGenSym(Tuple, state.linfo)
                 arr_size_var = addGenSym(ParallelAccelerator.SizeArr_t, state.linfo)
-                size_call = mk_call(:__hps_data_source_TXT_size, [dsrc_id_var, lhs])
+                size_call = mk_call(:__hpat_data_source_TXT_size, [dsrc_id_var, lhs])
                 push!(res, TypedExpr(arr_size_var, :(=), arr_size_var, size_call))
                 # generate array allocation
                 size_expr = Any[]
                 for i in dims:-1:1
                     size_i = addGenSym(Int64, state.linfo)
-                    size_i_call = mk_call(:__hps_get_TXT_dim_size, [arr_size_var, i])
+                    size_i_call = mk_call(:__hpat_get_TXT_dim_size, [arr_size_var, i])
                     push!(res, TypedExpr(Int64, :(=), size_i, size_i_call))
                     push!(size_expr, size_i)
                 end
                 arrdef = TypedExpr(arr_typ, :alloc, elem_typ, size_expr)
                 push!(res, TypedExpr(arr_typ, :(=), lhs, arrdef))
                 # generate read call
-                read_call = mk_call(:__hps_data_source_TXT_read, [dsrc_id_var, lhs])
+                read_call = mk_call(:__hpat_data_source_TXT_read, [dsrc_id_var, lhs])
                 push!(res, read_call)
                 return res
-            elseif isa(inner_call.args[1],GlobalRef) && inner_call.args[1].name==:__hps_kmeans
+            elseif isa(inner_call.args[1],GlobalRef) && inner_call.args[1].name==:__hpat_kmeans
                 dprintln(3,"kmeans found ", inner_call)
-                lib_call = mk_call(:__hps_kmeans, [lhs,inner_call.args[2], inner_call.args[3]])
+                lib_call = mk_call(:__hpat_kmeans, [lhs,inner_call.args[2], inner_call.args[3]])
                 return [lib_call]
-            elseif isa(inner_call.args[1],GlobalRef) && inner_call.args[1].name==:__hps_LinearRegression
+            elseif isa(inner_call.args[1],GlobalRef) && inner_call.args[1].name==:__hpat_LinearRegression
                 dprintln(3,"LinearRegression found ", inner_call)
-                lib_call = mk_call(:__hps_LinearRegression, [lhs,inner_call.args[2], inner_call.args[3]])
+                lib_call = mk_call(:__hpat_LinearRegression, [lhs,inner_call.args[2], inner_call.args[3]])
                 return [lib_call] 
-            elseif isa(inner_call.args[1],GlobalRef) && inner_call.args[1].name==:__hps_NaiveBayes
+            elseif isa(inner_call.args[1],GlobalRef) && inner_call.args[1].name==:__hpat_NaiveBayes
                 dprintln(3,"NaiveBayes found ", inner_call)
-                lib_call = mk_call(:__hps_NaiveBayes, [lhs,inner_call.args[2], inner_call.args[3], inner_call.args[4]])
+                lib_call = mk_call(:__hpat_NaiveBayes, [lhs,inner_call.args[2], inner_call.args[3], inner_call.args[4]])
                 return [lib_call]
             end
         end
@@ -200,7 +200,7 @@ function pattern_match_hps_dist_calls(lhs::SymGen, rhs::Expr, state)
     return Any[]
 end
 
-function pattern_match_hps_dist_calls(lhs::Any, rhs::Any, state)
+function pattern_match_hpat_dist_calls(lhs::Any, rhs::Any, state)
     return Any[]
 end
 

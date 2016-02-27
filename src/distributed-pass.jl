@@ -56,8 +56,8 @@ import ParallelAccelerator.ParallelIR.ISASSIGNEDONCE
 import ParallelAccelerator.ParallelIR.ISPRIVATEPARFORLOOP
 import ParallelAccelerator.ParallelIR.PIRReduction
 
-dist_ir_funcs = Set([:__hps_data_source_HDF5_open,:__hps_data_source_HDF5_read,:__hps_kmeans,
-                        :__hps_data_source_TXT_open,:__hps_data_source_TXT_read, :__hps_LinearRegression, :__hps_NaiveBayes, 
+dist_ir_funcs = Set([:__hpat_data_source_HDF5_open,:__hpat_data_source_HDF5_read,:__hpat_kmeans,
+                        :__hpat_data_source_TXT_open,:__hpat_data_source_TXT_read, :__hpat_LinearRegression, :__hpat_NaiveBayes, 
                         GlobalRef(Base,:arraylen), TopNode(:arraysize), GlobalRef(Base,:reshape), TopNode(:tuple), 
                         GlobalRef(Base.LinAlg,:gemm_wrapper!)])
 
@@ -337,15 +337,15 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
     # functions dist_ir_funcs are either handled here or do not make arrays sequential  
     elseif head==:call && in(node.args[1], dist_ir_funcs)
         func = node.args[1]
-        if func==:__hps_data_source_HDF5_read || func==:__hps_data_source_TXT_read
+        if func==:__hpat_data_source_HDF5_read || func==:__hpat_data_source_TXT_read
             @dprintln(2,"DistPass arr info walk data source read ", node)
             # will be parallel IO, intentionally do nothing
-        elseif func==:__hps_kmeans
+        elseif func==:__hpat_kmeans
             @dprintln(2,"DistPass arr info walk kmeans ", node)
             # first array is cluster output and is sequential
             # second array is input matrix and is parallel
             state.arrs_dist_info[node.args[2]].isSequential = true
-        elseif func==:__hps_LinearRegression || func==:__hps_NaiveBayes
+        elseif func==:__hpat_LinearRegression || func==:__hpat_NaiveBayes
             @dprintln(2,"DistPass arr info walk LinearRegression/NaiveBayes ", node)
             # first array is cluster output and is sequential
             # second array is input matrix and is parallel
@@ -451,11 +451,11 @@ function genDistributedInit(state::DistPassState)
     numPesCall = Expr(:call,TopNode(:hps_dist_num_pes))
     nodeIdCall = Expr(:call,TopNode(:hps_dist_node_id))
     
-    CompilerTools.LambdaHandling.addLocalVar(symbol("__hps_num_pes"), Int32, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-    CompilerTools.LambdaHandling.addLocalVar(symbol("__hps_node_id"), Int32, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+    CompilerTools.LambdaHandling.addLocalVar(symbol("__hpat_num_pes"), Int32, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+    CompilerTools.LambdaHandling.addLocalVar(symbol("__hpat_node_id"), Int32, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
 
-    num_pes_assign = Expr(:(=), :__hps_num_pes, numPesCall)
-    node_id_assign = Expr(:(=), :__hps_node_id, nodeIdCall)
+    num_pes_assign = Expr(:(=), :__hpat_num_pes, numPesCall)
+    node_id_assign = Expr(:(=), :__hpat_node_id, nodeIdCall)
 
     return Any[initCall; num_pes_assign; node_id_assign]
 end
@@ -479,19 +479,19 @@ function from_assignment(node::Expr, state::DistPassState)
 
             arr_id = getDistNewID(state)
             state.arrs_dist_info[arr].arr_id = arr_id
-            darr_start_var = symbol("__hps_dist_arr_start_"*string(arr_id))
-            darr_div_var = symbol("__hps_dist_arr_div_"*string(arr_id))
-            darr_count_var = symbol("__hps_dist_arr_count_"*string(arr_id))
+            darr_start_var = symbol("__hpat_dist_arr_start_"*string(arr_id))
+            darr_div_var = symbol("__hpat_dist_arr_div_"*string(arr_id))
+            darr_count_var = symbol("__hpat_dist_arr_count_"*string(arr_id))
 
             CompilerTools.LambdaHandling.addLocalVar(darr_start_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
             CompilerTools.LambdaHandling.addLocalVar(darr_div_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
             CompilerTools.LambdaHandling.addLocalVar(darr_count_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
 
 
-            darr_div_expr = :($darr_div_var = $(arr_tot_size)/__hps_num_pes)
+            darr_div_expr = :($darr_div_var = $(arr_tot_size)/__hpat_num_pes)
             # zero-based index to match C interface of HDF5
-            darr_start_expr = :($darr_start_var = __hps_node_id*$darr_div_var) 
-            darr_count_expr = :($darr_count_var = __hps_node_id==__hps_num_pes-1 ? $arr_tot_size-__hps_node_id*$darr_div_var : $darr_div_var)
+            darr_start_expr = :($darr_start_var = __hpat_node_id*$darr_div_var) 
+            darr_count_expr = :($darr_count_var = __hpat_node_id==__hpat_num_pes-1 ? $arr_tot_size-__hpat_node_id*$darr_div_var : $darr_div_var)
 
             rhs.args[end-1] = darr_count_var
 
@@ -512,23 +512,23 @@ function from_assignment(node::Expr, state::DistPassState)
     
             arr_id = getDistNewID(state)
             state.arrs_dist_info[arr].arr_id = arr_id
-            darr_start_var = symbol("__hps_dist_arr_start_"*string(arr_id))
-            darr_div_var = symbol("__hps_dist_arr_div_"*string(arr_id))
-            darr_count_var = symbol("__hps_dist_arr_count_"*string(arr_id))
+            darr_start_var = symbol("__hpat_dist_arr_start_"*string(arr_id))
+            darr_div_var = symbol("__hpat_dist_arr_div_"*string(arr_id))
+            darr_count_var = symbol("__hpat_dist_arr_count_"*string(arr_id))
     
             CompilerTools.LambdaHandling.addLocalVar(darr_start_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
             CompilerTools.LambdaHandling.addLocalVar(darr_div_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
             CompilerTools.LambdaHandling.addLocalVar(darr_count_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
     
     
-            darr_div_expr = :($darr_div_var = $(arr_tot_size)/__hps_num_pes)
+            darr_div_expr = :($darr_div_var = $(arr_tot_size)/__hpat_num_pes)
             # zero-based index to match C interface of HDF5
-            darr_start_expr = :($darr_start_var = __hps_node_id*$darr_div_var) 
-            darr_count_expr = :($darr_count_var = __hps_node_id==__hps_num_pes-1 ? $arr_tot_size-__hps_node_id*$darr_div_var : $darr_div_var)
+            darr_start_expr = :($darr_start_var = __hpat_node_id*$darr_div_var) 
+            darr_count_expr = :($darr_count_var = __hpat_node_id==__hpat_num_pes-1 ? $arr_tot_size-__hpat_node_id*$darr_div_var : $darr_div_var)
     
             # create a new tuple for reshape
             tup_call = Expr(:call, TopNode(:tuple), dim_sizes[1:end-1]... , darr_count_var)
-            reshape_tup_var = symbol("__hps_dist_tup_var_"*string(arr_id))
+            reshape_tup_var = symbol("__hpat_dist_tup_var_"*string(arr_id))
             tup_typ = CompilerTools.LambdaHandling.getType(rhs.args[3], state.LambdaVarInfo)
             CompilerTools.LambdaHandling.addLocalVar(reshape_tup_var, tup_typ, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
             tup_expr = Expr(:(=),reshape_tup_var,tup_call)
@@ -550,7 +550,7 @@ function from_assignment(node::Expr, state::DistPassState)
                 if !state.arrs_dist_info[arr1].isSequential && !state.arrs_dist_info[arr2].isSequential && t2 && !t1 &&
                             state.arrs_dist_info[lhs].isSequential
                     @dprintln(3,"DistPass translating gemm reduce: ", node)
-                    # rhs.args[1] = :__hps_gemm_reduce
+                    # rhs.args[1] = :__hpat_gemm_reduce
                     # allocate temporary array for local gemm values
                     alloc_args = Array(Any,2)
                     out_typ = CompilerTools.LambdaHandling.getType(lhs, state.LambdaVarInfo)
@@ -559,14 +559,14 @@ function from_assignment(node::Expr, state::DistPassState)
                     alloc_args[2] = out_dim_sizes
                     alloc_call = ParallelIR.from_alloc(alloc_args)
                     reduce_num = getDistNewID(state)
-                    reduce_var = symbol("__hps_gemm_reduce_"*string(reduce_num))
+                    reduce_var = symbol("__hpat_gemm_reduce_"*string(reduce_num))
                     CompilerTools.LambdaHandling.addLocalVar(reduce_var, out_typ, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
                     reduce_var_init = Expr(:(=), reduce_var, Expr(:call,alloc_call...))
                     # TODO: deallocate temporary array
                     # reduce_var_dealloc = Expr(:call, TopNode(:ccall), QuoteNode(:jl_dealloc_array), reduce_var)
 
                     # get reduction size
-                    reduce_size_var = symbol("__hps_gemm_reduce_size_"*string(reduce_num))
+                    reduce_size_var = symbol("__hpat_gemm_reduce_size_"*string(reduce_num))
                     CompilerTools.LambdaHandling.addLocalVar(reduce_size_var, Int, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
                     size_expr = Expr(:(=), reduce_size_var, Expr(:call,:*,out_dim_sizes[1], out_dim_sizes[2]))
 
@@ -582,7 +582,7 @@ function from_assignment(node::Expr, state::DistPassState)
                 # e.g. w*points
                 elseif state.arrs_dist_info[arr1].isSequential && !state.arrs_dist_info[arr2].isSequential && !t2 && !state.arrs_dist_info[lhs].isSequential
                     @dprintln(3,"DistPass arr info gemm first input is sequential: ", arr1)
-                    #rhs.args[1] = :__hps_gemm_broadcast
+                    #rhs.args[1] = :__hpat_gemm_broadcast
                     @dprintln(3,"DistPass translating gemm broadcast: ", node)
                 # otherwise, no known pattern found
                 end
@@ -604,9 +604,9 @@ function from_parfor(node::Expr, state)
         # TODO: build a constant table and check the loop variables at this stage
         # @assert loopnest.lower==1 && loopnest.step==1 "DistPass only simple PIR loops supported now"
 
-        loop_start_var = symbol("__hps_loop_start_"*string(parfor.unique_id))
-        loop_end_var = symbol("__hps_loop_end_"*string(parfor.unique_id))
-        loop_div_var = symbol("__hps_loop_div_"*string(parfor.unique_id))
+        loop_start_var = symbol("__hpat_loop_start_"*string(parfor.unique_id))
+        loop_end_var = symbol("__hpat_loop_end_"*string(parfor.unique_id))
+        loop_div_var = symbol("__hpat_loop_div_"*string(parfor.unique_id))
 
         CompilerTools.LambdaHandling.addLocalVar(loop_start_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
         CompilerTools.LambdaHandling.addLocalVar(loop_end_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
@@ -619,9 +619,9 @@ function from_parfor(node::Expr, state)
         # some parfors have no arrays
         global_size = loopnest.upper
 
-        loop_div_expr = :($loop_div_var = $(global_size)/__hps_num_pes)
-        loop_start_expr = :($loop_start_var = __hps_node_id*$loop_div_var+1)
-        loop_end_expr = :($loop_end_var = __hps_node_id==__hps_num_pes-1 ?$(global_size):(__hps_node_id+1)*$loop_div_var)
+        loop_div_expr = :($loop_div_var = $(global_size)/__hpat_num_pes)
+        loop_start_expr = :($loop_start_var = __hpat_node_id*$loop_div_var+1)
+        loop_end_expr = :($loop_end_var = __hpat_node_id==__hpat_num_pes-1 ?$(global_size):(__hpat_node_id+1)*$loop_div_var)
 
         loopnest.lower = loop_start_var
         loopnest.upper = loop_end_var
@@ -641,9 +641,9 @@ function from_parfor(node::Expr, state)
 
         #debug_div_print = :(println("parfor div ", $loop_div_var))
         #push!(res,debug_div_print)
-        #debug_pes_print = :(println("parfor pes ", __hps_num_pes))
+        #debug_pes_print = :(println("parfor pes ", __hpat_num_pes))
         #push!(res,debug_pes_print)
-        #debug_rank_print = :(println("parfor rank ", __hps_node_id))
+        #debug_rank_print = :(println("parfor rank ", __hpat_node_id))
         #push!(res,debug_rank_print)
         return res
     else
@@ -663,12 +663,12 @@ function from_parfor(node::Expr, state)
             # generate new label
             label = next_label(state)
             label_node = LabelNode(label)
-            goto_node = Expr(:gotoifnot, :__hps_node_id,label)
+            goto_node = Expr(:gotoifnot, :__hpat_node_id,label)
             # get broadcast size
-            bcast_size_var = symbol("__hps_bcast_size_"*string(label))
+            bcast_size_var = symbol("__hpat_bcast_size_"*string(label))
             CompilerTools.LambdaHandling.addLocalVar(bcast_size_var, Int, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
             size_expr = Expr(:(=), bcast_size_var, Expr(:call,:*,1,state.arrs_dist_info[write_arr].dim_sizes...))
-            bcast_expr = Expr(:call,:__hps_dist_broadcast, write_arr, bcast_size_var)
+            bcast_expr = Expr(:call,:__hpat_dist_broadcast, write_arr, bcast_size_var)
 
             @dprintln(3,"DistPass rand() in sequential parfor ", parfor)
             return [goto_node; node; label_node; size_expr; bcast_expr]
@@ -687,30 +687,30 @@ function from_call(node::Expr, state)
     @dprintln(2,"DistPass from_call ", node)
 
     func = node.args[1]
-    if (func==:__hps_data_source_HDF5_read || func==:__hps_data_source_TXT_read) && in(toSymGen(node.args[3]), state.dist_arrays)
+    if (func==:__hpat_data_source_HDF5_read || func==:__hpat_data_source_TXT_read) && in(toSymGen(node.args[3]), state.dist_arrays)
         arr = toSymGen(node.args[3])
         @dprintln(3,"DistPass data source for array: ", arr)
         
         arr_id = state.arrs_dist_info[arr].arr_id 
         
-        dsrc_start_var = symbol("__hps_dist_arr_start_"*string(arr_id)) 
-        dsrc_count_var = symbol("__hps_dist_arr_count_"*string(arr_id)) 
+        dsrc_start_var = symbol("__hpat_dist_arr_start_"*string(arr_id)) 
+        dsrc_count_var = symbol("__hpat_dist_arr_count_"*string(arr_id)) 
 
         push!(node.args, dsrc_start_var, dsrc_count_var)
         return [node]
-    elseif func==:__hps_kmeans && in(toSymGen(node.args[3]), state.dist_arrays)
+    elseif func==:__hpat_kmeans && in(toSymGen(node.args[3]), state.dist_arrays)
         arr = toSymGen(node.args[3])
         @dprintln(3,"DistPass kmeans call for array: ", arr)
         
         arr_id = state.arrs_dist_info[arr].arr_id 
         
-        dsrc_start_var = symbol("__hps_dist_arr_start_"*string(arr_id))
-        dsrc_count_var = symbol("__hps_dist_arr_count_"*string(arr_id)) 
+        dsrc_start_var = symbol("__hpat_dist_arr_start_"*string(arr_id))
+        dsrc_count_var = symbol("__hpat_dist_arr_count_"*string(arr_id)) 
 
         push!(node.args, dsrc_start_var, dsrc_count_var, 
                 state.arrs_dist_info[arr].dim_sizes[1], state.arrs_dist_info[arr].dim_sizes[end])
         return [node]
-    elseif (func==:__hps_LinearRegression || func==:__hps_NaiveBayes) && in(toSymGen(node.args[3]), state.dist_arrays) && in(toSymGen(node.args[4]), state.dist_arrays)
+    elseif (func==:__hpat_LinearRegression || func==:__hpat_NaiveBayes) && in(toSymGen(node.args[3]), state.dist_arrays) && in(toSymGen(node.args[4]), state.dist_arrays)
         arr1 = toSymGen(node.args[3])
         arr2 = toSymGen(node.args[4])
         @dprintln(3,"DistPass LinearRegression/NaiveBayes call for arrays: ", arr1," ", arr2)
@@ -718,11 +718,11 @@ function from_call(node::Expr, state)
         arr1_id = state.arrs_dist_info[arr1].arr_id 
         arr2_id = state.arrs_dist_info[arr2].arr_id 
         
-        dsrc_start_var1 = symbol("__hps_dist_arr_start_"*string(arr1_id))
-        dsrc_count_var1 = symbol("__hps_dist_arr_count_"*string(arr1_id)) 
+        dsrc_start_var1 = symbol("__hpat_dist_arr_start_"*string(arr1_id))
+        dsrc_count_var1 = symbol("__hpat_dist_arr_count_"*string(arr1_id)) 
         
-        dsrc_start_var2 = symbol("__hps_dist_arr_start_"*string(arr2_id))
-        dsrc_count_var2 = symbol("__hps_dist_arr_count_"*string(arr2_id)) 
+        dsrc_start_var2 = symbol("__hpat_dist_arr_start_"*string(arr2_id))
+        dsrc_count_var2 = symbol("__hpat_dist_arr_count_"*string(arr2_id)) 
 
         push!(node.args, dsrc_start_var1, dsrc_count_var1,
                 state.arrs_dist_info[arr1].dim_sizes[1], state.arrs_dist_info[arr1].dim_sizes[end])
@@ -776,7 +776,7 @@ end
 function gen_dist_reductions(reductions::Array{PIRReduction,1}, state)
     res = Any[]
     for reduce in reductions
-        reduce_var = symbol("__hps_reduce_"*string(getDistNewID(state)))
+        reduce_var = symbol("__hpat_reduce_"*string(getDistNewID(state)))
         CompilerTools.LambdaHandling.addLocalVar(reduce_var, reduce.reductionVar.typ, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
 
         reduce_var_init = Expr(:(=), reduce_var, 0)

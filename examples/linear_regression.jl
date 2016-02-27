@@ -4,7 +4,7 @@ using MPI
 @acc hpat function calcLinearRegression(file_name)
     points = DataSource(Matrix{Float64},HDF5,"/points", file_name)
     responses = DataSource(Vector{Float64},HDF5,"/responses", file_name)
-    coeffs = HPS.LinearRegression(points, responses)
+    coeffs = HPAT.LinearRegression(points, responses)
     return coeffs
 end
 

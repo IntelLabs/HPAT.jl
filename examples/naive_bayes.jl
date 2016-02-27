@@ -5,7 +5,7 @@ using MPI
     num_classes = 20
     points = DataSource(Matrix{Float64},HDF5,"/points", file_name)
     labels = DataSource(Vector{Float64},HDF5,"/labels", file_name)
-    coeffs = HPS.NaiveBayes(points, labels, num_classes)
+    coeffs = HPAT.NaiveBayes(points, labels, num_classes)
     return coeffs
 end
 

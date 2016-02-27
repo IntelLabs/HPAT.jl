@@ -3,7 +3,7 @@ using MPI
 
 @acc hpat function calcKmeans(k::Int64, file_name)
     points = DataSource(Matrix{Float64},HDF5,"/points",file_name)
-    clusters = HPS.kmeans(points, k)
+    clusters = HPAT.Kmeans(points, k)
     return clusters
 end
 

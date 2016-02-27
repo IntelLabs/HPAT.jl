@@ -34,7 +34,7 @@ function process_assignment(node, lhs::Symbol, rhs::Expr)
         node.args[1] = :($(node.args[1])::$arr_var_expr)
         source_typ = node.args[2].args[3]
         @assert source_typ==:HDF5 || source_typ==:TXT "Only HDF5 and TXT (text) data sources supported for now."
-        call_name = symbol("__hps_data_source_$source_typ")
+        call_name = symbol("__hpat_data_source_$source_typ")
         
         call = Expr(:call)
         
@@ -60,16 +60,16 @@ function process_assignment(node, lhs::Symbol, rhs::Expr)
 
         # return :($(node.args[1]) = zeros($(arr_var_expr.args[2]),$(arr_var_expr.args[3])))
         num = get_unique_data_source_num()
-        hps_source_var = symbol("__hps_data_source_$num")
-        hps_source_size_var = symbol("__hps_data_source_size_$num")
-        hps_source_size_call = symbol("__hps_data_source_get_size_$(dims)d")
-        declare_expr = :( $hps_source_var = __hps_data_source_open($hdf_var_name,$hdf_file_name))
+        hps_source_var = symbol("__hpat_data_source_$num")
+        hps_source_size_var = symbol("__hpat_data_source_size_$num")
+        hps_source_size_call = symbol("__hpat_data_source_get_size_$(dims)d")
+        declare_expr = :( $hps_source_var = __hpat_data_source_open($hdf_var_name,$hdf_file_name))
         size_expr = :( $hps_source_size_var = $hps_source_size_call($hps_source_var))
         return [declare_expr; size_expr]
 =#
-   elseif rhs.head==:call && isa(rhs.args[1],Expr) && rhs.args[1].head==:. && rhs.args[1].args[1]==:HPS
+   elseif rhs.head==:call && isa(rhs.args[1],Expr) && rhs.args[1].head==:. && rhs.args[1].args[1]==:HPAT
         hps_call = rhs.args[1].args[2].args[1]
-        new_opr = symbol("__hps_$hps_call")
+        new_opr = symbol("__hpat_$hps_call")
         node.args[2].args[1] = new_opr
         node.args[1] = :($lhs::Matrix{Float64})
    end

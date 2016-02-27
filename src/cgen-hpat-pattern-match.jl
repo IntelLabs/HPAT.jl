@@ -76,7 +76,7 @@ function pattern_match_call_dist_reduce(f::TopNode, var::SymbolNode, reductionFu
                 
         s="MPI_Reduce(&$(var.name), &$output, 1, $mpi_type, $mpi_func, 0, MPI_COMM_WORLD);"
         # debug print for 1D_sum
-        #s*="printf(\"len %d start %d end %d\\n\", parallel_ir_save_array_len_1_1, __hps_loop_start_2, __hps_loop_end_3);\n"
+        #s*="printf(\"len %d start %d end %d\\n\", parallel_ir_save_array_len_1_1, __hpat_loop_start_2, __hpat_loop_end_3);\n"
         return s
     else
         return ""
@@ -125,7 +125,7 @@ function pattern_match_call_dist_allreduce(f::TopNode, var::SymAllGen, reduction
                 
         s="MPI_Allreduce($c_var, $c_output, $size, $mpi_type, $mpi_func, MPI_COMM_WORLD);"
         # debug print for 1D_sum
-        #s*="printf(\"len %d start %d end %d\\n\", parallel_ir_save_array_len_1_1, __hps_loop_start_2, __hps_loop_end_3);\n"
+        #s*="printf(\"len %d start %d end %d\\n\", parallel_ir_save_array_len_1_1, __hpat_loop_start_2, __hpat_loop_end_3);\n"
         return s
     else
         return ""
@@ -137,7 +137,7 @@ function pattern_match_call_dist_allreduce(f::Any, v::Any, rf::Any, o::Any, s::A
 end
 
 function pattern_match_call_dist_bcast(f::Symbol, var::SymAllGen, size::Symbol)
-    if f==:__hps_dist_broadcast
+    if f==:__hpat_dist_broadcast
         mpi_type = ""
         var = toSymGen(var)
         c_var = from_expr(var)
@@ -178,7 +178,7 @@ Generate code for HDF5 file open
 """
 function pattern_match_call_data_src_open(f::Symbol, id::GenSym, data_var::Union{SymAllGen,AbstractString}, file_name::Union{SymAllGen,AbstractString}, arr::Symbol)
     s = ""
-    if f==:__hps_data_source_HDF5_open
+    if f==:__hpat_data_source_HDF5_open
         num::AbstractString = from_expr(id.id)
     
         s = "hid_t plist_id_$num = H5Pcreate(H5P_FILE_ACCESS);\n"
@@ -207,7 +207,7 @@ Generate code for text file open (no variable name input)
 """
 function pattern_match_call_data_src_open(f::Symbol, id::GenSym, file_name::Union{SymAllGen,AbstractString}, arr::Symbol)
     s = ""
-    if f==:__hps_data_source_TXT_open
+    if f==:__hpat_data_source_TXT_open
         num::AbstractString = from_expr(id.id)
         file_name_str::AbstractString = from_expr(file_name)
         s = """
@@ -229,7 +229,7 @@ function pattern_match_call_data_src_read(f::Symbol, id::GenSym, arr::Symbol, st
     s = ""
     num::AbstractString = from_expr(id.id)
     
-    if f==:__hps_data_source_HDF5_read    
+    if f==:__hpat_data_source_HDF5_read    
         # assuming 1st dimension is partitined
         s =  "hsize_t CGen_HDF5_start_$num[data_ndim_$num];\n"
         s *= "hsize_t CGen_HDF5_count_$num[data_ndim_$num];\n"
@@ -249,9 +249,9 @@ function pattern_match_call_data_src_read(f::Symbol, id::GenSym, arr::Symbol, st
         s *= "double h5_read_start_$num = MPI_Wtime();\n"
         s *= "ret_$num = H5Dread(dataset_id_$num, H5T_NATIVE_DOUBLE, mem_dataspace_$num, space_id_$num, xfer_plist_$num, $arr.getData());\n"
         s *= "assert(ret_$num != -1);\n"
-        #s*="if(__hps_node_id==__hps_num_pes/2) printf(\"h5 read %lf\\n\", MPI_Wtime()-h5_read_start_$num);\n"
+        #s*="if(__hpat_node_id==__hpat_num_pes/2) printf(\"h5 read %lf\\n\", MPI_Wtime()-h5_read_start_$num);\n"
         s *= ";\n"
-    elseif f==:__hps_data_source_TXT_read
+    elseif f==:__hpat_data_source_TXT_read
         # assuming 1st dimension is partitined
         s = """
             int64_t CGen_txt_start_$num = $start;
@@ -259,7 +259,7 @@ function pattern_match_call_data_src_read(f::Symbol, id::GenSym, arr::Symbol, st
             int64_t CGen_txt_end_$num = $start+$count;
             
             
-            // std::cout<<"rank: "<<__hps_node_id<<" start: "<<CGen_txt_start_$num<<" end: "<<CGen_txt_end_$num<<" columnSize: "<<CGen_txt_col_size_$num<<std::endl;
+            // std::cout<<"rank: "<<__hpat_node_id<<" start: "<<CGen_txt_start_$num<<" end: "<<CGen_txt_end_$num<<" columnSize: "<<CGen_txt_col_size_$num<<std::endl;
             // if data needs to be sent left
             // still call MPI_Send if first character is new line
             int64_t CGen_txt_left_send_size_$num = 0;
@@ -277,25 +277,25 @@ function pattern_match_call_data_src_read(f::Symbol, id::GenSym, arr::Symbol, st
             MPI_Request CGen_txt_MPI_request1_$num, CGen_txt_MPI_request2_$num;
             MPI_Status CGen_txt_MPI_status_$num;
             // send left
-            if(__hps_node_id!=0)
+            if(__hpat_node_id!=0)
             {
-                MPI_Isend(&CGen_txt_left_send_size_$num, 1, MPI_LONG_LONG_INT, __hps_node_id-1, 0, MPI_COMM_WORLD, &CGen_txt_MPI_request1_$num);
-                MPI_Isend(CGen_txt_buffer_$num, CGen_txt_left_send_size_$num, MPI_CHAR, __hps_node_id-1, 1, MPI_COMM_WORLD, &CGen_txt_MPI_request2_$num);
-                // std::cout<<"rank: "<<__hps_node_id<<" sent left "<<CGen_txt_left_send_size_$num<<std::endl;
+                MPI_Isend(&CGen_txt_left_send_size_$num, 1, MPI_LONG_LONG_INT, __hpat_node_id-1, 0, MPI_COMM_WORLD, &CGen_txt_MPI_request1_$num);
+                MPI_Isend(CGen_txt_buffer_$num, CGen_txt_left_send_size_$num, MPI_CHAR, __hpat_node_id-1, 1, MPI_COMM_WORLD, &CGen_txt_MPI_request2_$num);
+                // std::cout<<"rank: "<<__hpat_node_id<<" sent left "<<CGen_txt_left_send_size_$num<<std::endl;
             }
             
             char* CGen_txt_right_buff_$num = NULL;
             int64_t CGen_txt_right_recv_size_$num = 0;
             // receive from right
-            if(__hps_node_id!=__hps_num_pes-1)
+            if(__hpat_node_id!=__hpat_num_pes-1)
             {
-                MPI_Recv(&CGen_txt_right_recv_size_$num, 1, MPI_LONG_LONG_INT, __hps_node_id+1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                MPI_Recv(&CGen_txt_right_recv_size_$num, 1, MPI_LONG_LONG_INT, __hpat_node_id+1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
                 CGen_txt_right_buff_$num = new char[CGen_txt_right_recv_size_$num];
-                MPI_Recv(CGen_txt_right_buff_$num, CGen_txt_right_recv_size_$num, MPI_CHAR, __hps_node_id+1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-                // std::cout<<"rank: "<<__hps_node_id<<" received right "<<CGen_txt_right_recv_size_$num<<std::endl;
+                MPI_Recv(CGen_txt_right_buff_$num, CGen_txt_right_recv_size_$num, MPI_CHAR, __hpat_node_id+1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                // std::cout<<"rank: "<<__hpat_node_id<<" received right "<<CGen_txt_right_recv_size_$num<<std::endl;
             }
             
-            if(__hps_node_id!=0)
+            if(__hpat_node_id!=0)
             {
                 MPI_Wait(&CGen_txt_MPI_request1_$num, &CGen_txt_MPI_status_$num);
                 MPI_Wait(&CGen_txt_MPI_request2_$num, &CGen_txt_MPI_status_$num);
@@ -305,7 +305,7 @@ function pattern_match_call_data_src_read(f::Symbol, id::GenSym, arr::Symbol, st
             // still call MPI_Send if first character is new line
             int64_t CGen_txt_right_send_size_$num = 0;
             int64_t CGen_txt_tmp_curr_end_$num = CGen_txt_curr_end_$num;
-            if(__hps_node_id!=__hps_num_pes-1 && CGen_txt_curr_end_$num>=CGen_txt_end_$num)
+            if(__hpat_node_id!=__hpat_num_pes-1 && CGen_txt_curr_end_$num>=CGen_txt_end_$num)
             {
                 while(CGen_txt_tmp_curr_end_$num!=CGen_txt_end_$num-1)
                 {
@@ -319,26 +319,26 @@ function pattern_match_call_data_src_read(f::Symbol, id::GenSym, arr::Symbol, st
                 }
             }
             // send right
-            if(__hps_node_id!=__hps_num_pes-1)
+            if(__hpat_node_id!=__hpat_num_pes-1)
             {
-                MPI_Isend(&CGen_txt_right_send_size_$num, 1, MPI_LONG_LONG_INT, __hps_node_id+1, 0, MPI_COMM_WORLD, &CGen_txt_MPI_request1_$num);
-                MPI_Isend(CGen_txt_buffer_$num+CGen_txt_buff_size_$num-CGen_txt_right_send_size_$num, CGen_txt_right_send_size_$num, MPI_CHAR, __hps_node_id+1, 1, MPI_COMM_WORLD, &CGen_txt_MPI_request2_$num);
+                MPI_Isend(&CGen_txt_right_send_size_$num, 1, MPI_LONG_LONG_INT, __hpat_node_id+1, 0, MPI_COMM_WORLD, &CGen_txt_MPI_request1_$num);
+                MPI_Isend(CGen_txt_buffer_$num+CGen_txt_buff_size_$num-CGen_txt_right_send_size_$num, CGen_txt_right_send_size_$num, MPI_CHAR, __hpat_node_id+1, 1, MPI_COMM_WORLD, &CGen_txt_MPI_request2_$num);
             }
             char* CGen_txt_left_buff_$num = NULL;
             int64_t CGen_txt_left_recv_size_$num = 0;
             // receive from left
-            if(__hps_node_id!=0)
+            if(__hpat_node_id!=0)
             {
-                MPI_Recv(&CGen_txt_left_recv_size_$num, 1, MPI_LONG_LONG_INT, __hps_node_id-1, 0, MPI_COMM_WORLD,MPI_STATUS_IGNORE);
+                MPI_Recv(&CGen_txt_left_recv_size_$num, 1, MPI_LONG_LONG_INT, __hpat_node_id-1, 0, MPI_COMM_WORLD,MPI_STATUS_IGNORE);
                 CGen_txt_left_buff_$num = new char[CGen_txt_left_recv_size_$num];
-                MPI_Recv(CGen_txt_left_buff_$num, CGen_txt_left_recv_size_$num, MPI_CHAR, __hps_node_id-1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-                // std::cout<<"rank: "<<__hps_node_id<<" received left "<<CGen_txt_left_recv_size_$num<<std::endl;
+                MPI_Recv(CGen_txt_left_buff_$num, CGen_txt_left_recv_size_$num, MPI_CHAR, __hpat_node_id-1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                // std::cout<<"rank: "<<__hpat_node_id<<" received left "<<CGen_txt_left_recv_size_$num<<std::endl;
             }
-            if(__hps_node_id!=__hps_num_pes-1)
+            if(__hpat_node_id!=__hpat_num_pes-1)
             {
                 MPI_Wait(&CGen_txt_MPI_request1_$num, &CGen_txt_MPI_status_$num);
                 MPI_Wait(&CGen_txt_MPI_request2_$num, &CGen_txt_MPI_status_$num);
-                // std::cout<<"rank: "<<__hps_node_id<<" sent right "<<CGen_txt_right_send_size_$num<<std::endl;
+                // std::cout<<"rank: "<<__hpat_node_id<<" sent right "<<CGen_txt_right_send_size_$num<<std::endl;
             }
             
             // int64_t total_data_size = (CGen_txt_end_$num-CGen_txt_start_$num)*CGen_txt_col_size_$num;
@@ -403,7 +403,7 @@ end
 
 function pattern_match_call_dist_h5_size(f::Symbol, size_arr::GenSym, ind::Union{Int64,SymAllGen})
     s = ""
-    if f==:__hps_get_H5_dim_size || f==:__hps_get_TXT_dim_size
+    if f==:__hpat_get_H5_dim_size || f==:__hpat_get_TXT_dim_size
         @dprintln(3,"match dist_dim_size ",f," ", size_arr, " ",ind)
         s = from_expr(size_arr)*"["*from_expr(ind)*"-1]"
     end
@@ -418,7 +418,7 @@ function pattern_match_call_kmeans(f::Symbol, cluster_out::SymAllGen, arr::SymAl
                                    num_clusters::SymAllGen, start::Symbol, count::Symbol, 
                                    col_size::Union{SymAllGen,Int,Expr}, tot_row_size::Union{SymAllGen,Int,Expr})
     s = ""
-    if f==:__hps_kmeans
+    if f==:__hpat_kmeans
         c_arr = from_expr(arr)
         c_num_clusters = from_expr(num_clusters)
         c_col_size = from_expr(col_size)
@@ -433,7 +433,7 @@ function pattern_match_call_kmeans(f::Symbol, cluster_out::SymAllGen, arr::SymAl
         InputDataArchive centroidsDataArch;
         int nIterations = 10;
         int mpi_root = 0;
-        int rankId = __hps_node_id;
+        int rankId = __hpat_node_id;
 
         HomogenNumericTable<double>* dataTable = new HomogenNumericTable<double>((double*)$c_arr.getData(), $c_col_size, $count);
         services::SharedPtr<NumericTable> dataTablePointer(dataTable);
@@ -453,7 +453,7 @@ function pattern_match_call_kmeans(f::Symbol, cluster_out::SymAllGen, arr::SymAl
         /* Serialized data is of equal size on each node if each node called compute() equal number of times */
         if (rankId == mpi_root)
         {   
-            serializedData = services::SharedPtr<byte>( new byte[ perNodeArchLength * __hps_num_pes ] );
+            serializedData = services::SharedPtr<byte>( new byte[ perNodeArchLength * __hpat_num_pes ] );
         }   
 
         byte *nodeResults = new byte[ perNodeArchLength ];
@@ -470,7 +470,7 @@ function pattern_match_call_kmeans(f::Symbol, cluster_out::SymAllGen, arr::SymAl
             /* Create an algorithm to compute k-means on the master node */
             kmeans::init::Distributed<step2Master, double, kmeans::init::randomDense> masterInit($c_num_clusters);
 
-            for( size_t i = 0; i < __hps_num_pes ; i++ )
+            for( size_t i = 0; i < __hpat_num_pes ; i++ )
             {   
                 /* Deserialize partial results from step 1 */
                 OutputDataArchive dataArch( serializedData.get() + perNodeArchLength * i, perNodeArchLength );
@@ -538,7 +538,7 @@ function pattern_match_call_kmeans(f::Symbol, cluster_out::SymAllGen, arr::SymAl
             /* Serialized data is of equal size on each node if each node called compute() equal number of times */
             if (rankId == mpi_root)
             {
-                serializedData = services::SharedPtr<byte>( new byte[ perNodeArchLength * __hps_num_pes ] );
+                serializedData = services::SharedPtr<byte>( new byte[ perNodeArchLength * __hpat_num_pes ] );
             }
             byte *nodeResults = new byte[ perNodeArchLength ];
             dataArch.copyArchiveToArray( nodeResults, perNodeArchLength );
@@ -554,7 +554,7 @@ function pattern_match_call_kmeans(f::Symbol, cluster_out::SymAllGen, arr::SymAl
                /* Create an algorithm to compute k-means on the master node */
                kmeans::Distributed<step2Master> masterAlgorithm($c_num_clusters);
 
-               for( size_t i = 0; i < __hps_num_pes ; i++ )
+               for( size_t i = 0; i < __hpat_num_pes ; i++ )
                 {
                     /* Deserialize partial results from step 1 */
                     OutputDataArchive dataArch( serializedData.get() + perNodeArchLength * i, perNodeArchLength );
@@ -612,7 +612,7 @@ function pattern_match_call_linear_regression(f::Symbol, coeff_out::SymAllGen, p
                                    start_responses::Symbol, count_responses::Symbol, 
                                    col_size_responses::Union{SymAllGen,Int,Expr}, tot_row_size_responses::Union{SymAllGen,Int,Expr})
     s = ""
-    if f==:__hps_LinearRegression
+    if f==:__hpat_LinearRegression
         c_points = from_expr(points)
         c_responses = from_expr(responses)
         c_col_size_points = from_expr(col_size_points)
@@ -623,7 +623,7 @@ function pattern_match_call_linear_regression(f::Symbol, coeff_out::SymAllGen, p
         s = """
             assert($c_tot_row_size_points==$c_tot_row_size_responses);
             int mpi_root = 0;
-            int rankId = __hps_node_id;
+            int rankId = __hpat_node_id;
             services::Environment::getInstance()->setNumberOfThreads(omp_get_max_threads());
             
             HomogenNumericTable<double>* dataTable = new HomogenNumericTable<double>((double*)$c_points.getData(), $c_col_size_points, $count_points);
@@ -651,7 +651,7 @@ function pattern_match_call_linear_regression(f::Symbol, coeff_out::SymAllGen, p
             /* Serialized data is of equal size on each node if each node called compute() equal number of times */
             if (rankId == mpi_root)
             {
-                serializedData = services::SharedPtr<byte>( new byte[ perNodeArchLength * __hps_num_pes] );
+                serializedData = services::SharedPtr<byte>( new byte[ perNodeArchLength * __hpat_num_pes] );
             }
         
             byte *nodeResults = new byte[ perNodeArchLength ];
@@ -668,7 +668,7 @@ function pattern_match_call_linear_regression(f::Symbol, coeff_out::SymAllGen, p
                 /* Create an algorithm object to build the final multiple linear regression model on the master node */
                 linear_regression::training::Distributed<step2Master, double, linear_regression::training::qrDense> masterAlgorithm;
         
-                for( size_t i = 0; i < __hps_num_pes; i++ )
+                for( size_t i = 0; i < __hpat_num_pes; i++ )
                 {
                     /* Deserialize partial results from step 1 */
                     OutputDataArchive dataArch( serializedData.get() + perNodeArchLength * i, perNodeArchLength );
@@ -729,7 +729,7 @@ function pattern_match_call_naive_bayes(f::Symbol, coeff_out::SymAllGen, points:
                                    start_labels::Symbol, count_labels::Symbol, 
                                    col_size_labels::Union{SymAllGen,Int,Expr}, tot_row_size_labels::Union{SymAllGen,Int,Expr})
     s = ""
-    if f==:__hps_NaiveBayes
+    if f==:__hpat_NaiveBayes
         c_points = from_expr(points)
         c_labels = from_expr(labels)
         c_col_size_points = from_expr(col_size_points)
@@ -742,7 +742,7 @@ function pattern_match_call_naive_bayes(f::Symbol, coeff_out::SymAllGen, points:
         s = """
             assert($c_tot_row_size_points==$c_tot_row_size_labels);
             int mpi_root = 0;
-            int rankId = __hps_node_id;
+            int rankId = __hpat_node_id;
             services::Environment::getInstance()->setNumberOfThreads(omp_get_max_threads());
             
             HomogenNumericTable<double>* dataTable = new HomogenNumericTable<double>((double*)$c_points.getData(), $c_col_size_points, $count_points);
@@ -771,7 +771,7 @@ function pattern_match_call_naive_bayes(f::Symbol, coeff_out::SymAllGen, points:
             /* Serialized data is of equal size on each node if each node called compute() equal number of times */
             if (rankId == mpi_root)
             {
-                serializedData = services::SharedPtr<byte>(new byte[perNodeArchLength * __hps_num_pes]);
+                serializedData = services::SharedPtr<byte>(new byte[perNodeArchLength * __hpat_num_pes]);
             }
         
             byte *nodeResults = new byte[perNodeArchLength];
@@ -788,7 +788,7 @@ function pattern_match_call_naive_bayes(f::Symbol, coeff_out::SymAllGen, points:
                 /* Create an algorithm object to build the final Na__ve Bayes model on the master node */
                 multinomial_naive_bayes::training::Distributed<step2Master> masterAlgorithm($c_num_classes);
         
-                for(size_t i = 0; i < __hps_num_pes ; i++)
+                for(size_t i = 0; i < __hpat_num_pes ; i++)
                 {
                     /* Deserialize partial results from step 1 */
                     OutputDataArchive dataArch(serializedData.get() + perNodeArchLength * i, perNodeArchLength);
@@ -899,7 +899,7 @@ function from_assignment_match_dist(lhs::GenSym, rhs::Expr)
     @dprintln(3, "assignment pattern match dist2: ",lhs," = ",rhs)
     s = ""
     local num::AbstractString
-    if rhs.head==:call && rhs.args[1]==:__hps_data_source_HDF5_size
+    if rhs.head==:call && rhs.args[1]==:__hpat_data_source_HDF5_size
         num = from_expr(rhs.args[2].id)
         s = "hid_t space_id_$num = H5Dget_space(dataset_id_$num);\n"    
         s *= "assert(space_id_$num != -1);\n"    
@@ -907,7 +907,7 @@ function from_assignment_match_dist(lhs::GenSym, rhs::Expr)
         s *= "hsize_t space_dims_$num[data_ndim_$num];\n"    
         s *= "H5Sget_simple_extent_dims(space_id_$num, space_dims_$num, NULL);\n"
         s *= from_expr(lhs)*" = space_dims_$num;"
-    elseif rhs.head==:call && rhs.args[1]==:__hps_data_source_TXT_size
+    elseif rhs.head==:call && rhs.args[1]==:__hpat_data_source_TXT_size
         num = from_expr(rhs.args[2].id)
         c_lhs = from_expr(lhs)
         s = """
@@ -918,10 +918,10 @@ function from_assignment_match_dist(lhs::GenSym, rhs::Expr)
         
             /* divide file read */
             MPI_File_get_size(dsrc_txt_file_$num, &CGen_txt_tot_file_size_$num);
-            CGen_txt_buff_size_$num = CGen_txt_tot_file_size_$num/__hps_num_pes;
-            CGen_txt_offset_start_$num = __hps_node_id * CGen_txt_buff_size_$num;
+            CGen_txt_buff_size_$num = CGen_txt_tot_file_size_$num/__hpat_num_pes;
+            CGen_txt_offset_start_$num = __hpat_node_id * CGen_txt_buff_size_$num;
             CGen_txt_offset_end_$num   = CGen_txt_offset_start_$num + CGen_txt_buff_size_$num - 1;
-            if (__hps_node_id == __hps_num_pes-1)
+            if (__hpat_node_id == __hpat_num_pes-1)
                 CGen_txt_offset_end_$num = CGen_txt_tot_file_size_$num;
             CGen_txt_buff_size_$num =  CGen_txt_offset_end_$num - CGen_txt_offset_start_$num + 1;
         
@@ -931,7 +931,7 @@ function from_assignment_match_dist(lhs::GenSym, rhs::Expr)
             CGen_txt_buffer_$num[CGen_txt_buff_size_$num] = \'\\0\';
             
             // make sure new line is there for last line
-            if(__hps_node_id == __hps_num_pes-1 && CGen_txt_buffer_$num[CGen_txt_buff_size_$num-2]!=\'\\n\') 
+            if(__hpat_node_id == __hpat_num_pes-1 && CGen_txt_buffer_$num[CGen_txt_buff_size_$num-2]!=\'\\n\') 
                 CGen_txt_buffer_$num[CGen_txt_buff_size_$num-1]=\'\\n\';
             
             // count number of new lines
@@ -943,7 +943,7 @@ function from_assignment_match_dist(lhs::GenSym, rhs::Expr)
                 CGen_txt_char_index_$num++;
             }
         
-            // std::cout<<"rank: "<<__hps_node_id<<" lines: "<<CGen_txt_num_lines_$num<<" startChar: "<<CGen_txt_buffer_$num[0]<<std::endl;
+            // std::cout<<"rank: "<<__hpat_node_id<<" lines: "<<CGen_txt_num_lines_$num<<" startChar: "<<CGen_txt_buffer_$num[0]<<std::endl;
             // get total number of rows
             int64_t CGen_txt_tot_row_size_$num=0;
             MPI_Allreduce(&CGen_txt_num_lines_$num, &CGen_txt_tot_row_size_$num, 1, MPI_LONG_LONG_INT, MPI_SUM, MPI_COMM_WORLD);
