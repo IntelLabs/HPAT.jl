@@ -58,7 +58,7 @@ function runDistributedPass(func :: GlobalRef, ast :: Expr, signature :: Tuple)
   dir_start = time_ns()
   code = DistributedPass.from_root(string(func.name), ast)
   dir_time = time_ns() - dir_start
-  @dprintln(3, "Distributed code = ", code)
+  @dprintln(2, "Distributed code = ", code)
   @dprintln(1, "accelerate: DistributedPass conversion time = ", ns_to_sec(dir_time))
   return code
 end
@@ -67,8 +67,8 @@ function runDomainPass(func :: GlobalRef, ast :: Expr, signature :: Tuple)
   dir_start = time_ns()
   code = DomainPass.from_root(string(func.name), ast)
   dir_time = time_ns() - dir_start
-  @dprintln(3, "Distributed code = ", code)
-  @dprintln(1, "accelerate: DistributedPass conversion time = ", ns_to_sec(dir_time))
+  @dprintln(2, "Domain code = ", code)
+  @dprintln(1, "accelerate: DomainPass conversion time = ", ns_to_sec(dir_time))
   return code
 end
 
