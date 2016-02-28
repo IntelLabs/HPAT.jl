@@ -901,7 +901,7 @@ function from_assignment_match_dist(lhs::GenSym, rhs::Expr)
     s = ""
     local num::AbstractString
     if rhs.head==:call && rhs.args[1]==:__hpat_data_source_HDF5_size
-        num = ParallelAccelerator.CGen.from_expr(rhs.args[2].id)
+        num = ParallelAccelerator.CGen.from_expr(rhs.args[2])
         s = "hid_t space_id_$num = H5Dget_space(dataset_id_$num);\n"    
         s *= "assert(space_id_$num != -1);\n"    
         s *= "hsize_t data_ndim_$num = H5Sget_simple_extent_ndims(space_id_$num);\n"
@@ -909,7 +909,7 @@ function from_assignment_match_dist(lhs::GenSym, rhs::Expr)
         s *= "H5Sget_simple_extent_dims(space_id_$num, space_dims_$num, NULL);\n"
         s *= ParallelAccelerator.CGen.from_expr(lhs)*" = space_dims_$num;"
     elseif rhs.head==:call && rhs.args[1]==:__hpat_data_source_TXT_size
-        num = ParallelAccelerator.CGen.from_expr(rhs.args[2].id)
+        num = ParallelAccelerator.CGen.from_expr(rhs.args[2])
         c_lhs = ParallelAccelerator.CGen.from_expr(lhs)
         s = """
             MPI_Offset CGen_txt_tot_file_size_$num;
