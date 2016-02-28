@@ -176,10 +176,10 @@ end
 """
 Generate code for HDF5 file open
 """
-function pattern_match_call_data_src_open(f::Symbol, id::GenSym, data_var::Union{SymAllGen,AbstractString}, file_name::Union{SymAllGen,AbstractString}, arr::Symbol)
+function pattern_match_call_data_src_open(f::Symbol, id::Int, data_var::Union{SymAllGen,AbstractString}, file_name::Union{SymAllGen,AbstractString}, arr::Symbol)
     s = ""
     if f==:__hpat_data_source_HDF5_open
-        num::AbstractString = from_expr(id.id)
+        num::AbstractString = string(id)
     
         s = "hid_t plist_id_$num = H5Pcreate(H5P_FILE_ACCESS);\n"
         s *= "assert(plist_id_$num != -1);\n"
@@ -205,10 +205,10 @@ end
 """
 Generate code for text file open (no variable name input)
 """
-function pattern_match_call_data_src_open(f::Symbol, id::GenSym, file_name::Union{SymAllGen,AbstractString}, arr::Symbol)
+function pattern_match_call_data_src_open(f::Symbol, id::Int, file_name::Union{SymAllGen,AbstractString}, arr::Symbol)
     s = ""
     if f==:__hpat_data_source_TXT_open
-        num::AbstractString = from_expr(id.id)
+        num::AbstractString = string(id)
         file_name_str::AbstractString = from_expr(file_name)
         s = """
             MPI_File dsrc_txt_file_$num;
@@ -225,9 +225,9 @@ end
 
 
 
-function pattern_match_call_data_src_read(f::Symbol, id::GenSym, arr::Symbol, start::Symbol, count::Symbol)
+function pattern_match_call_data_src_read(f::Symbol, id::Int, arr::Symbol, start::Symbol, count::Symbol)
     s = ""
-    num::AbstractString = from_expr(id.id)
+    num::AbstractString = string(id)
     
     if f==:__hpat_data_source_HDF5_read    
         # assuming 1st dimension is partitined
