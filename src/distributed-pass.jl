@@ -56,8 +56,17 @@ import ParallelAccelerator.ParallelIR.ISASSIGNEDONCE
 import ParallelAccelerator.ParallelIR.ISPRIVATEPARFORLOOP
 import ParallelAccelerator.ParallelIR.PIRReduction
 
-dist_ir_funcs = Set([:__hpat_data_source_HDF5_open,:__hpat_data_source_HDF5_read,:__hpat_kmeans,
-                        :__hpat_data_source_TXT_open,:__hpat_data_source_TXT_read, :__hpat_LinearRegression, :__hpat_NaiveBayes, 
+dist_ir_funcs = Set([   :__hpat_data_source_HDF5_open, 
+                        :__hpat_data_source_HDF5_size, 
+                        :__hpat_get_H5_dim_size, 
+                        :__hpat_data_source_HDF5_read, 
+                        :__hpat_data_source_TXT_open,
+                        :__hpat_data_source_TXT_size,
+                        :__hpat_get_TXT_dim_size,
+                        :__hpat_data_source_TXT_read,
+                        :__hpat_kmeans,
+                        :__hpat_LinearRegression,
+                        :__hpat_NaiveBayes,
                         GlobalRef(Base,:arraylen), TopNode(:arraysize), GlobalRef(Base,:reshape), TopNode(:tuple), 
                         GlobalRef(Base.LinAlg,:gemm_wrapper!)])
 
