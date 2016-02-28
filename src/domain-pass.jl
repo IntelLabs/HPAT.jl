@@ -38,6 +38,18 @@ using CompilerTools.Helper
 mk_alloc(typ, s) = Expr(:alloc, typ, s)
 mk_call(fun,args) = Expr(:call, fun, args...)
 
+const generatedFuncs = [:__hpat_data_source_HDF5_open, 
+                        :__hpat_data_source_HDF5_size, 
+                        :__hpat_get_H5_dim_size, 
+                        :__hpat_data_source_HDF5_read, 
+                        :__hpat_data_source_TXT_open,
+                        :__hpat_data_source_TXT_size,
+                        :__hpat_get_TXT_dim_size,
+                        :__hpat_data_source_TXT_read,
+                        :__hpat_kmeans,
+                        :__hpat_LinearRegression,
+                        :__hpat_NaiveBayes]
+
 # ENTRY to distributedIR
 function from_root(function_name, ast :: Expr)
     @assert ast.head == :lambda "Input to DomainPass should be :lambda Expr"

@@ -91,5 +91,6 @@ const hpat = [ OptPass(captureHPAT, PASS_MACRO),
                OptPass(toFlatParfors, PASS_TYPED),
                OptPass(toCGen, PASS_TYPED) ]
 
+append!(ParallelAccelerator.DomainIR.funcIgnoreList, DomainPass.generatedFuncs)
 
 end # module
