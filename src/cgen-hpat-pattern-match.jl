@@ -419,7 +419,7 @@ function pattern_match_call_kmeans(f::Symbol, cluster_out::SymAllGen, arr::SymAl
                                    num_clusters::SymAllGen, start::Symbol, count::Symbol, 
                                    col_size::Union{SymAllGen,Int,Expr}, tot_row_size::Union{SymAllGen,Int,Expr})
     s = ""
-    if f==:__hpat_kmeans
+    if f==:__hpat_Kmeans
         c_arr = ParallelAccelerator.CGen.from_expr(arr)
         c_num_clusters = ParallelAccelerator.CGen.from_expr(num_clusters)
         c_col_size = ParallelAccelerator.CGen.from_expr(col_size)

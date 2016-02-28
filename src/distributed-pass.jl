@@ -64,7 +64,7 @@ dist_ir_funcs = Set([   :__hpat_data_source_HDF5_open,
                         :__hpat_data_source_TXT_size,
                         :__hpat_get_TXT_dim_size,
                         :__hpat_data_source_TXT_read,
-                        :__hpat_kmeans,
+                        :__hpat_Kmeans,
                         :__hpat_LinearRegression,
                         :__hpat_NaiveBayes,
                         GlobalRef(Base,:arraylen), TopNode(:arraysize), GlobalRef(Base,:reshape), TopNode(:tuple), 
@@ -349,7 +349,7 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
         if func==:__hpat_data_source_HDF5_read || func==:__hpat_data_source_TXT_read
             @dprintln(2,"DistPass arr info walk data source read ", node)
             # will be parallel IO, intentionally do nothing
-        elseif func==:__hpat_kmeans
+        elseif func==:__hpat_Kmeans
             @dprintln(2,"DistPass arr info walk kmeans ", node)
             # first array is cluster output and is sequential
             # second array is input matrix and is parallel
@@ -707,7 +707,7 @@ function from_call(node::Expr, state)
 
         push!(node.args, dsrc_start_var, dsrc_count_var)
         return [node]
-    elseif func==:__hpat_kmeans && in(toSymGen(node.args[3]), state.dist_arrays)
+    elseif func==:__hpat_Kmeans && in(toSymGen(node.args[3]), state.dist_arrays)
         arr = toSymGen(node.args[3])
         @dprintln(3,"DistPass kmeans call for array: ", arr)
         

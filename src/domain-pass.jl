@@ -46,7 +46,7 @@ const generatedFuncs = [:__hpat_data_source_HDF5_open,
                         :__hpat_data_source_TXT_size,
                         :__hpat_get_TXT_dim_size,
                         :__hpat_data_source_TXT_read,
-                        :__hpat_kmeans,
+                        :__hpat_Kmeans,
                         :__hpat_LinearRegression,
                         :__hpat_NaiveBayes]
 
@@ -193,9 +193,9 @@ function pattern_match_hpat_dist_calls(lhs::SymGen, rhs::Expr, state)
                 read_call = mk_call(:__hpat_data_source_TXT_read, [dsrc_id_var, lhs])
                 push!(res, read_call)
                 return res
-            elseif isa(inner_call.args[1],GlobalRef) && inner_call.args[1].name==:__hpat_kmeans
+            elseif isa(inner_call.args[1],GlobalRef) && inner_call.args[1].name==:__hpat_Kmeans
                 dprintln(3,"kmeans found ", inner_call)
-                lib_call = mk_call(:__hpat_kmeans, [lhs,inner_call.args[2], inner_call.args[3]])
+                lib_call = mk_call(:__hpat_Kmeans, [lhs,inner_call.args[2], inner_call.args[3]])
                 return [lib_call]
             elseif isa(inner_call.args[1],GlobalRef) && inner_call.args[1].name==:__hpat_LinearRegression
                 dprintln(3,"LinearRegression found ", inner_call)
