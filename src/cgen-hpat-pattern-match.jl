@@ -25,6 +25,7 @@ THE POSSIBILITY OF SUCH DAMAGE.
 
 module CGenPatternMatch
 
+import ParallelAccelerator
 import ParallelAccelerator.ParallelIR.DelayedFunc
 import CompilerTools.DebugMsg
 using CompilerTools.LambdaHandling
@@ -91,8 +92,8 @@ function pattern_match_call_dist_allreduce(f::TopNode, var::SymAllGen, reduction
     if f.name==:hps_dist_allreduce
         mpi_type = ""
         var = toSymGen(var)
-        c_var = from_expr(var)
-        c_output = from_expr(output)
+        c_var = ParallelAccelerator.CGen.from_expr(var)
+        c_output = ParallelAccelerator.CGen.from_expr(output)
         var_typ = ParallelAccelerator.CGen.getSymType(var)
         is_array =  var_typ<:Array
         if is_array
@@ -140,7 +141,7 @@ function pattern_match_call_dist_bcast(f::Symbol, var::SymAllGen, size::Symbol)
     if f==:__hpat_dist_broadcast
         mpi_type = ""
         var = toSymGen(var)
-        c_var = from_expr(var)
+        c_var = ParallelAccelerator.CGen.from_expr(var)
         var_typ = ParallelAccelerator.CGen.getSymType(var)
         is_array =  var_typ<:Array
         if is_array
@@ -187,12 +188,12 @@ function pattern_match_call_data_src_open(f::Symbol, id::Int, data_var::Union{Sy
         s *= "hid_t file_id_$num;\n"
         s *= "ret_$num = H5Pset_fapl_mpio(plist_id_$num, MPI_COMM_WORLD, MPI_INFO_NULL);\n"
         s *= "assert(ret_$num != -1);\n"
-        s *= "file_id_$num = H5Fopen("*from_expr(file_name)*", H5F_ACC_RDONLY, plist_id_$num);\n"
+        s *= "file_id_$num = H5Fopen("*ParallelAccelerator.CGen.from_expr(file_name)*", H5F_ACC_RDONLY, plist_id_$num);\n"
         s *= "assert(file_id_$num != -1);\n"
         s *= "ret_$num = H5Pclose(plist_id_$num);\n"
         s *= "assert(ret_$num != -1);\n"
         s *= "hid_t dataset_id_$num;\n"
-        s *= "dataset_id_$num = H5Dopen2(file_id_$num, "*from_expr(data_var)*", H5P_DEFAULT);\n"
+        s *= "dataset_id_$num = H5Dopen2(file_id_$num, "*ParallelAccelerator.CGen.from_expr(data_var)*", H5P_DEFAULT);\n"
         s *= "assert(dataset_id_$num != -1);\n"
     end
     return s
@@ -209,7 +210,7 @@ function pattern_match_call_data_src_open(f::Symbol, id::Int, file_name::Union{S
     s = ""
     if f==:__hpat_data_source_TXT_open
         num::AbstractString = string(id)
-        file_name_str::AbstractString = from_expr(file_name)
+        file_name_str::AbstractString = ParallelAccelerator.CGen.from_expr(file_name)
         s = """
             MPI_File dsrc_txt_file_$num;
             int ierr_$num = MPI_File_open(MPI_COMM_WORLD, $file_name_str, MPI_MODE_RDONLY, MPI_INFO_NULL, &dsrc_txt_file_$num);
@@ -405,7 +406,7 @@ function pattern_match_call_dist_h5_size(f::Symbol, size_arr::GenSym, ind::Union
     s = ""
     if f==:__hpat_get_H5_dim_size || f==:__hpat_get_TXT_dim_size
         @dprintln(3,"match dist_dim_size ",f," ", size_arr, " ",ind)
-        s = from_expr(size_arr)*"["*from_expr(ind)*"-1]"
+        s = ParallelAccelerator.CGen.from_expr(size_arr)*"["*ParallelAccelerator.CGen.from_expr(ind)*"-1]"
     end
     return s
 end
@@ -419,11 +420,11 @@ function pattern_match_call_kmeans(f::Symbol, cluster_out::SymAllGen, arr::SymAl
                                    col_size::Union{SymAllGen,Int,Expr}, tot_row_size::Union{SymAllGen,Int,Expr})
     s = ""
     if f==:__hpat_kmeans
-        c_arr = from_expr(arr)
-        c_num_clusters = from_expr(num_clusters)
-        c_col_size = from_expr(col_size)
-        c_tot_row_size = from_expr(tot_row_size)
-        c_cluster_out = from_expr(cluster_out)        
+        c_arr = ParallelAccelerator.CGen.from_expr(arr)
+        c_num_clusters = ParallelAccelerator.CGen.from_expr(num_clusters)
+        c_col_size = ParallelAccelerator.CGen.from_expr(col_size)
+        c_tot_row_size = ParallelAccelerator.CGen.from_expr(tot_row_size)
+        c_cluster_out = ParallelAccelerator.CGen.from_expr(cluster_out)        
         
         s *= """
         services::Environment::getInstance()->setNumberOfThreads(omp_get_max_threads());
@@ -613,13 +614,13 @@ function pattern_match_call_linear_regression(f::Symbol, coeff_out::SymAllGen, p
                                    col_size_responses::Union{SymAllGen,Int,Expr}, tot_row_size_responses::Union{SymAllGen,Int,Expr})
     s = ""
     if f==:__hpat_LinearRegression
-        c_points = from_expr(points)
-        c_responses = from_expr(responses)
-        c_col_size_points = from_expr(col_size_points)
-        c_tot_row_size_points = from_expr(tot_row_size_points)
-        c_col_size_responses = from_expr(col_size_responses)
-        c_tot_row_size_responses = from_expr(tot_row_size_responses)
-        c_coeff_out = from_expr(coeff_out)
+        c_points = ParallelAccelerator.CGen.from_expr(points)
+        c_responses = ParallelAccelerator.CGen.from_expr(responses)
+        c_col_size_points = ParallelAccelerator.CGen.from_expr(col_size_points)
+        c_tot_row_size_points = ParallelAccelerator.CGen.from_expr(tot_row_size_points)
+        c_col_size_responses = ParallelAccelerator.CGen.from_expr(col_size_responses)
+        c_tot_row_size_responses = ParallelAccelerator.CGen.from_expr(tot_row_size_responses)
+        c_coeff_out = ParallelAccelerator.CGen.from_expr(coeff_out)
         s = """
             assert($c_tot_row_size_points==$c_tot_row_size_responses);
             int mpi_root = 0;
@@ -730,14 +731,14 @@ function pattern_match_call_naive_bayes(f::Symbol, coeff_out::SymAllGen, points:
                                    col_size_labels::Union{SymAllGen,Int,Expr}, tot_row_size_labels::Union{SymAllGen,Int,Expr})
     s = ""
     if f==:__hpat_NaiveBayes
-        c_points = from_expr(points)
-        c_labels = from_expr(labels)
-        c_col_size_points = from_expr(col_size_points)
-        c_tot_row_size_points = from_expr(tot_row_size_points)
-        c_col_size_labels = from_expr(col_size_labels)
-        c_tot_row_size_labels = from_expr(tot_row_size_labels)
-        c_coeff_out = from_expr(coeff_out)
-        c_num_classes = from_expr(num_classes)
+        c_points = ParallelAccelerator.CGen.from_expr(points)
+        c_labels = ParallelAccelerator.CGen.from_expr(labels)
+        c_col_size_points = ParallelAccelerator.CGen.from_expr(col_size_points)
+        c_tot_row_size_points = ParallelAccelerator.CGen.from_expr(tot_row_size_points)
+        c_col_size_labels = ParallelAccelerator.CGen.from_expr(col_size_labels)
+        c_tot_row_size_labels = ParallelAccelerator.CGen.from_expr(tot_row_size_labels)
+        c_coeff_out = ParallelAccelerator.CGen.from_expr(coeff_out)
+        c_num_classes = ParallelAccelerator.CGen.from_expr(num_classes)
         
         s = """
             assert($c_tot_row_size_points==$c_tot_row_size_labels);
@@ -900,16 +901,16 @@ function from_assignment_match_dist(lhs::GenSym, rhs::Expr)
     s = ""
     local num::AbstractString
     if rhs.head==:call && rhs.args[1]==:__hpat_data_source_HDF5_size
-        num = from_expr(rhs.args[2].id)
+        num = ParallelAccelerator.CGen.from_expr(rhs.args[2].id)
         s = "hid_t space_id_$num = H5Dget_space(dataset_id_$num);\n"    
         s *= "assert(space_id_$num != -1);\n"    
         s *= "hsize_t data_ndim_$num = H5Sget_simple_extent_ndims(space_id_$num);\n"
         s *= "hsize_t space_dims_$num[data_ndim_$num];\n"    
         s *= "H5Sget_simple_extent_dims(space_id_$num, space_dims_$num, NULL);\n"
-        s *= from_expr(lhs)*" = space_dims_$num;"
+        s *= ParallelAccelerator.CGen.from_expr(lhs)*" = space_dims_$num;"
     elseif rhs.head==:call && rhs.args[1]==:__hpat_data_source_TXT_size
-        num = from_expr(rhs.args[2].id)
-        c_lhs = from_expr(lhs)
+        num = ParallelAccelerator.CGen.from_expr(rhs.args[2].id)
+        c_lhs = ParallelAccelerator.CGen.from_expr(lhs)
         s = """
             MPI_Offset CGen_txt_tot_file_size_$num;
             MPI_Offset CGen_txt_buff_size_$num;
