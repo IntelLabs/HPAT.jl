@@ -75,4 +75,7 @@ function process_assignment(node, lhs::Symbol, rhs::Expr)
    end
 end
 
+function process_assignment(node, lhs::ANY, rhs::ANY)
+end
+
 end # module
