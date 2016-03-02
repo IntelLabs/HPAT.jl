@@ -1,14 +1,23 @@
 # Documentation: http://docs.travis-ci.com/user/languages/julia/
 language: julia
+
+sudo: required
+dist: wily
+
 os:
   - linux
   - osx
+
 julia:
-  - release
-  - nightly
+  - 0.4.3
+
 notifications:
   email: false
-# uncomment the following lines to override the default test script
-#script:
-#  - if [[ -a .git/shallow ]]; then git fetch --unshallow; fi
-#  - julia -e 'Pkg.clone(pwd()); Pkg.build("HPAT"); Pkg.test("HPAT"; coverage=true)'
+
+script:
+  - if [[ -a .git/shallow ]]; then git fetch --unshallow; fi
+  - sudo apt-get install mpich
+  - julia -e 'Pkg.add("ParallelAccelerator")'
+  - julia -e 'Pkg.add("MPI")'
+  - julia -e 'Pkg.clone("https://github.com/IntelLabs/HPAT.jl"); Pkg.build("HPAT"); Pkg.test("HPAT")'
+  - mpirun -np 2 julia examples/pi.jl
