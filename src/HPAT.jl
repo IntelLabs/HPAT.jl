@@ -37,6 +37,7 @@ using CompilerTools.OptFramework.OptPass
 using ParallelAccelerator
 using ParallelAccelerator.Driver
 using CompilerTools.AstWalker
+using MPI
 
 export hpat, @acc, @noacc
 
@@ -92,5 +93,12 @@ const hpat = [ OptPass(captureHPAT, PASS_MACRO),
                OptPass(toCGen, PASS_TYPED) ]
 
 append!(ParallelAccelerator.DomainIR.funcIgnoreList, DomainPass.generatedFuncs)
+
+function HPAT_finalize()
+    MPI.Barrier(MPI.COMM_WORLD)
+    MPI.Finalize()
+end
+
+atexit(HPAT_finalize)
 
 end # module
