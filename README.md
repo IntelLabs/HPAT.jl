@@ -1,6 +1,6 @@
 # HPAT
 
-[![Build Status](https://travis-ci.org/IntelLabs/HPAT.jl.svg?branch=master)](https://travis-ci.org/ehsantn/HPAT.jl)
+[![Build Status](https://travis-ci.org/IntelLabs/HPAT.jl.svg?branch=master)](https://travis-ci.org/IntelLabs/HPAT.jl)
 
 *High Performance Analytics Toolkit (HPAT)* is a Julia-based framework for big data analytics on clusters that
 is both easy to use and extremely fast; it is orders of magnitude faster than alternatives 
