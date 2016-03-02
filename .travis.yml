@@ -6,7 +6,8 @@ dist: wily
 
 os:
   - linux
-  - osx
+ 
+#  - osx
 
 julia:
   - 0.4.3
