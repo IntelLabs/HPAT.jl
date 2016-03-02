@@ -12,4 +12,22 @@ and [Intel&reg; Data Analytics Acceleration Library (Intel&reg; DAAL)](https://s
 HPAT is based on [ParallelAccelerator](https://github.com/IntelLabs/ParallelAccelerator.jl) 
 and [CompilerTools](https://github.com/IntelLabs/CompilerTools.jl) packages. 
 
-HPAT is in early development and therfore feedback is highly appreciated.
+HPAT is in early development and therefore feedback is highly appreciated.
+
+## Quick Start
+```shell
+$ julia -e 'Pkg.add("HPAT")'
+$ mpirun -np 2 julia ~/.julia/v0.4/HPAT/examples/pi.jl 
+```
+
+If there were any issues, make sure [MPI.jl](https://github.com/JuliaParallel/MPI.jl) 
+and [ParallelAccelerator.jl](https://github.com/IntelLabs/ParallelAccelerator.jl)
+are installed correctly.
+
+On Ubuntu, these commands resolve some MPI.jl issues:
+```shell
+$ sudo apt-get install cmake mpich
+$ julia ~/.julia/v0.4/MPI/deps/build.jl
+```
+
+
