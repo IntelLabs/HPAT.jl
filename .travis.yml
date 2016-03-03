@@ -18,7 +18,7 @@ notifications:
 script:
   - if [[ -a .git/shallow ]]; then git fetch --unshallow; fi
   - sudo apt-get update
-  - sudo apt-get install mpich
+  - sudo apt-get install cmake mpich
   - julia -e 'Pkg.add("ParallelAccelerator")'
   - julia -e 'Pkg.add("MPI")'
   - julia -e 'Pkg.clone("https://github.com/IntelLabs/HPAT.jl"); Pkg.build("HPAT"); Pkg.test("HPAT")'
