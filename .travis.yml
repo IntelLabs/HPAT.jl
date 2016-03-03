@@ -17,6 +17,7 @@ notifications:
 
 script:
   - if [[ -a .git/shallow ]]; then git fetch --unshallow; fi
+  - sudo apt-get update
   - sudo apt-get install mpich
   - julia -e 'Pkg.add("ParallelAccelerator")'
   - julia -e 'Pkg.add("MPI")'
