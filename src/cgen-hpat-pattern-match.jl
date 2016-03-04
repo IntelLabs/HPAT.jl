@@ -232,7 +232,22 @@ function pattern_match_call_data_src_read(f::Symbol, id::Int, arr::Symbol, start
     s = ""
     num::AbstractString = string(id)
     
-    if f==:__hpat_data_source_HDF5_read    
+    if f==:__hpat_data_source_HDF5_read
+        data_typ = eltype(ParallelAccelerator.CGen.getSymType(arr))
+        h5_typ = ""
+        if data_typ==Float64
+            h5_typ = "H5T_NATIVE_DOUBLE"
+        elseif data_typ==Float32
+            h5_typ = "H5T_NATIVE_FLOAT"
+        elseif data_typ==Int32
+            h5_typ = "H5T_NATIVE_INT"
+        elseif data_typ==Int64
+            h5_typ = "H5T_NATIVE_LLONG"
+        else
+            println("g5 data type ", data_typ)
+            throw("CGen unsupported HDF5 data type")
+        end
+        
         # assuming 1st dimension is partitined
         s =  "hsize_t CGen_HDF5_start_$num[data_ndim_$num];\n"
         s *= "hsize_t CGen_HDF5_count_$num[data_ndim_$num];\n"
@@ -250,12 +265,15 @@ function pattern_match_call_data_src_read(f::Symbol, id::Int, arr::Symbol, start
         s *= "hid_t xfer_plist_$num = H5Pcreate (H5P_DATASET_XFER);\n"
         s *= "assert(xfer_plist_$num != -1);\n"
         s *= "double h5_read_start_$num = MPI_Wtime();\n"
-        s *= "ret_$num = H5Dread(dataset_id_$num, H5T_NATIVE_DOUBLE, mem_dataspace_$num, space_id_$num, xfer_plist_$num, $arr.getData());\n"
+        s *= "ret_$num = H5Dread(dataset_id_$num, $h5_typ, mem_dataspace_$num, space_id_$num, xfer_plist_$num, $arr.getData());\n"
         s *= "assert(ret_$num != -1);\n"
         #s*="if(__hpat_node_id==__hpat_num_pes/2) printf(\"h5 read %lf\\n\", MPI_Wtime()-h5_read_start_$num);\n"
         s *= ";\n"
     elseif f==:__hpat_data_source_TXT_read
         # assuming 1st dimension is partitined
+        data_typ = eltype(ParallelAccelerator.CGen.getSymType(arr))
+        t_typ = ParallelAccelerator.CGen.toCtype(data_typ)
+        
         s = """
             int64_t CGen_txt_start_$num = $start;
             int64_t CGen_txt_count_$num = $count;
@@ -350,7 +368,7 @@ function pattern_match_call_data_src_read(f::Symbol, id::Int, arr::Symbol, start
             
             char CGen_txt_sep_char_$num[] = \"\\n\";
             int64_t CGen_txt_curr_row_$num = 0;
-            double* CGen_txt_data_arr = (double*)$arr.getData();
+            $t_typ * CGen_txt_data_arr = ($t_typ *)$arr.getData();
             while(CGen_txt_curr_row_$num!=CGen_txt_count_$num)
             {
                 char* CGen_txt_line;
