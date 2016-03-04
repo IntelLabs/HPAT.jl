@@ -49,12 +49,10 @@ Logistic regression statistical method.
 
 Usage:
   logistic_regression.jl -h | --help
-  logistic_regression.jl [--iterations=<iterations>] [--instances=<instances>]
-
+  logistic_regression.jl [--iterations=<iterations>]
 Options:
   -h --help                  Show this screen.
   --iterations=<iterations>  Specify number of iterations; defaults to 20.
-  --instances=<instances>    Specify number of instances; defaults to 10^7.
 """
     arguments = docopt(doc)
 
@@ -64,27 +62,20 @@ Options:
         iterations = 20
     end
 
-    if (arguments["--instances"] != nothing)
-        instances = parse(Int, arguments["--instances"])
-    else
-        instances = 10^7
-    end
-
     srand(0)
     rank = MPI.Comm_rank(MPI.COMM_WORLD)
     pes = MPI.Comm_size(MPI.COMM_WORLD)
 
     if rank==0 println("iterations = ", iterations) end
-    if rank==0 println("instances = ", instances) end
 
     tic()
-    logistic_regression(2,4096)
+    logistic_regression(2,ENV["SCRATCH"]*"/benchmark_data/linear_regression_train_small.hdf5")
     time = toq()
     if rank==0 println("SELFPRIMED ", time) end
     MPI.Barrier(MPI.COMM_WORLD)
 
     tic()
-    W = logistic_regression(iterations, instances)
+    W = logistic_regression(iterations, ENV["SCRATCH"]*"/benchmark_data/linear_regression_train_large.hdf5")
     time = toq()
     if rank==0 println("result = ", W) end
     if rank==0 println("rate = ", iterations / time, " iterations/sec") end
