@@ -27,9 +27,8 @@ using HPAT
 using MPI
 using DocOpt
 
-@acc hpat function logistic_regression(iterations::Int64)
+@acc hpat function logistic_regression(iterations::Int64, N::Int64)
     D = 10  # Number of features
-    N = 10000 # number of instances
 
     labels = reshape(rand(N),1,N)
     points = rand(D,N)
@@ -48,34 +47,42 @@ Logistic regression statistical method.
 
 Usage:
   logistic_regression.jl -h | --help
-  logistic_regression.jl [--iterations=<iterations>]
+  logistic_regression.jl [--iterations=<iterations>] [--instances=<instances>]
 
 Options:
   -h --help                  Show this screen.
-  --iterations=<iterations>  Specify a number of iterations; defaults to 50.
+  --iterations=<iterations>  Specify number of iterations; defaults to 20.
+  --instances=<instances>    Specify number of instances; defaults to 10^7.
 """
     arguments = docopt(doc)
 
     if (arguments["--iterations"] != nothing)
         iterations = parse(Int, arguments["--iterations"])
     else
-        iterations = 50
+        iterations = 20
+    end
+
+    if (arguments["--instances"] != nothing)
+        instances = parse(Int, arguments["--instances"])
+    else
+        instances = 10^7
     end
 
     srand(0)
     rank = MPI.Comm_rank(MPI.COMM_WORLD)
     pes = MPI.Comm_size(MPI.COMM_WORLD)
 
-    if rank==0 println("iterations = ",iterations) end
+    if rank==0 println("iterations = ", iterations) end
+    if rank==0 println("instances = ", instances) end
 
     tic()
-    logistic_regression(2)
+    logistic_regression(2,4096)
     time = toq()
     if rank==0 println("SELFPRIMED ", time) end
     MPI.Barrier(MPI.COMM_WORLD)
 
     tic()
-    W = logistic_regression(iterations)
+    W = logistic_regression(iterations, instances)
     time = toq()
     if rank==0 println("result = ", W) end
     if rank==0 println("rate = ", iterations / time, " iterations/sec") end
