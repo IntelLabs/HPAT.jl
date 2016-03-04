@@ -42,6 +42,7 @@ import HPAT
 
 using ParallelAccelerator
 import ParallelAccelerator.ParallelIR
+import ParallelAccelerator.ParallelIR.toSynGemOrInt
 import ParallelAccelerator.ParallelIR.isArrayType
 import ParallelAccelerator.ParallelIR.getParforNode
 import ParallelAccelerator.ParallelIR.isAllocation
@@ -217,7 +218,7 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
         lhs = toSymGen(node.args[1])
         rhs = node.args[2]
         if isAllocation(rhs)
-            state.arrs_dist_info[lhs].dim_sizes = get_alloc_shape(rhs.args[2:end])
+            state.arrs_dist_info[lhs].dim_sizes = map(toSynGemOrInt, get_alloc_shape(rhs.args[2:end]))
             @dprintln(3,"DistPass arr info dim_sizes update: ", state.arrs_dist_info[lhs].dim_sizes)
         elseif isa(rhs,SymAllGen)
             rhs = toSymGen(rhs)
@@ -250,7 +251,7 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
                     end 
                 end 
                 if ok
-                    state.tuple_table[lhs]=rhs.args[2:end]
+                    state.tuple_table[lhs] = [  toSymGenOrNum(s) for s in rhs.args[2:end] ]
                     @dprintln(3,"DistPass arr info tuple constant: ", lhs," ",rhs.args[2:end])
                 else
                     @dprintln(3,"DistPass arr info tuple not constant: ", lhs," ",rhs.args[2:end])
