@@ -2,7 +2,7 @@
 language: julia
 
 sudo: required
-dist: wily
+dist: trusty 
 
 os:
   - linux
