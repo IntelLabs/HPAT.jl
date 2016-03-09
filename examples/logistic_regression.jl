@@ -50,9 +50,11 @@ Logistic regression statistical method.
 Usage:
   logistic_regression.jl -h | --help
   logistic_regression.jl [--iterations=<iterations>]
+  logistic_regression.jl [--file=<file>]
 Options:
   -h --help                  Show this screen.
   --iterations=<iterations>  Specify number of iterations; defaults to 20.
+  --file=<file>              Specify input file; defaults to HPAT's default generated data file.
 """
     arguments = docopt(doc)
 
@@ -62,6 +64,12 @@ Options:
         iterations = 20
     end
 
+    if (arguments["--file"] != nothing)
+        file_name = arguments["--file"]
+    else
+        file_name = HPAT.getDefaultDataPath()*"logistic_regression.hdf5"
+    end 
+
     srand(0)
     rank = MPI.Comm_rank(MPI.COMM_WORLD)
     pes = MPI.Comm_size(MPI.COMM_WORLD)
@@ -69,13 +77,13 @@ Options:
     if rank==0 println("iterations = ", iterations) end
 
     tic()
-    logistic_regression(2,ENV["SCRATCH"]*"/benchmark_data/linear_regression_train_small.hdf5")
+    logistic_regression(2,file_name)
     time = toq()
     if rank==0 println("SELFPRIMED ", time) end
     MPI.Barrier(MPI.COMM_WORLD)
 
     tic()
-    W = logistic_regression(iterations, ENV["SCRATCH"]*"/benchmark_data/logistic_regression.hdf5")
+    W = logistic_regression(iterations, file_name)
     time = toq()
     if rank==0 println("result = ", W) end
     if rank==0 println("rate = ", iterations / time, " iterations/sec") end
