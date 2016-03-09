@@ -94,6 +94,29 @@ const hpat = [ OptPass(captureHPAT, PASS_MACRO),
 
 append!(ParallelAccelerator.DomainIR.funcIgnoreList, DomainPass.generatedFuncs)
 
+
+HPAT_default_datapath = "input_data"
+
+if haskey(ENV, "HPAT_DEFAULT_DATA")
+    HPAT_default_datapath = ENV["HPAT_DEFAULT_DATA"]
+elseif haskey(ENV, "SCRATCH")
+    HPAT_default_datapath = ENV["SCRATCH"]*"/input_data/"
+else
+    HPAT_default_datapath = joinpath(dirname(@__FILE__), "..")*"/deps/input_data/"
+end
+
+if !isdir(HPAT_default_datapath)
+    mkdir(HPAT_default_datapath)
+end
+
+function getDefaultDataPath()
+    return HPAT_default_datapath
+end
+
+function setDefaultDataPath(path::AbstractString)
+    HPAT_default_datapath = path
+end
+
 function HPAT_finalize()
     MPI.Barrier(MPI.COMM_WORLD)
     MPI.Finalize()
