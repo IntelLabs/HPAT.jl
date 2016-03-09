@@ -29,15 +29,15 @@ using DocOpt
 
 @acc hpat function logistic_regression(iterations::Int64, file_name)
 
-    points = DataSource(Matrix{Float64},HDF5,"/points", file_name)
-    responses = DataSource(Vector{Float64},HDF5,"/responses", file_name)
+    points = DataSource(Matrix{Float32},HDF5,"/points", file_name)
+    responses = DataSource(Vector{Float32},HDF5,"/responses", file_name)
     D = size(points,1) # number of features
     N = size(points,2) # number of instances
     labels = reshape(responses,1,N)
-    w = reshape(2.0.*rand(D)-1.0,1,D)
+    w = reshape(2.0f0.*rand(Float32,D)-1.0f0,1,D)
 
     for i in 1:iterations
-       w -= ((1.0./(1.0.+exp(-labels.*(w*points))).-1.0).*labels)*points'
+       w -= ((1.0f0./(1.0f0.+exp(-labels.*(w*points))).-1.0f0).*labels)*points'
     end
     w
 end
@@ -75,7 +75,7 @@ Options:
     MPI.Barrier(MPI.COMM_WORLD)
 
     tic()
-    W = logistic_regression(iterations, ENV["SCRATCH"]*"/benchmark_data/linear_regression_train_large.hdf5")
+    W = logistic_regression(iterations, ENV["SCRATCH"]*"/benchmark_data/logistic_regression.hdf5")
     time = toq()
     if rank==0 println("result = ", W) end
     if rank==0 println("rate = ", iterations / time, " iterations/sec") end
