@@ -23,6 +23,5 @@ script:
   - julia -e 'Pkg.add("ParallelAccelerator")'
   - julia -e 'Pkg.checkout("ParallelAccelerator")'
   - julia -e 'Pkg.checkout("CompilerTools")'
-  - julia -e 'Pkg.add("MPI")'
-  - julia -e 'Pkg.clone("https://github.com/IntelLabs/HPAT.jl"); Pkg.build("HPAT"); Pkg.test("HPAT")'
+  - julia -e 'Pkg.clone(pwd()); Pkg.build("HPAT"); Pkg.test("HPAT")'
   - mpirun -np 2 julia examples/pi.jl
