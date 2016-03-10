@@ -18,9 +18,11 @@ notifications:
 script:
   - if [[ -a .git/shallow ]]; then git fetch --unshallow; fi
     #  - sudo apt-get update && sudo apt-get upgrade -y && sudo apt-get dist-upgrade -y && sudo apt-get install cmake mpich
-  - sudo apt-get update -q
-  - sudo apt-get install -y gcc gfortran cmake openmpi-bin openmpi-common libopenmpi-dev
+  - sudo apt-get update -qq
+  - sudo apt-get install -qq gcc gfortran cmake openmpi-bin openmpi-common libopenmpi-dev
   - julia -e 'Pkg.add("ParallelAccelerator")'
+  - julia -e 'Pkg.checkout("ParallelAccelerator")'
+  - julia -e 'Pkg.checkout("CompilerTools")'
   - julia -e 'Pkg.add("MPI")'
   - julia -e 'Pkg.clone("https://github.com/IntelLabs/HPAT.jl"); Pkg.build("HPAT"); Pkg.test("HPAT")'
   - mpirun -np 2 julia examples/pi.jl
