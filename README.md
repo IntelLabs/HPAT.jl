@@ -39,7 +39,7 @@ $ sudo apt-get install -y libhdf5-dev hdf5-tools libhdf5-openmpi-dev
 ### Logistic Regression
 
 Front page of [Spark\* website](http://spark.apache.org/) demonstrates over two orders of manitude
-speedup over Hadoop\* on [Logistic Regression](https://github.com/apache/spark/blob/master/examples/src/main/python/logistic_regression.py) example. Simply put, Spark\* keeps data
+speedup compared to Hadoop\* on [Logistic Regression](https://github.com/apache/spark/blob/master/examples/src/main/python/logistic_regression.py) example. Simply put, Spark\* keeps data
 in memory while Hadoop\* reads and writes to disks frequently.
 
 HPAT is two orders of magnitude faster than Spark\*!
@@ -71,7 +71,7 @@ HPAT is over 1000 times faster for this case for various reasons!
 First, HPAT can divide computation statically since it generates code rather than executing the program operation-by-operation.
 Spark\* uses a dynamic scheduler with high overhead. But more importantly, Spark\* generates an enormous
 array for the *map* operation, then executes the *reduce* operation. However, HPAT uses ParallelAccelerator
-which removes unnecessary arrays. Therefore, HPAT doesn't create any arrays and the generated code is just a loop.
+which removes unnecessary arrays. Therefore, HPAT doesn't create any arrays and the generated code is just a simple loop.
 Hence, the computation is performed in registers and there is no extra memory access.
 
 Run Pi example of HPAT:
