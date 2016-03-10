@@ -36,11 +36,22 @@ using CompilerTools.OptFramework
 using CompilerTools.OptFramework.OptPass
 using ParallelAccelerator
 using ParallelAccelerator.Driver
+using ParallelAccelerator.CGen
 using CompilerTools.AstWalker
 using MPI
 
 export hpat, @acc, @noacc
 
+# disable OMP if not set by user since it is slower than pure MPI
+if !haskey(ENV, "CGEN_NO_OMP")
+    ParallelAccelerator.CGen.disableOMP()
+end
+
+function enableOMP()
+    if !haskey(ENV, "CGEN_NO_OMP")
+        ParallelAccelerator.CGen.enableOMP()
+    end
+end
 
 include("distributed-pass.jl")
 include("domain-pass.jl")
@@ -105,7 +116,7 @@ else
     HPAT_default_datapath = joinpath(dirname(@__FILE__), "..")*"/input_data/"
 end
 
-if !isdir(HPAT_default_datapath)
+if MPI.Comm_rank(MPI.COMM_WORLD)==0 && !isdir(HPAT_default_datapath)
     mkdir(HPAT_default_datapath)
 end
 

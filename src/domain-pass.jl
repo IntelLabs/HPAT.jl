@@ -35,6 +35,8 @@ DebugMsg.init()
 using CompilerTools.LambdaHandling
 using CompilerTools.Helper
 
+import HPAT
+
 mk_alloc(typ, s) = Expr(:alloc, typ, s)
 mk_call(fun,args) = Expr(:call, fun, args...)
 
@@ -199,14 +201,17 @@ function pattern_match_hpat_dist_calls(lhs::SymGen, rhs::Expr, state)
                 return res
             elseif isa(inner_call.args[1],GlobalRef) && inner_call.args[1].name==:__hpat_Kmeans
                 dprintln(3,"kmeans found ", inner_call)
+                HPAT.enableOMP()
                 lib_call = mk_call(:__hpat_Kmeans, [lhs,inner_call.args[2], inner_call.args[3]])
                 return [lib_call]
             elseif isa(inner_call.args[1],GlobalRef) && inner_call.args[1].name==:__hpat_LinearRegression
                 dprintln(3,"LinearRegression found ", inner_call)
+                HPAT.enableOMP()
                 lib_call = mk_call(:__hpat_LinearRegression, [lhs,inner_call.args[2], inner_call.args[3]])
                 return [lib_call] 
             elseif isa(inner_call.args[1],GlobalRef) && inner_call.args[1].name==:__hpat_NaiveBayes
                 dprintln(3,"NaiveBayes found ", inner_call)
+                HPAT.enableOMP()
                 lib_call = mk_call(:__hpat_NaiveBayes, [lhs,inner_call.args[2], inner_call.args[3], inner_call.args[4]])
                 return [lib_call]
             end
