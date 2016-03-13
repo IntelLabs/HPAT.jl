@@ -49,7 +49,7 @@ $ sudo add-apt-repository ppa:staticfloat/juliareleases
 $ sudo add-apt-repository ppa:staticfloat/julia-deps
 $ sudo apt-get update
 $ sudo apt-get install -y gcc g++ gfortran cmake openmpi-bin openmpi-common libopenmpi-dev libhdf5-openmpi-dev julia libblas-dev libopenblas-dev
-$ julia -e 'Pkg.clone("HPAT")'
+$ julia -e 'Pkg.clone("CompilerTools"); Pkg.clone("ParallelAccelerator"); Pkg.clone("HPAT"); Pkg.build("HPAT")' 
 ```
 
 
