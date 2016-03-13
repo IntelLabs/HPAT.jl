@@ -4,7 +4,7 @@
 
 *High Performance Analytics Toolkit (HPAT)* is a Julia-based framework for big data analytics on clusters that
 is both easy to use and extremely fast; it is orders of magnitude faster than alternatives 
-like [Apache Spark&trade;](http://spark.apache.org/).  
+like [Apache Spark\*](http://spark.apache.org/).  
 
 HPAT automatically parallelizes analytics tasks written in Julia, generates efficient MPI/C++ code, 
 and uses existing high performance libraries such as [HDF5](https://www.hdfgroup.org/HDF5/)
@@ -16,7 +16,7 @@ HPAT is in early development and therefore feedback is highly appreciated.
 
 ## Quick Start
 ```shell
-$ julia -e 'Pkg.add("HPAT")'
+$ julia -e 'Pkg.clone("HPAT")'
 $ mpirun -np 2 julia ~/.julia/v0.4/HPAT/examples/pi.jl 
 ```
 
@@ -26,13 +26,8 @@ are installed correctly.
 
 On Ubuntu, these commands resolve some MPI.jl issues:
 ```shell
-$ sudo apt-get install -y gcc gfortran cmake openmpi-bin openmpi-common libopenmpi-dev 
+$ sudo apt-get install -y g++ gcc gfortran cmake openmpi-bin openmpi-common libopenmpi-dev libhdf5-openmpi-dev
 $ julia ~/.julia/v0.4/MPI/deps/build.jl
-```
-
-[HDF5](https://www.hdfgroup.org/HDF5/) is the recommended library for parallel file operations. On Ubuntu:
-```shell
-$ sudo apt-get install -y libhdf5-dev hdf5-tools libhdf5-openmpi-dev
 ```
 
 ## Performance Comparison with Spark\*
@@ -46,18 +41,29 @@ HPAT is two orders of magnitude faster than Spark\*!
 Data is kept in processor registers as much as possible with HPAT, which is necessary for best performance.
 In addition, HPAT doesn't have Spark\*'s TCP/IP and Java Virtual Machine (JVM) overheads since it generates "bare-metal" MPI/C++ code.
 
-Here is how one can compare the performance of HPAT and Spark\* for Logistic Regression example.
+Here is how one can compare the performance of HPAT and Spark\* for Logistic Regression example on a local Ubuntu machine.
+
+Install Julia and dependencies:
+```shell
+$ sudo add-apt-repository ppa:staticfloat/juliareleases
+$ sudo add-apt-repository ppa:staticfloat/julia-deps
+$ sudo apt-get update
+$ sudo apt-get install -y gcc g++ gfortran cmake openmpi-bin openmpi-common libopenmpi-dev libhdf5-openmpi-dev julia
+$ julia -e 'Pkg.clone("HPAT")'
+```
+
 
 Generate input data:
 ```shell
-# generate data with 2 billion labeled instances
-$ julia $HOME/.julia/v0.4/HPAT/generate_data/generate_logistic_regression.jl --instances=2000000000 --path=/tmp/
+# generate data with 100 million labeled instances
+$ julia -e 'Pkg.add("HDF5")'
+$ julia $HOME/.julia/v0.4/HPAT/generate_data/generate_logistic_regression.jl --instances=100000000 --path=/tmp/
 ```
 
 Run Logistic Regression example of HPAT:
 ```shell
 # run on 64 MPI processes
-$ mpirun -np 64 julia $HOME/.julia/v0.4/examples/logistic_regression.jl --iterations=200 --file=/tmp/logistic_regression.hdf5 &> lr_hpat.out
+$ mpirun -np 8 julia $HOME/.julia/v0.4/HPAT/examples/logistic_regression.jl --iterations=200 --file=/tmp/logistic_regression.hdf5 &> lr_hpat.out
 ```
 
 Run Logistic Regression example of Spark\*:
