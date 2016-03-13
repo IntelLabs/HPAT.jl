@@ -1,5 +1,4 @@
 julia 0.4
-@!windows
 CompilerTools
 ParallelAccelerator
 MPI
