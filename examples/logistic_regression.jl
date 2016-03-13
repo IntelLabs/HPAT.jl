@@ -43,18 +43,17 @@ using DocOpt
 end
 
 function main()
-    doc = """logistic_regression.jl
-
-Logistic regression statistical method.
+    doc = """Logistic regression statistical method.
 
 Usage:
   logistic_regression.jl -h | --help
-  logistic_regression.jl [--iterations=<iterations>]
-  logistic_regression.jl [--file=<file>]
+  logistic_regression.jl [--iterations=<iterations>] [--file=<file>]
+
 Options:
   -h --help                  Show this screen.
   --iterations=<iterations>  Specify number of iterations; defaults to 20.
   --file=<file>              Specify input file; defaults to HPAT's default generated data file.
+
 """
     arguments = docopt(doc)
 
