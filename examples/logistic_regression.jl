@@ -27,7 +27,7 @@ using HPAT
 using MPI
 using DocOpt
 
-@acc hpat function logistic_regression(iterations::Int64, file_name)
+@acc hpat function logistic_regression(iterations, file_name)
 
     points = DataSource(Matrix{Float32},HDF5,"/points", file_name)
     responses = DataSource(Vector{Float32},HDF5,"/responses", file_name)
@@ -64,7 +64,7 @@ Options:
     end
 
     if (arguments["--file"] != nothing)
-        file_name = arguments["--file"]
+        file_name::ASCIIString = arguments["--file"]
     else
         file_name = HPAT.getDefaultDataPath()*"logistic_regression.hdf5"
     end 
@@ -74,6 +74,7 @@ Options:
     pes = MPI.Comm_size(MPI.COMM_WORLD)
 
     if rank==0 println("iterations = ", iterations) end
+    if rank==0 println("file= ", file_name) end
 
     tic()
     logistic_regression(2,file_name)
