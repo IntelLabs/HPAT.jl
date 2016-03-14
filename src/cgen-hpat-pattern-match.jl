@@ -215,6 +215,9 @@ function pattern_match_call_data_src_close(f::Symbol, id::Int)
     
         s *= "H5Dclose(dataset_id_$num);\n"
         s *= "H5Fclose(file_id_$num);\n"
+    elseif f==:__hpat_data_source_TXT_close
+        num = string(id)
+        s *= "MPI_File_close(dsrc_txt_file_$num);\n"
     end
     return s
 end

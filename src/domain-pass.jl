@@ -202,6 +202,8 @@ function pattern_match_hpat_dist_calls(lhs::SymGen, rhs::Expr, state)
                 # generate read call
                 read_call = mk_call(:__hpat_data_source_TXT_read, [dsrc_id_var, lhs])
                 push!(res, read_call)
+                close_call = mk_call(:__hpat_data_source_TXT_close, [dsrc_id_var])
+                push!(res, close_call)
                 return res
             elseif isa(inner_call.args[1],GlobalRef) && inner_call.args[1].name==:__hpat_Kmeans
                 dprintln(3,"kmeans found ", inner_call)
