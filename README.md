@@ -42,6 +42,7 @@ Data is kept in processor registers as much as possible with HPAT, which is nece
 In addition, HPAT doesn't have Spark\*'s TCP/IP and Java Virtual Machine (JVM) overheads since it generates "bare-metal" MPI/C++ code.
 
 Here is how one can compare the performance of HPAT and Spark\* for Logistic Regression example on a local Ubuntu machine.
+Note that [parallel HDF5](https://www.hdfgroup.org/HDF5/PHDF5/) is required.
 
 Install Julia and dependencies:
 ```shell
