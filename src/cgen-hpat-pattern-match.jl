@@ -206,6 +206,25 @@ function pattern_match_call_data_src_open(f::Any, v::Any, rf::Any, o::Any, arr::
 end
 
 """
+Generate code for HDF5 file close 
+"""
+function pattern_match_call_data_src_close(f::Symbol, id::Int)
+    s = ""
+    if f==:__hpat_data_source_HDF5_close
+        num::AbstractString = string(id)
+    
+        s *= "H5Dclose(dataset_id_$num);\n"
+        s *= "H5Fclose(file_id_$num);\n"
+    end
+    return s
+end
+
+function pattern_match_call_data_src_close(f::Any, v::Any)
+    return ""
+end
+
+
+"""
 Generate code for text file open (no variable name input)
 """
 function pattern_match_call_data_src_open(f::Symbol, id::Int, file_name::Union{SymAllGen,AbstractString}, arr::Symbol)
@@ -443,6 +462,9 @@ function pattern_match_call(ast::Array{Any, 1})
     s = ""
     if length(ast)==1
          s = pattern_match_call_dist_init(ast[1])
+    end
+    if length(ast)==2
+        s *= pattern_match_call_data_src_close(ast[1], ast[2])
     end
     if(length(ast)==4)
         s = pattern_match_call_dist_reduce(ast[1],ast[2],ast[3], ast[4])

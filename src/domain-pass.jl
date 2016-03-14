@@ -44,10 +44,12 @@ const generatedFuncs = [:__hpat_data_source_HDF5_open,
                         :__hpat_data_source_HDF5_size, 
                         :__hpat_get_H5_dim_size, 
                         :__hpat_data_source_HDF5_read, 
+                        :__hpat_data_source_HDF5_close, 
                         :__hpat_data_source_TXT_open,
                         :__hpat_data_source_TXT_size,
                         :__hpat_get_TXT_dim_size,
                         :__hpat_data_source_TXT_read,
+                        :__hpat_data_source_TXT_close,
                         :__hpat_Kmeans,
                         :__hpat_LinearRegression,
                         :__hpat_NaiveBayes]
@@ -160,6 +162,8 @@ function pattern_match_hpat_dist_calls(lhs::SymGen, rhs::Expr, state)
                 # generate read call
                 read_call = mk_call(:__hpat_data_source_HDF5_read, [dsrc_id_var, lhs])
                 push!(res, read_call)
+                close_call = mk_call(:__hpat_data_source_HDF5_close, [dsrc_id_var])
+                push!(res, close_call)
                 return res
             elseif isa(inner_call.args[1],GlobalRef) && inner_call.args[1].name==:__hpat_data_source_TXT
                 dprintln(3,"data source found ", inner_call)
