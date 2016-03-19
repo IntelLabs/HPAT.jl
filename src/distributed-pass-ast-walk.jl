@@ -60,84 +60,7 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
     if head==:(=)
         lhs = toSymGen(node.args[1])
         rhs = node.args[2]
-        if isAllocation(rhs)
-            state.arrs_dist_info[lhs].dim_sizes = map(toSynGemOrInt, get_alloc_shape(rhs.args[2:end]))
-            @dprintln(3,"DistPass arr info dim_sizes update: ", state.arrs_dist_info[lhs].dim_sizes)
-        elseif isa(rhs,SymAllGen)
-            rhs = toSymGen(rhs)
-            if haskey(state.arrs_dist_info, rhs)
-                state.arrs_dist_info[lhs].dim_sizes = state.arrs_dist_info[rhs].dim_sizes
-                # lhs and rhs are sequential if either is sequential
-                seq = state.arrs_dist_info[lhs].isSequential || state.arrs_dist_info[rhs].isSequential
-                state.arrs_dist_info[lhs].isSequential = state.arrs_dist_info[rhs].isSequential = seq
-                @dprintln(3,"DistPass arr info dim_sizes update: ", state.arrs_dist_info[lhs].dim_sizes)
-            end
-        elseif isa(rhs,Expr) && rhs.head==:call && in(rhs.args[1], dist_ir_funcs)
-            func = rhs.args[1]
-            if func==GlobalRef(Base,:reshape)
-                # only reshape() with constant tuples handled
-                if haskey(state.tuple_table, rhs.args[3])
-                    state.arrs_dist_info[lhs].dim_sizes = state.tuple_table[rhs.args[3]]
-                    @dprintln(3,"DistPass arr info dim_sizes update: ", state.arrs_dist_info[lhs].dim_sizes)
-                    # lhs and rhs are sequential if either is sequential
-                    seq = state.arrs_dist_info[lhs].isSequential || state.arrs_dist_info[toSymGen(rhs.args[2])].isSequential
-                    state.arrs_dist_info[lhs].isSequential = state.arrs_dist_info[toSymGen(rhs.args[2])].isSequential = seq
-                else
-                    @dprintln(3,"DistPass arr info reshape tuple not found: ", rhs.args[3])
-                    state.arrs_dist_info[lhs].isSequential = state.arrs_dist_info[toSymGen(rhs.args[2])].isSequential = true
-                end
-            elseif rhs.args[1]==TopNode(:tuple)
-                ok = true
-                for s in rhs.args[2:end]
-                    if !(isa(s,SymbolNode) || isa(s,Int))
-                        ok = false
-                    end 
-                end 
-                if ok
-                    state.tuple_table[lhs] = [  toSymGenOrNum(s) for s in rhs.args[2:end] ]
-                    @dprintln(3,"DistPass arr info tuple constant: ", lhs," ",rhs.args[2:end])
-                else
-                    @dprintln(3,"DistPass arr info tuple not constant: ", lhs," ",rhs.args[2:end])
-                end 
-            elseif func==GlobalRef(Base.LinAlg,:gemm_wrapper!)
-                # determine output dimensions
-                state.arrs_dist_info[lhs].dim_sizes = state.arrs_dist_info[toSymGen(rhs.args[2])].dim_sizes
-                arr1 = toSymGen(rhs.args[5])
-                t1 = (rhs.args[3]=='T')
-                arr2 = toSymGen(rhs.args[6])
-                t2 = (rhs.args[4]=='T')
-                
-                seq = false
-                
-                # result is sequential if both inputs are sequential 
-                if state.arrs_dist_info[arr1].isSequential && state.arrs_dist_info[arr2].isSequential
-                    seq = true
-                # result is sequential but with reduction if both inputs are partitioned and second one is transposed
-                # e.g. labels*points'
-                elseif !state.arrs_dist_info[arr1].isSequential && !state.arrs_dist_info[arr2].isSequential && t2 && !t1
-                    seq = true
-                # first input is sequential but output is parallel if the second input is partitioned but not transposed
-                # e.g. w*points
-                elseif !state.arrs_dist_info[arr2].isSequential && !t2
-                    @dprintln(3,"DistPass arr info gemm first input is sequential: ", arr1)
-                    state.arrs_dist_info[arr1].isSequential = true
-                # otherwise, no known pattern found, every array is sequential
-                else
-                    @dprintln(3,"DistPass arr info gemm all sequential: ", arr1," ", arr2)
-                    state.arrs_dist_info[arr1].isSequential = true
-                    state.arrs_dist_info[arr2].isSequential = true
-                    seq = true
-                end
-                
-                if seq
-                    @dprintln(3,"DistPass arr info gemm output is sequential: ", lhs," ",rhs.args[2])
-                end
-                state.arrs_dist_info[lhs].isSequential = state.arrs_dist_info[toSymGen(rhs.args[2])].isSequential = seq
-            end
-        else
-            return CompilerTools.AstWalker.ASTWALK_RECURSE
-        end
-        return node
+        return get_arr_dist_info_assignment(node, state, top_level_number, lhs, rhs)
     elseif head==:parfor
         parfor = getParforNode(node)
         rws = parfor.rws
@@ -234,6 +157,89 @@ end
 function get_arr_dist_info(ast::Any, state::DistPassState, top_level_number, is_top_level, read)
     return CompilerTools.AstWalker.ASTWALK_RECURSE
 end
+
+
+function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_level_number, lhs, rhs)
+    if isAllocation(rhs)
+            state.arrs_dist_info[lhs].dim_sizes = map(toSynGemOrInt, get_alloc_shape(rhs.args[2:end]))
+            @dprintln(3,"DistPass arr info dim_sizes update: ", state.arrs_dist_info[lhs].dim_sizes)
+    elseif isa(rhs,SymAllGen)
+        rhs = toSymGen(rhs)
+        if haskey(state.arrs_dist_info, rhs)
+            state.arrs_dist_info[lhs].dim_sizes = state.arrs_dist_info[rhs].dim_sizes
+            # lhs and rhs are sequential if either is sequential
+            seq = state.arrs_dist_info[lhs].isSequential || state.arrs_dist_info[rhs].isSequential
+            state.arrs_dist_info[lhs].isSequential = state.arrs_dist_info[rhs].isSequential = seq
+            @dprintln(3,"DistPass arr info dim_sizes update: ", state.arrs_dist_info[lhs].dim_sizes)
+        end
+    elseif isa(rhs,Expr) && rhs.head==:call && in(rhs.args[1], dist_ir_funcs)
+        func = rhs.args[1]
+        if func==GlobalRef(Base,:reshape)
+            # only reshape() with constant tuples handled
+            if haskey(state.tuple_table, rhs.args[3])
+                state.arrs_dist_info[lhs].dim_sizes = state.tuple_table[rhs.args[3]]
+                @dprintln(3,"DistPass arr info dim_sizes update: ", state.arrs_dist_info[lhs].dim_sizes)
+                # lhs and rhs are sequential if either is sequential
+                seq = state.arrs_dist_info[lhs].isSequential || state.arrs_dist_info[toSymGen(rhs.args[2])].isSequential
+                state.arrs_dist_info[lhs].isSequential = state.arrs_dist_info[toSymGen(rhs.args[2])].isSequential = seq
+            else
+                @dprintln(3,"DistPass arr info reshape tuple not found: ", rhs.args[3])
+                state.arrs_dist_info[lhs].isSequential = state.arrs_dist_info[toSymGen(rhs.args[2])].isSequential = true
+            end
+        elseif rhs.args[1]==TopNode(:tuple)
+            ok = true
+            for s in rhs.args[2:end]
+                if !(isa(s,SymbolNode) || isa(s,Int))
+                    ok = false
+                end 
+            end 
+            if ok
+                state.tuple_table[lhs] = [  toSymGenOrNum(s) for s in rhs.args[2:end] ]
+                @dprintln(3,"DistPass arr info tuple constant: ", lhs," ",rhs.args[2:end])
+            else
+                @dprintln(3,"DistPass arr info tuple not constant: ", lhs," ",rhs.args[2:end])
+            end 
+        elseif func==GlobalRef(Base.LinAlg,:gemm_wrapper!)
+            # determine output dimensions
+            state.arrs_dist_info[lhs].dim_sizes = state.arrs_dist_info[toSymGen(rhs.args[2])].dim_sizes
+            arr1 = toSymGen(rhs.args[5])
+            t1 = (rhs.args[3]=='T')
+            arr2 = toSymGen(rhs.args[6])
+            t2 = (rhs.args[4]=='T')
+            
+            seq = false
+            
+            # result is sequential if both inputs are sequential 
+            if state.arrs_dist_info[arr1].isSequential && state.arrs_dist_info[arr2].isSequential
+                seq = true
+            # result is sequential but with reduction if both inputs are partitioned and second one is transposed
+            # e.g. labels*points'
+            elseif !state.arrs_dist_info[arr1].isSequential && !state.arrs_dist_info[arr2].isSequential && t2 && !t1
+                seq = true
+            # first input is sequential but output is parallel if the second input is partitioned but not transposed
+            # e.g. w*points
+            elseif !state.arrs_dist_info[arr2].isSequential && !t2
+                @dprintln(3,"DistPass arr info gemm first input is sequential: ", arr1)
+                state.arrs_dist_info[arr1].isSequential = true
+            # otherwise, no known pattern found, every array is sequential
+            else
+                @dprintln(3,"DistPass arr info gemm all sequential: ", arr1," ", arr2)
+                state.arrs_dist_info[arr1].isSequential = true
+                state.arrs_dist_info[arr2].isSequential = true
+                seq = true
+            end
+            
+            if seq
+                @dprintln(3,"DistPass arr info gemm output is sequential: ", lhs," ",rhs.args[2])
+            end
+            state.arrs_dist_info[lhs].isSequential = state.arrs_dist_info[toSymGen(rhs.args[2])].isSequential = seq
+        end
+    else
+        return CompilerTools.AstWalker.ASTWALK_RECURSE
+    end
+    return node
+end
+
 
 function isEqualDimSize(sizes1::Array{Union{SymAllGen,Int,Expr},1} , sizes2::Array{Union{SymAllGen,Int,Expr},1})
     if length(sizes1)!=length(sizes2)
