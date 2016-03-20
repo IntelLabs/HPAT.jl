@@ -91,9 +91,21 @@ Run Pi example of Spark\*:
 $ spark-submit $SPARK_HOME/examples/src/main/python/pi.py /tmp/logistic_regression.csv 100 &> pi_spark.out
 ```
 
+## Usage
 
+Programmers need to follow these directions in order to use HPAT effectively:
+- The analytics task should be written in a self-contained function
+  which is annotated with `@acc hpat`.
+- Reading the input samples should be done using the `DataSource` syntax. 
+- The computation should be in the form of high-level matrix/vector computations or comprehensions
+since HPAT does not parallelize sequential loops.
+- Julia's column-major order should be followed for matrices since HPAT divides the data across columns.
+This means that features of a sample are in a column of the samples matrix.
 
+## Initialization Time Issue 
 
-
+Currently, there is a high initialization cost (e.g. 25s) the first time HPAT is
+used within a Julia runtime since package precompilation
+of Julia v0.4 is very limited. We are working on various solutions.
 
 
