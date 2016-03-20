@@ -56,12 +56,14 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
     head = node.head
     # arrays written in parfors are ok for now
     
-    @dprintln(3,"DistPass arr info walk Expr node: ", node)
+    @dprintln(3,"DistPass arr info walk Expr head: ", head)
     if head==:(=)
+        @dprintln(3,"DistPass arr info walk assignment: ", node)
         lhs = toSymGen(node.args[1])
         rhs = node.args[2]
         return get_arr_dist_info_assignment(node, state, top_level_number, lhs, rhs)
     elseif head==:parfor
+        @dprintln(3,"DistPass arr info walk parfor: ", node)
         parfor = getParforNode(node)
         rws = parfor.rws
         
@@ -131,6 +133,7 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
         return node
     # arrays written in sequential code are not distributed
     elseif head!=:body && head!=:block && head!=:lambda
+        @dprintln(3,"DistPass arr info walk sequential code: ", node)
         live_info = CompilerTools.LivenessAnalysis.find_top_number(top_level_number, state.lives)
         
         all_vars = union(live_info.def, live_info.use)
