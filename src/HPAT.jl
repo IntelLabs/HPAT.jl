@@ -109,11 +109,11 @@ append!(ParallelAccelerator.DomainIR.funcIgnoreList, DomainPass.generatedFuncs)
 HPAT_default_datapath = "input_data/"
 
 if haskey(ENV, "HPAT_DEFAULT_DATA")
-    HPAT_default_datapath = ENV["HPAT_DEFAULT_DATA"]
+    global HPAT_default_datapath = ENV["HPAT_DEFAULT_DATA"]
 elseif haskey(ENV, "SCRATCH")
-    HPAT_default_datapath = ENV["SCRATCH"]*"/input_data/"
+    global HPAT_default_datapath = ENV["SCRATCH"]*"/input_data/"
 else
-    HPAT_default_datapath = joinpath(dirname(@__FILE__), "..")*"/input_data/"
+    global HPAT_default_datapath = joinpath(dirname(@__FILE__), "..")*"/input_data/"
 end
 
 if MPI.Comm_rank(MPI.COMM_WORLD)==0 && !isdir(HPAT_default_datapath)
