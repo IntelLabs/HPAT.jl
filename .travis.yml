@@ -24,4 +24,4 @@ script:
   - julia -e 'Pkg.clone("ParallelAccelerator")'
   - julia -e 'Pkg.build("ParallelAccelerator")'
   - julia -e 'Pkg.clone(pwd()); Pkg.build("HPAT"); Pkg.test("HPAT")'
-  - mpirun -np 2 julia examples/pi.jl
+  - mpirun -np 2 julia examples/pi.jl 10000
