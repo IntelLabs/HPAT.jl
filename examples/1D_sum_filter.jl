@@ -27,17 +27,17 @@ using HPAT
 using MPI
 using DocOpt
 
-@acc hpat function calc1Dsum(file_name)
-    vals = DataSource(Vector{Float64},TXT, file_name)
-    return sum(vals)
+@acc hpat function calc1Dsum_filter(file_name)
+    arr = DataSource(Vector{Float64},HDF5,"/labels",file_name)
+    return sum(arr[arr.>0.8])
 end
 
 function main()
-    doc = """Sum a large array read from text file (stress test).
+    doc = """Filter and sum a large array read from file (stress test).
 
 Usage:
-  1D_sum.jl -h | --help
-  1D_sum.jl [--file=<file>]
+  1D_sum_filter.jl -h | --help
+  1D_sum_filter.jl [--file=<file>]
 
 Options:
   -h --help                  Show this screen.
@@ -49,7 +49,7 @@ Options:
     if (arguments["--file"] != nothing)
         file_name::ASCIIString = arguments["--file"]
     else
-        file_name = HPAT.getDefaultDataPath()*"1D_large.csv"
+        file_name = HPAT.getDefaultDataPath()*"1D_large.hdf5"
     end 
 
     rank = MPI.Comm_rank(MPI.COMM_WORLD)
@@ -57,15 +57,15 @@ Options:
 
     if rank==0 println("file= ", file_name) end
 
-    small_file::ASCIIString = HPAT.getDefaultDataPath()*"1D_small.csv"
+    small_file::ASCIIString = HPAT.getDefaultDataPath()*"1D_small.hdf5"
     tic()
-    calc1Dsum(small_file)
+    calc1Dsum_filter(small_file)
     time = toq()
     if rank==0 println("SELFPRIMED ", time) end
     MPI.Barrier(MPI.COMM_WORLD)
 
     tic()
-    S = calc1Dsum(file_name)
+    S = calc1Dsum_filter(file_name)
     time = toq()
     if rank==0 println("result = ", S) end
     if rank==0 println("SELFTIMED ", time) end
@@ -73,3 +73,4 @@ Options:
 end
 
 main()
+
