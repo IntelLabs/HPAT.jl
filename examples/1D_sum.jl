@@ -1,22 +1,76 @@
+#=
+Copyright (c) 2015, Intel Corporation
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without 
+modification, are permitted provided that the following conditions are met:
+- Redistributions of source code must retain the above copyright notice, 
+  this list of conditions and the following disclaimer.
+- Redistributions in binary form must reproduce the above copyright notice, 
+  this list of conditions and the following disclaimer in the documentation 
+  and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE 
+LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
+CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
+SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS 
+INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF 
+THE POSSIBILITY OF SUCH DAMAGE.
+=#
+
 using HPAT 
 using MPI
+using DocOpt
 
 @acc hpat function calc1Dsum(file_name)
     arr = DataSource(Vector{Float64},HDF5,"/labels",file_name)
     return sum(arr)
 end
 
-rank = MPI.Comm_rank(MPI.COMM_WORLD)
-pes = MPI.Comm_size(MPI.COMM_WORLD)
+function main()
+    doc = """Sum a large array read from file (stress test).
 
-# warm up
-sm2 = calc1Dsum(ENV["SCRATCH"]*"/benchmark_data/1D_small.hdf5")
-MPI.Barrier(MPI.COMM_WORLD)
-t1 = time_ns()
-sm2 = calc1Dsum(ENV["SCRATCH"]*"/benchmark_data/1D_large.hdf5")
-t2 = time_ns()
+Usage:
+  1D_sum.jl -h | --help
+  1D_sum.jl [--file=<file>]
 
-if rank==0
-	println("nodes: ", pes, "\n1D exec time: ", (t2-t1)/1.0e9, "\nchecksum: ", sm2)
+Options:
+  -h --help                  Show this screen.
+  --file=<file>              Specify input file; defaults to HPAT's default generated data file.
+
+"""
+    arguments = docopt(doc)
+
+    if (arguments["--file"] != nothing)
+        file_name::ASCIIString = arguments["--file"]
+    else
+        file_name = HPAT.getDefaultDataPath()*"1D_large.hdf5"
+    end 
+
+    rank = MPI.Comm_rank(MPI.COMM_WORLD)
+    pes = MPI.Comm_size(MPI.COMM_WORLD)
+
+    if rank==0 println("file= ", file_name) end
+
+    small_file::ASCIIString = HPAT.getDefaultDataPath()*"1D_small.hdf5"
+    tic()
+    calc1Dsum(small_file)
+    time = toq()
+    if rank==0 println("SELFPRIMED ", time) end
+    MPI.Barrier(MPI.COMM_WORLD)
+
+    tic()
+    S = calc1Dsum(file_name)
+    time = toq()
+    if rank==0 println("result = ", S) end
+    if rank==0 println("SELFTIMED ", time) end
+
 end
+
+main()
 
