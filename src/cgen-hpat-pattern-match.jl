@@ -217,7 +217,7 @@ function pattern_match_call_data_src_close(f::Symbol, id::Int)
         s *= "H5Fclose(file_id_$num);\n"
     elseif f==:__hpat_data_source_TXT_close
         num = string(id)
-        s *= "MPI_File_close(dsrc_txt_file_$num);\n"
+        s *= "MPI_File_close(&dsrc_txt_file_$num);\n"
     end
     return s
 end
@@ -434,7 +434,7 @@ function pattern_match_call_data_src_read(f::Symbol, id::Int, arr::Symbol, start
                 CGen_txt_curr_row_$num++;
             }
             
-            MPI_File_close(&dsrc_txt_file_$num);
+         //   MPI_File_close(&dsrc_txt_file_$num);
             """
     end
     return s
