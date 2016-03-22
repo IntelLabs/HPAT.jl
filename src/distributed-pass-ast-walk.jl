@@ -23,6 +23,7 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
 THE POSSIBILITY OF SUCH DAMAGE.
 =#
 
+#using Debug
 
 function getArrayDistributionInfo(ast, state)
     before_dist_arrays = [arr for arr in keys(state.arrs_dist_info)]
@@ -66,40 +67,44 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
         @dprintln(3,"DistPass arr info walk parfor: ", node)
         parfor = getParforNode(node)
         rws = parfor.rws
-        
-        readArrs = collect(keys(rws.readSet.arrays))
-        writeArrs = collect(keys(rws.writeSet.arrays))
-        allArrs = [readArrs;writeArrs]
-        # keep mapping from parfors to arrays
-        state.parfor_info[parfor.unique_id] = allArrs
         seq = false
-        
+                
         if length(parfor.arrays_read_past_index)!=0 || length(parfor.arrays_written_past_index)!=0 
             @dprintln(2,"DistPass arr info walk parfor sequential: ", node)
-            for arr in allArrs
-                seq = true
+            seq = true
+        end
+        
+        indexVariable::Symbol = toSymGen(parfor.loopNests[1].indexVariable)
+        
+        allArrAccesses = merge(rws.readSet.arrays,rws.writeSet.arrays)
+        myArrs = SymGen[]
+
+        # If an array is accessed with a Parfor's index variable, the parfor and array should have same partitioning
+        for arr in keys(allArrAccesses)
+            # an array can be accessed multiple times in Pafor
+            # for each access:
+            for access_indices in allArrAccesses[arr]
+                indices = map(toSymGen,access_indices)
+                # if array would be accessed in parallel in this Parfor
+                if in(indexVariable, indices)
+                    push!(myArrs, arr)
+                end
+                # sequential if not accessed column major (last dimension)
+                # TODO: generalize?
+                if in(indexVariable, indices[1:end-1])
+                    @dprintln(2,"DistPass arr info walk arr index sequential: ",arr," ", indices, " ", indexVariable)
+                    seq = true
+                end
             end
         end
-        
-        indexVariable::SymbolNode = parfor.loopNests[1].indexVariable
-        for arr in keys(rws.readSet.arrays)
-             index = rws.readSet.arrays[arr]
-             if length(index)!=1 || toSymGen(index[1][end])!=toSymGen(indexVariable)
-                @dprintln(2,"DistPass arr info walk arr read index sequential: ", index, " ", indexVariable)
-                seq = true
-             end
-        end
-        
-        for arr in keys(rws.writeSet.arrays)
-             index = rws.writeSet.arrays[arr]
-             if length(index)!=1 || toSymGen(index[1][end])!=toSymGen(indexVariable)
-                @dprintln(2,"DistPass arr info walk arr write index sequential: ", index, " ", indexVariable)
-                seq = true
-             end
-        end
-        for arr in allArrs
+
+        # keep mapping from parfors to arrays
+        state.parfor_info[parfor.unique_id] = myArrs
+        @dprintln(3,"DistPass arr info walk parfor arrays: ", myArrs)
+
+        for arr in myArrs
             if state.arrs_dist_info[arr].isSequential ||
-                        !isEqualDimSize(state.arrs_dist_info[arr].dim_sizes, state.arrs_dist_info[allArrs[1]].dim_sizes)
+                        !isEqualDimSize(state.arrs_dist_info[arr].dim_sizes, state.arrs_dist_info[myArrs[1]].dim_sizes)
                     @dprintln(2,"DistPass parfor check array: ", arr," seq: ", state.arrs_dist_info[arr].isSequential)
                     seq = true
             end
@@ -107,7 +112,7 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
         # parfor and all its arrays are sequential
         if seq
             push!(state.seq_parfors, parfor.unique_id)
-            for arr in allArrs
+            for arr in myArrs
                 state.arrs_dist_info[arr].isSequential = true
             end
         end
