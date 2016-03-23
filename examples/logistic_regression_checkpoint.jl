@@ -27,7 +27,11 @@ using HPAT
 using MPI
 using DocOpt
 
-@acc hpat function logistic_regression(iterations, file_name)
+#CompilerTools.OptFramework.set_debug_level(3)
+#ParallelAccelerator.ParallelIR.set_debug_level(3)
+#ParallelAccelerator.CGen.set_debug_level(3)
+
+@acc hpat_checkpoint function logistic_regression(iterations, file_name)
     points = DataSource(Matrix{Float32},HDF5,"/points", file_name)
     responses = DataSource(Vector{Float32},HDF5,"/responses", file_name)
     D = size(points,1) # number of features
