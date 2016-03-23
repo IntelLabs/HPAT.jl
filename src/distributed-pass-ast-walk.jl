@@ -135,7 +135,7 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
             # third array is responses and is parallel
             state.arrs_dist_info[toSymGen(node.args[2])].isSequential = true
         end
-        return node
+        return CompilerTools.AstWalker.ASTWALK_RECURSE
     # arrays written in sequential code are not distributed
     elseif head!=:body && head!=:block && head!=:lambda
         @dprintln(3,"DistPass arr info walk sequential code: ", node)
