@@ -121,7 +121,8 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
 
         for arr in myArrs
             if state.arrs_dist_info[arr].isSequential ||
-                        !isEqualDimSize(state.arrs_dist_info[arr].dim_sizes, state.arrs_dist_info[myArrs[1]].dim_sizes)
+                        !eqSize(state.arrs_dist_info[arr].dim_sizes[end], state.arrs_dist_info[myArrs[1]].dim_sizes[end]) 
+                    # last dimension of all parfor arrays should be equal since they are partitioned
                     @dprintln(2,"DistPass parfor check array: ", arr," seq: ", state.arrs_dist_info[arr].isSequential)
                     seq = true
             end
