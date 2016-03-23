@@ -40,7 +40,7 @@ using ParallelAccelerator.CGen
 using CompilerTools.AstWalker
 using MPI
 
-export hpat, @acc, @noacc
+export hpat, hpat_checkpoint, @acc, @noacc
 
 # disable OMP if not set by user since it is slower than pure MPI
 if !haskey(ENV, "CGEN_NO_OMP")
@@ -57,6 +57,7 @@ include("distributed-pass.jl")
 include("domain-pass.jl")
 include("capture-api.jl")
 include("cgen-hpat-pattern-match.jl")
+include("checkpoint.jl")
 
 # add HPAT pattern matching code generators to CGen
 ParallelAccelerator.CGen.setExternalPatternMatchCall(CGenPatternMatch.pattern_match_call)
@@ -84,6 +85,24 @@ function runDomainPass(func :: GlobalRef, ast :: Expr, signature :: Tuple)
   return code
 end
 
+function addCheckpointing(func :: GlobalRef, ast :: Expr, signature :: Tuple)
+  dir_start = time_ns()
+  code = Checkpointing.from_root(string(func.name), ast, false)
+  dir_time = time_ns() - dir_start
+  @dprintln(2, "Added checkpointing = ", code)
+  @dprintln(1, "accelerate: addCheckpointing conversion time = ", ns_to_sec(dir_time))
+  return code
+end
+
+function addCheckpointingRestart(func :: GlobalRef, ast :: Expr, signature :: Tuple)
+  dir_start = time_ns()
+  code = Checkpointing.from_root(string(func.name), ast, true)
+  dir_time = time_ns() - dir_start
+  @dprintln(2, "Added checkpointing and restart = ", code)
+  @dprintln(1, "accelerate: addCheckpointingRestart conversion time = ", ns_to_sec(dir_time))
+  return code
+end
+
 """
 A macro pass that translates extensions such as DataSource()
 """
@@ -92,11 +111,44 @@ function captureHPAT(func, ast, sig)
   return ast
 end
 
+function createCheckpointFunc(func, ast, sig)
+  @dprintln(1, "createCheckpointFunc func = ", func)
+  new_func = deepcopy(ast)
+  new_func.args[1].args[1] = symbol(string(new_func.args[1].args[1],"_restart"))
+  @dprintln(1, "createCheckpointFunc new_func = ", new_func.args[1].args[1])
+  return CompilerTools.OptFramework.MoreWork(ast, CompilerTools.OptFramework.WorkItem[CompilerTools.OptFramework.WorkItem(hpat_checkpoint_internal, hpat_checkpoint_internal, Any[], new_func)])   
+end
+
 # initialize set of compiler passes HPAT runs
 const hpat = [ OptPass(captureHPAT, PASS_MACRO),
                OptPass(captureOperators, PASS_MACRO),
                OptPass(toCartesianArray, PASS_MACRO),
                OptPass(runDomainPass, PASS_TYPED),
+               OptPass(toDomainIR, PASS_TYPED),
+               OptPass(toParallelIR, PASS_TYPED),
+               OptPass(runDistributedPass, PASS_TYPED),
+               OptPass(toFlatParfors, PASS_TYPED),
+               OptPass(toCGen, PASS_TYPED) ]
+
+const hpat_checkpoint = 
+             [ OptPass(createCheckpointFunc, PASS_MACRO),
+               OptPass(captureHPAT, PASS_MACRO),
+               OptPass(captureOperators, PASS_MACRO),
+               OptPass(toCartesianArray, PASS_MACRO),
+               OptPass(runDomainPass, PASS_TYPED),
+               OptPass(addCheckpointing, PASS_TYPED),
+               OptPass(toDomainIR, PASS_TYPED),
+               OptPass(toParallelIR, PASS_TYPED),
+               OptPass(runDistributedPass, PASS_TYPED),
+               OptPass(toFlatParfors, PASS_TYPED),
+               OptPass(toCGen, PASS_TYPED) ]
+
+const hpat_checkpoint_internal = 
+             [ OptPass(captureHPAT, PASS_MACRO),
+               OptPass(captureOperators, PASS_MACRO),
+               OptPass(toCartesianArray, PASS_MACRO),
+               OptPass(runDomainPass, PASS_TYPED),
+               OptPass(addCheckpointingRestart, PASS_TYPED),
                OptPass(toDomainIR, PASS_TYPED),
                OptPass(toParallelIR, PASS_TYPED),
                OptPass(runDistributedPass, PASS_TYPED),
@@ -134,5 +186,20 @@ function HPAT_finalize()
 end
 
 atexit(HPAT_finalize)
+
+function restart(func, args...)
+  gr = GlobalRef(Base.function_module(func,[]), symbol(func))                                          
+  @dprintln(1, "HPAT restart func = ", func, " type = ", typeof(func), " GlobalRef = ", gr)                             
+  if haskey(CompilerTools.OptFramework.gOptFrameworkDict, gr)
+    res = CompilerTools.OptFramework.gOptFrameworkDict[gr]                                             
+    @dprintln(2, "CompilerTools.OptFramework internally mapped ", gr, " to ", res)
+    assert(typeof(res) == GlobalRef)
+    new_gr = GlobalRef(res.mod, symbol(string(res.name,"_restart"))) 
+    @dprintln(2, "Preparing to call the restart version of the function with name = ", new_gr)
+    eval(new_gr)(args...)
+  else
+    throw(string("HPAT restart function could not find function to restart."))                                                                               
+  end
+end
 
 end # module
