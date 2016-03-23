@@ -27,11 +27,11 @@ using HPAT
 using MPI
 using DocOpt
 
-CompilerTools.OptFramework.set_debug_level(3)
-ParallelAccelerator.ParallelIR.set_debug_level(3)
-ParallelAccelerator.CGen.set_debug_level(3)
-HPAT.Checkpointing.set_debug_level(3)
-CompilerTools.LivenessAnalysis.set_debug_level(5)
+#CompilerTools.OptFramework.set_debug_level(3)
+#ParallelAccelerator.ParallelIR.set_debug_level(3)
+#ParallelAccelerator.CGen.set_debug_level(3)
+#HPAT.Checkpointing.set_debug_level(3)
+#CompilerTools.LivenessAnalysis.set_debug_level(5)
 
 @acc hpat_checkpoint function logistic_regression(iterations, file_name)
     points = DataSource(Matrix{Float32},HDF5,"/points", file_name)

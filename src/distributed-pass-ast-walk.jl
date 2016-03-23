@@ -25,6 +25,8 @@ THE POSSIBILITY OF SUCH DAMAGE.
 
 #using Debug
 
+using CompilerTools.LivenessAnalysis
+
 function getArrayDistributionInfo(ast, state)
     before_dist_arrays = [arr for arr in keys(state.arrs_dist_info)]
     
@@ -79,6 +81,12 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
         allArrAccesses = merge(rws.readSet.arrays,rws.writeSet.arrays)
         myArrs = SymGen[]
 
+        fake_body = CompilerTools.LambdaHandling.LambdaVarInfoToLambdaExpr(state.LambdaVarInfo, TypedExpr(nothing, :body, parfor.body...))
+        #@dprintln(3,"fake_body = ", fake_body)
+
+        body_lives = CompilerTools.LivenessAnalysis.from_expr(fake_body, ParallelIR.pir_live_cb, state.LambdaVarInfo)
+        #@dprintln(3, "body_lives = ", body_lives)
+
         # If an array is accessed with a Parfor's index variable, the parfor and array should have same partitioning
         for arr in keys(allArrAccesses)
             # an array can be accessed multiple times in Pafor
@@ -88,6 +96,15 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
                 # if array would be accessed in parallel in this Parfor
                 if in(indexVariable, indices)
                     push!(myArrs, arr)
+                end
+                # An array access index can be dependent on parfor's
+                # index variable as in nested comprehension case of K-Means. 
+                # Parfor can't be parallelized in general cases since array can't be partitioned properly.
+                # ParallelIR should optimize out the trivial cases where indices are essentially equal (i=1+1*index-1 in k-means)   
+                if isAccessIndexDependent(indices, indexVariable, body_lives)
+                    push!(myArrs, arr)
+                    @dprintln(2,"DistPass arr info walk arr index dependent: ",arr," ", indices, " ", indexVariable)
+                    seq = true
                 end
                 # sequential if not accessed column major (last dimension)
                 # TODO: generalize?
@@ -161,6 +178,26 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
     return CompilerTools.AstWalker.ASTWALK_RECURSE
 end
 
+function isAccessIndexDependent(indices::Vector{Any}, indexVariable::Symbol, body_lives::BlockLiveness)
+    # if any index is dependent
+    return reduce(|, [ isAccessIndexDependent(indices[i], indexVariable, body_lives) for i in 1:length(indices)] )
+end
+
+"""
+For each statement of parfor's body, see if array access index is in Def set and parfor's indexVariable is in Use set.
+This is a hack to work around not having dependence analysis in CompilerTools.
+"""
+function isAccessIndexDependent(index::SymGen, indexVariable::Symbol, body_lives::BlockLiveness)
+    for bb in collect(values(body_lives.basic_blocks))
+        for stmt in bb.statements
+            if in(index,stmt.def) && in(indexVariable, stmt.use)
+                @dprintln(2,"DistPass arr info walk dependent index found: ", index," ",indexVariable,"  ",stmt)
+                return true
+            end
+        end
+    end
+    return false
+end
 
 function get_arr_dist_info(ast::Any, state::DistPassState, top_level_number, is_top_level, read)
     return CompilerTools.AstWalker.ASTWALK_RECURSE
