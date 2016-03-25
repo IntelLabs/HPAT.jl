@@ -53,11 +53,11 @@ function enableOMP()
     end
 end
 
+include("checkpoint.jl")
 include("distributed-pass.jl")
 include("domain-pass.jl")
 include("capture-api.jl")
 include("cgen-hpat-pattern-match.jl")
-include("checkpoint.jl")
 
 # add HPAT pattern matching code generators to CGen
 ParallelAccelerator.CGen.setExternalPatternMatchCall(CGenPatternMatch.pattern_match_call)
