@@ -32,6 +32,8 @@ using CompilerTools.LambdaHandling
 using CompilerTools.Helper
 DebugMsg.init()
 
+import HPAT 
+
 #using Debug
 
 include("cgen-hpat-pattern-match-daal.jl")
@@ -45,6 +47,18 @@ function pattern_match_call_dist_init(f::TopNode)
 end
 
 function pattern_match_call_dist_init(f::Any)
+    return ""
+end
+
+function pattern_match_call_get_sec_since_epoch(f::GlobalRef)
+    if f.mod == HPAT.Checkpointing && f.name==:hpat_get_sec_since_epoch
+        return "std::time(nullptr);"
+    else
+        return ""
+    end
+end
+
+function pattern_match_call_get_sec_since_epoch(f::Any)
     return ""
 end
 
@@ -464,34 +478,28 @@ function pattern_match_call(ast::Array{Any, 1})
     @dprintln(3,"hpat pattern matching ",ast)
     s = ""
     if length(ast)==1
-         s = pattern_match_call_dist_init(ast[1])
-    end
-    if length(ast)==2
+        s *= pattern_match_call_dist_init(ast[1])
+        s *= pattern_match_call_get_sec_since_epoch(ast[1]) 
+    elseif length(ast)==2
         s *= pattern_match_call_data_src_close(ast[1], ast[2])
-    end
-    if(length(ast)==4)
-        s = pattern_match_call_dist_reduce(ast[1],ast[2],ast[3], ast[4])
+    elseif(length(ast)==3) 
+        s *= pattern_match_call_dist_h5_size(ast[1],ast[2],ast[3])
+        s *= pattern_match_call_dist_bcast(ast[1],ast[2],ast[3])
+    elseif(length(ast)==4)
+        s *= pattern_match_call_dist_reduce(ast[1],ast[2],ast[3], ast[4])
         # text file read
         s *= pattern_match_call_data_src_open(ast[1],ast[2],ast[3], ast[4])
-    end
-    if(length(ast)==5)
+    elseif(length(ast)==5)
         # HDF5 open
-        s = pattern_match_call_data_src_open(ast[1],ast[2],ast[3], ast[4], ast[5])
+        s *= pattern_match_call_data_src_open(ast[1],ast[2],ast[3], ast[4], ast[5])
         s *= pattern_match_call_data_src_read(ast[1],ast[2],ast[3], ast[4], ast[5])
         s *= pattern_match_call_dist_allreduce(ast[1],ast[2],ast[3], ast[4], ast[5])
-    end
-    if(length(ast)==3) 
-        s = pattern_match_call_dist_h5_size(ast[1],ast[2],ast[3])
-        s *= pattern_match_call_dist_bcast(ast[1],ast[2],ast[3])
-    end
-    if(length(ast)==8)
-        s = pattern_match_call_kmeans(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8])
-    end
-    if(length(ast)==12)
-        s = pattern_match_call_linear_regression(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8],ast[9],ast[10],ast[11],ast[12])
-    end
-    if(length(ast)==13)
-        s = pattern_match_call_naive_bayes(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8],ast[9],ast[10],ast[11],ast[12],ast[13])
+    elseif(length(ast)==8)
+        s *= pattern_match_call_kmeans(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8])
+    elseif(length(ast)==12)
+        s *= pattern_match_call_linear_regression(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8],ast[9],ast[10],ast[11],ast[12])
+    elseif(length(ast)==13)
+        s *= pattern_match_call_naive_bayes(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8],ast[9],ast[10],ast[11],ast[12],ast[13])
     end
     return s
 end
@@ -524,10 +532,11 @@ function from_assignment_match_dist(lhs::GenSym, rhs::Expr)
         s *= ParallelAccelerator.CGen.from_expr(lhs)*" = space_dims_$num;"
     elseif rhs.head==:call && length(rhs.args)==1 && isTopNode(rhs.args[1])
         dist_call = rhs.args[1].name
+        c_lhs = ParallelAccelerator.CGen.from_expr(lhs)
         if dist_call ==:hps_dist_num_pes
-            return "MPI_Comm_size(MPI_COMM_WORLD,&$lhs);"
+            return "MPI_Comm_size(MPI_COMM_WORLD,&$c_lhs);"
         elseif dist_call ==:hps_dist_node_id
-            return "MPI_Comm_rank(MPI_COMM_WORLD,&$lhs);"
+            return "MPI_Comm_rank(MPI_COMM_WORLD,&$c_lhs);"
         end
     elseif rhs.head==:call && rhs.args[1]==:__hpat_data_source_TXT_size
         num = ParallelAccelerator.CGen.from_expr(rhs.args[2])
