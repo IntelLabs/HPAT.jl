@@ -522,6 +522,13 @@ function from_assignment_match_dist(lhs::GenSym, rhs::Expr)
         s *= "hsize_t space_dims_$num[data_ndim_$num];\n"    
         s *= "H5Sget_simple_extent_dims(space_id_$num, space_dims_$num, NULL);\n"
         s *= ParallelAccelerator.CGen.from_expr(lhs)*" = space_dims_$num;"
+    elseif rhs.head==:call && length(rhs.args)==1 && isTopNode(rhs.args[1])
+        dist_call = rhs.args[1].name
+        if dist_call ==:hps_dist_num_pes
+            return "MPI_Comm_size(MPI_COMM_WORLD,&$lhs);"
+        elseif dist_call ==:hps_dist_node_id
+            return "MPI_Comm_rank(MPI_COMM_WORLD,&$lhs);"
+        end
     elseif rhs.head==:call && rhs.args[1]==:__hpat_data_source_TXT_size
         num = ParallelAccelerator.CGen.from_expr(rhs.args[2])
         c_lhs = ParallelAccelerator.CGen.from_expr(lhs)
