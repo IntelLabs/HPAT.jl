@@ -57,7 +57,9 @@ import ParallelAccelerator.ParallelIR.ISASSIGNEDONCE
 import ParallelAccelerator.ParallelIR.ISPRIVATEPARFORLOOP
 import ParallelAccelerator.ParallelIR.PIRReduction
 
-dist_ir_funcs = Set([   :__hpat_data_source_HDF5_open, 
+dist_ir_funcs = Set([   TopNode(:unsafe_arrayref),
+                        TopNode(:unsafe_arrayset),
+                        :__hpat_data_source_HDF5_open, 
                         :__hpat_data_source_HDF5_size, 
                         :__hpat_get_H5_dim_size, 
                         :__hpat_data_source_HDF5_read, 

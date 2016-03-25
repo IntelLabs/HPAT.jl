@@ -33,7 +33,7 @@ function getArrayDistributionInfo(ast, state)
     while true
         dist_arrays = []
         @dprintln(3,"DistPass state before array info walk: ",state)
-        AstWalk(ast, get_arr_dist_info, state)
+        ParallelIR.AstWalk(ast, get_arr_dist_info, state)
         @dprintln(3,"DistPass state after array info walk: ",state)
             # all arrays not marked sequential are distributable at this point 
         for arr in keys(state.arrs_dist_info)
@@ -121,7 +121,8 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
 
         for arr in myArrs
             if state.arrs_dist_info[arr].isSequential ||
-                        !isEqualDimSize(state.arrs_dist_info[arr].dim_sizes, state.arrs_dist_info[myArrs[1]].dim_sizes)
+                        !eqSize(state.arrs_dist_info[arr].dim_sizes[end], state.arrs_dist_info[myArrs[1]].dim_sizes[end]) 
+                    # last dimension of all parfor arrays should be equal since they are partitioned
                     @dprintln(2,"DistPass parfor check array: ", arr," seq: ", state.arrs_dist_info[arr].isSequential)
                     seq = true
             end
@@ -133,7 +134,7 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
                 state.arrs_dist_info[arr].isSequential = true
             end
         end
-        return node
+        return CompilerTools.AstWalker.ASTWALK_RECURSE
     # functions dist_ir_funcs are either handled here or do not make arrays sequential  
     elseif head==:call && in(node.args[1], dist_ir_funcs)
         func = node.args[1]
@@ -152,14 +153,30 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
             # third array is responses and is parallel
             state.arrs_dist_info[toSymGen(node.args[2])].isSequential = true
         end
+        return node
+    elseif head==:gotoifnot
+        @dprintln(3,"DistPass arr info gotoifnot: ", node)
         return CompilerTools.AstWalker.ASTWALK_RECURSE
     # arrays written in sequential code are not distributed
     elseif head!=:body && head!=:block && head!=:lambda
         @dprintln(3,"DistPass arr info walk sequential code: ", node)
-        live_info = CompilerTools.LivenessAnalysis.find_top_number(top_level_number, state.lives)
         
-        all_vars = union(live_info.def, live_info.use)
+        fake_body = CompilerTools.LambdaHandling.LambdaVarInfoToLambdaExpr(state.LambdaVarInfo, TypedExpr(nothing, :body, node))
+        #@dprintln(3,"fake_body = ", fake_body)
+
+        live_info = CompilerTools.LivenessAnalysis.from_expr(fake_body, ParallelIR.pir_live_cb, state.LambdaVarInfo)
+        #@dprintln(3, "body_lives = ", body_lives)
+        # live_info = CompilerTools.LivenessAnalysis.find_top_number(top_level_number, state.lives)
+        # all_vars = union(live_info.def, live_info.use)
+        all_vars = []
         
+        for bb in collect(values(live_info.basic_blocks))
+            for stmt in bb.statements
+                append!(all_vars, collect(union(stmt.def, stmt.use)))
+            end
+        end
+        
+        @dprintln(3,"DistPass arr info walk sequential code vars: ", all_vars)
         # ReadWriteSet is not robust enough now
         #rws = CompilerTools.ReadWriteSet.from_exprs([node], ParallelIR.pir_live_cb, state.LambdaVarInfo)
         #readArrs = collect(keys(rws.readSet.arrays))
