@@ -52,6 +52,10 @@ single_node_mttf = 4000.0   # default to 4000 hours MTTF of a single node
 single_node_faults_per_million = 1000000.0 / single_node_mttf
 checkpoint_time = 1.0 / 3600.0  # 1 minute checkpoint time converted to hours
 
+function hpat_get_sec_since_epoch()
+    convert(Int32,1)
+end
+
 # ENTRY to checkpointing
 function from_root(function_name, ast :: Expr, with_restart :: Bool)
     @assert ast.head == :lambda "Input to Checkpointing should be :lambda Expr"
@@ -92,7 +96,7 @@ function from_root(function_name, ast :: Expr, with_restart :: Bool)
     pre_loop_stmts = Any[]
     checkpoint_timer_sn = ParallelAccelerator.ParallelIR.createStateVar(state, "__hpat_checkpoint_timer", Int32, ParallelAccelerator.ParallelIR.ISASSIGNED)
 
-    push!(pre_loop_stmts, ParallelAccelerator.ParallelIR.mk_assignment_expr(checkpoint_timer_sn, ParallelAccelerator.ParallelIR.TypedExpr(Int32, :call, TopNode(:hpat_get_sec_since_epoch))))
+    push!(pre_loop_stmts, ParallelAccelerator.ParallelIR.mk_assignment_expr(checkpoint_timer_sn, ParallelAccelerator.ParallelIR.TypedExpr(Int32, :call, GlobalRef(HPAT.Checkpointing,:hpat_get_sec_since_epoch))))
 
     CompilerTools.Loops.insertNewBlockBeforeLoop(the_loop, lives.cfg, pre_loop_stmts)
     @dprintln(3,"CFG after insert = ", lives.cfg)
@@ -113,7 +117,7 @@ function from_root(function_name, ast :: Expr, with_restart :: Bool)
     checkpoint_func_str = string(                     "function ", checkpoint_func_name, "(start_time, num_pes, ", foldl((a,b) -> "$a, $b", argument_names), ")\n")
     checkpoint_func_str = string(checkpoint_func_str, "    system_faults_per_million_hours = num_pes * ", single_node_faults_per_million, "\n")
     checkpoint_func_str = string(checkpoint_func_str, "    system_mttf::Float64 = 1000000.0 / system_faults_per_million_hours\n")
-    checkpoint_func_str = string(checkpoint_func_str, "    cur_time = hpat_get_sec_since_epoch()\n")
+    checkpoint_func_str = string(checkpoint_func_str, "    cur_time = HPAT.Checkpointing.hpat_get_sec_since_epoch()\n")
     checkpoint_func_str = string(checkpoint_func_str, "    if ((cur_time - start_time) / 3600.0) > sqrt(2 * system_mttf * ", checkpoint_time, ")\n")
     checkpoint_func_str = string(checkpoint_func_str, "        return cur_time\n")
     checkpoint_func_str = string(checkpoint_func_str, "    end\n")
