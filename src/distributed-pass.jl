@@ -76,6 +76,8 @@ function mk_mult_int_expr(args::Array)
     return prev_expr
 end
 
+mk_add_int_expr(a,b) = mk_call(GlobalRef(Base,:box),[Int64, mk_call(GlobalRef(Base,:add_int),[a,b])])
+
 dist_ir_funcs = Set([   TopNode(:unsafe_arrayref),
                         TopNode(:unsafe_arrayset),
                         :__hpat_data_source_HDF5_open, 
@@ -404,7 +406,7 @@ function from_parfor(node::Expr, state)
         global_size = loopnest.upper
 
         loop_div_expr = :($loop_div_var = $(global_size)/__hpat_num_pes)
-        loop_start_expr = :($loop_start_var = __hpat_node_id*$loop_div_var+1)
+        loop_start_expr = Expr(:(=), loop_start_var, mk_add_int_expr(mk_mult_int_expr([:__hpat_node_id,loop_div_var]),1))
         loop_end_expr = :($loop_end_var = __hpat_node_id==__hpat_num_pes-1 ?$(global_size):(__hpat_node_id+1)*$loop_div_var)
 
         loopnest.lower = loop_start_var
