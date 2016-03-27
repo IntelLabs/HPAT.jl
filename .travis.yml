@@ -19,9 +19,12 @@ script:
   - if [[ -a .git/shallow ]]; then git fetch --unshallow; fi
     #  - sudo apt-get update && sudo apt-get upgrade -y && sudo apt-get dist-upgrade -y && sudo apt-get install cmake mpich
   - sudo apt-get update -qq
-  - sudo apt-get install -qq gcc gfortran cmake openmpi-bin openmpi-common libopenmpi-dev
+  - sudo apt-get install -qq gcc g++ gfortran cmake openmpi-bin openmpi-common libopenmpi-dev libhdf5-openmpi-dev libblas-dev libopenblas-dev 
   - julia -e 'Pkg.clone("CompilerTools")'
   - julia -e 'Pkg.clone("ParallelAccelerator")'
   - julia -e 'Pkg.build("ParallelAccelerator")'
   - julia -e 'Pkg.clone(pwd()); Pkg.build("HPAT"); Pkg.test("HPAT")'
-  - mpirun -np 2 julia examples/pi.jl 
+  - mpirun -np 2 julia examples/pi.jl
+  - julia -e 'Pkg.add("HDF5")'
+  - julia generate_data/generate_logistic_regression.jl --instances=10000 --path=/tmp/
+  - mpirun -np 2 julia examples/logistic_regression.jl --iterations=10 --file=/tmp/logistic_regression.hdf5
