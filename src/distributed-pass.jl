@@ -77,6 +77,7 @@ function mk_mult_int_expr(args::Array)
 end
 
 mk_add_int_expr(a,b) = mk_call(GlobalRef(Base,:box),[Int64, mk_call(GlobalRef(Base,:add_int),[a,b])])
+mk_sub_int_expr(a,b) = mk_call(GlobalRef(Base,:box),[Int64, mk_call(GlobalRef(Base,:sub_int),[a,b])])
 
 dist_ir_funcs = Set([   TopNode(:unsafe_arrayref),
                         TopNode(:unsafe_arrayset),
@@ -550,7 +551,7 @@ function adjust_arrayrefs(stmt::Expr, loop_start_var::Symbol)
         if topCall.name==:unsafe_arrayref || topCall.name==:unsafe_arrayset
             # TODO: simply divide the last dimension, more general partitioning needed
             index_arg = stmt.args[end]
-            stmt.args[end] = :($(toSymGen(index_arg))-$loop_start_var+1)
+            stmt.args[end] = mk_add_int_expr(mk_sub_int_expr(toSymGen(index_arg),loop_start_var),1)
         end
     end
 end
