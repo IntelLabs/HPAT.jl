@@ -78,6 +78,7 @@ end
 
 mk_add_int_expr(a,b) = mk_call(GlobalRef(Base,:box),[Int64, mk_call(GlobalRef(Base,:add_int),[a,b])])
 mk_sub_int_expr(a,b) = mk_call(GlobalRef(Base,:box),[Int64, mk_call(GlobalRef(Base,:sub_int),[a,b])])
+mk_div_int_expr(a,b) = mk_call(GlobalRef(Base,:box),[Int64, mk_call(GlobalRef(Base,:sdiv_int),[a,b])])
 
 dist_ir_funcs = Set([   TopNode(:unsafe_arrayref),
                         TopNode(:unsafe_arrayset),
@@ -275,7 +276,7 @@ function from_assignment(node::Expr, state::DistPassState)
             CompilerTools.LambdaHandling.addLocalVar(darr_count_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
 
 
-            darr_div_expr = :($darr_div_var = $(arr_tot_size)/__hpat_num_pes)
+            darr_div_expr = Expr(:(=),darr_div_var, mk_div_int_expr(arr_tot_size,:__hpat_num_pes))
             # zero-based index to match C interface of HDF5
             darr_start_expr = Expr(:(=), darr_start_var, mk_mult_int_expr([:__hpat_node_id,darr_div_var])) 
             darr_count_expr = :($darr_count_var = __hpat_node_id==__hpat_num_pes-1 ? $arr_tot_size-__hpat_node_id*$darr_div_var : $darr_div_var)
@@ -308,7 +309,7 @@ function from_assignment(node::Expr, state::DistPassState)
             CompilerTools.LambdaHandling.addLocalVar(darr_count_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
     
     
-            darr_div_expr = :($darr_div_var = $(arr_tot_size)/__hpat_num_pes)
+            darr_div_expr = Expr(:(=), darr_div_var, mk_div_int_expr(arr_tot_size,:__hpat_num_pes))
             # zero-based index to match C interface of HDF5
             darr_start_expr = Expr(:(=),darr_start_var, mk_mult_int_expr([:__hpat_node_id, darr_div_var]))
             darr_count_expr = :($darr_count_var = __hpat_node_id==__hpat_num_pes-1 ? $arr_tot_size-__hpat_node_id*$darr_div_var : $darr_div_var)
@@ -406,7 +407,7 @@ function from_parfor(node::Expr, state)
         # some parfors have no arrays
         global_size = loopnest.upper
 
-        loop_div_expr = :($loop_div_var = $(global_size)/__hpat_num_pes)
+        loop_div_expr = Expr(:(=),loop_div_var, mk_div_int_expr(global_size,:__hpat_num_pes))
         loop_start_expr = Expr(:(=), loop_start_var, mk_add_int_expr(mk_mult_int_expr([:__hpat_node_id,loop_div_var]),1))
         loop_end_expr = :($loop_end_var = __hpat_node_id==__hpat_num_pes-1 ?$(global_size):(__hpat_node_id+1)*$loop_div_var)
 
