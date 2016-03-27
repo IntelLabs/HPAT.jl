@@ -104,6 +104,34 @@ function pattern_match_call_dist_reduce(f::Any, v::Any, rf::Any, o::Any)
     return ""
 end
 
+function pattern_match_call_dist_portion(f::Symbol, total::SymAllGen, div::SymAllGen, num_pes::Symbol, node_id::Symbol)
+    s = ""
+    if f==:__hpat_get_node_portion
+        c_total = ParallelAccelerator.CGen.from_expr(total)
+        c_div = ParallelAccelerator.CGen.from_expr(div)
+        s = "(($node_id==$num_pes-1) ? $c_total-$node_id*$c_div : $c_div)"
+    end
+    return s
+end
+
+function pattern_match_call_dist_portion(f::ANY, total::ANY, div::ANY, num_pes::ANY, node_id::ANY)
+    return ""
+end
+
+function pattern_match_call_dist_node_end(f::Symbol, total::SymAllGen, div::SymAllGen, num_pes::Symbol, node_id::Symbol)
+    s = ""
+    if f==:__hpat_get_node_end
+        c_total = ParallelAccelerator.CGen.from_expr(total)
+        c_div = ParallelAccelerator.CGen.from_expr(div)
+        s = "(($node_id==$num_pes-1) ? $c_total : ($node_id+1)*$c_div)"
+    end
+    return s
+end
+
+function pattern_match_call_dist_node_end(f::ANY, total::ANY, div::ANY, num_pes::ANY, node_id::ANY)
+    return ""
+end
+
 function pattern_match_call_dist_allreduce(f::TopNode, var::SymAllGen, reductionFunc::TopNode, output::SymAllGen, size::Symbol)
     if f.name==:hps_dist_allreduce
         mpi_type = ""
@@ -494,6 +522,8 @@ function pattern_match_call(ast::Array{Any, 1})
         s *= pattern_match_call_data_src_open(ast[1],ast[2],ast[3], ast[4], ast[5])
         s *= pattern_match_call_data_src_read(ast[1],ast[2],ast[3], ast[4], ast[5])
         s *= pattern_match_call_dist_allreduce(ast[1],ast[2],ast[3], ast[4], ast[5])
+        s *= pattern_match_call_dist_portion(ast[1],ast[2],ast[3], ast[4], ast[5])
+        s *= pattern_match_call_dist_node_end(ast[1],ast[2],ast[3], ast[4], ast[5])
     elseif(length(ast)==8)
         s *= pattern_match_call_kmeans(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8])
     elseif(length(ast)==12)
