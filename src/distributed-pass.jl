@@ -57,6 +57,25 @@ import ParallelAccelerator.ParallelIR.ISASSIGNEDONCE
 import ParallelAccelerator.ParallelIR.ISPRIVATEPARFORLOOP
 import ParallelAccelerator.ParallelIR.PIRReduction
 
+mk_call(fun,args) = Expr(:call, fun, args...)
+
+function mk_mult_int_expr(args::Array)
+    if length(args)==0
+        return 1
+    elseif length(args)==1
+        return args[1]
+    end
+    next = 2
+    prev_expr = args[1]
+
+    while next<=length(args)
+        m_call = mk_call(GlobalRef(Base,:mul_int),[prev_expr,args[next]])
+        prev_expr  = mk_call(GlobalRef(Base,:box),[Int64,m_call])
+        next += 1
+    end
+    return prev_expr
+end
+
 dist_ir_funcs = Set([   TopNode(:unsafe_arrayref),
                         TopNode(:unsafe_arrayset),
                         :__hpat_data_source_HDF5_open, 
@@ -255,7 +274,7 @@ function from_assignment(node::Expr, state::DistPassState)
 
             darr_div_expr = :($darr_div_var = $(arr_tot_size)/__hpat_num_pes)
             # zero-based index to match C interface of HDF5
-            darr_start_expr = :($darr_start_var = __hpat_node_id*$darr_div_var) 
+            darr_start_expr = Expr(:(=), darr_start_var, mk_mult_int_expr([:__hpat_node_id,darr_div_var])) 
             darr_count_expr = :($darr_count_var = __hpat_node_id==__hpat_num_pes-1 ? $arr_tot_size-__hpat_node_id*$darr_div_var : $darr_div_var)
 
             rhs.args[end-1] = darr_count_var
@@ -288,7 +307,7 @@ function from_assignment(node::Expr, state::DistPassState)
     
             darr_div_expr = :($darr_div_var = $(arr_tot_size)/__hpat_num_pes)
             # zero-based index to match C interface of HDF5
-            darr_start_expr = :($darr_start_var = __hpat_node_id*$darr_div_var) 
+            darr_start_expr = Expr(:(=),darr_start_var, mk_mult_int_expr([:__hpat_node_id, darr_div_var]))
             darr_count_expr = :($darr_count_var = __hpat_node_id==__hpat_num_pes-1 ? $arr_tot_size-__hpat_node_id*$darr_div_var : $darr_div_var)
     
             # create a new tuple for reshape
@@ -333,7 +352,7 @@ function from_assignment(node::Expr, state::DistPassState)
                     # get reduction size
                     reduce_size_var = symbol("__hpat_gemm_reduce_size_"*string(reduce_num))
                     CompilerTools.LambdaHandling.addLocalVar(reduce_size_var, Int, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-                    size_expr = Expr(:(=), reduce_size_var, Expr(:call,:*,out_dim_sizes[1], out_dim_sizes[2]))
+                    size_expr = Expr(:(=), reduce_size_var, mk_mult_int_expr(out_dim_sizes))
 
                     # add allreduce call
                     allreduceCall = Expr(:call,TopNode(:hps_dist_allreduce), reduce_var, TopNode(:add_float), rhs.args[2], reduce_size_var)
@@ -432,7 +451,7 @@ function from_parfor(node::Expr, state)
             # get broadcast size
             bcast_size_var = symbol("__hpat_bcast_size_"*string(label))
             CompilerTools.LambdaHandling.addLocalVar(bcast_size_var, Int, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-            size_expr = Expr(:(=), bcast_size_var, Expr(:call,:*,1,state.arrs_dist_info[write_arr].dim_sizes...))
+            size_expr = Expr(:(=), bcast_size_var, mk_mult_int_expr(state.arrs_dist_info[write_arr].dim_sizes))
             bcast_expr = Expr(:call,:__hpat_dist_broadcast, write_arr, bcast_size_var)
 
             @dprintln(3,"DistPass rand() in sequential parfor ", parfor)
@@ -504,7 +523,7 @@ function from_call(node::Expr, state)
     elseif func==GlobalRef(Base,:arraylen) && in(toSymGen(node.args[2]), state.dist_arrays)
         arr = toSymGen(node.args[2])
         #len = parse(foldl((a,b)->"$a*$b", "1",state.arrs_dist_info[arr].dim_sizes))
-        len = Expr(:call,:*, 1,state.arrs_dist_info[arr].dim_sizes...)
+        len = mk_mult_int_expr(state.arrs_dist_info[arr].dim_sizes)
         @dprintln(3,"found arraylen on dist array: ",node," ",arr," len: ",len)
         @dprintln(3,"found arraylen on dist array: ",node," ",arr)
         return [len]
