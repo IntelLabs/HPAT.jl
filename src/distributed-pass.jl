@@ -45,6 +45,7 @@ import ParallelAccelerator.ParallelIR
 import ParallelAccelerator.ParallelIR.toSynGemOrInt
 import ParallelAccelerator.ParallelIR.isArrayType
 import ParallelAccelerator.ParallelIR.getParforNode
+import ParallelAccelerator.ParallelIR.isBareParfor
 import ParallelAccelerator.ParallelIR.isAllocation
 import ParallelAccelerator.ParallelIR.TypedExpr
 import ParallelAccelerator.ParallelIR.get_alloc_shape

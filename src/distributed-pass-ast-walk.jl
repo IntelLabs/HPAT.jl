@@ -101,7 +101,7 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
                 # index variable as in nested comprehension case of K-Means. 
                 # Parfor can't be parallelized in general cases since array can't be partitioned properly.
                 # ParallelIR should optimize out the trivial cases where indices are essentially equal (i=1+1*index-1 in k-means)   
-                if isAccessIndexDependent(indices, indexVariable, body_lives)
+                if isAccessIndexDependent(indices, indexVariable, body_lives, state)
                     push!(myArrs, arr)
                     @dprintln(2,"DistPass arr info walk arr index dependent: ",arr," ", indices, " ", indexVariable)
                     seq = true
@@ -195,19 +195,26 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
     return CompilerTools.AstWalker.ASTWALK_RECURSE
 end
 
-function isAccessIndexDependent(indices::Vector{Any}, indexVariable::Symbol, body_lives::BlockLiveness)
+function isAccessIndexDependent(indices::Vector{Any}, indexVariable::Symbol, body_lives::BlockLiveness, state)
     # if any index is dependent
-    return reduce(|, [ isAccessIndexDependent(indices[i], indexVariable, body_lives) for i in 1:length(indices)] )
+    return reduce(|, [ isAccessIndexDependent(indices[i], indexVariable, body_lives, state) for i in 1:length(indices)] )
 end
 
 """
 For each statement of parfor's body, see if array access index is in Def set and parfor's indexVariable is in Use set.
 This is a hack to work around not having dependence analysis in CompilerTools.
 """
-function isAccessIndexDependent(index::SymGen, indexVariable::Symbol, body_lives::BlockLiveness)
+function isAccessIndexDependent(index::SymGen, indexVariable::Symbol, body_lives::BlockLiveness, state)
     for bb in collect(values(body_lives.basic_blocks))
         for stmt in bb.statements
-            if in(index,stmt.def) && in(indexVariable, stmt.use)
+            if isBareParfor(stmt.tls.expr)
+                inner_fake_body = CompilerTools.LambdaHandling.LambdaVarInfoToLambdaExpr(state.LambdaVarInfo, TypedExpr(nothing, :body, getParforNode(stmt.tls.expr).body...))
+                #@dprintln(3,"inner fake_body = ", fake_body)
+
+                inner_body_lives = CompilerTools.LivenessAnalysis.from_expr(inner_fake_body, ParallelIR.pir_live_cb, state.LambdaVarInfo)
+                #@dprintln(3, "inner body_lives = ", body_lives)
+                return isAccessIndexDependent(index, indexVariable, inner_body_lives, state)
+            elseif in(index,stmt.def) && in(indexVariable, stmt.use)
                 @dprintln(2,"DistPass arr info walk dependent index found: ", index," ",indexVariable,"  ",stmt)
                 return true
             end
