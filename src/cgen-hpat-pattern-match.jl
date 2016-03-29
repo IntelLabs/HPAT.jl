@@ -306,6 +306,35 @@ function pattern_match_call_start_checkpoint(f::Any, id::Any)
 end
 
 """
+Generate code for finish checkpoint.
+"""
+function pattern_match_call_finish_checkpoint(f::GlobalRef, id::Union{Int,SymAllGen})
+    @dprintln(3, "pattern_match_call_finish_checkpoint f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id))
+    s = ""
+    if f.mod == HPAT.Checkpointing && f.name==:hpat_finish_checkpoint_region
+        s *= "__hpat_finish_checkpoint_region(" * ParallelAccelerator.CGen.from_expr(id) * ")"
+    end
+    @dprintln(3, "pattern_match_call_finish_checkpoint done s = ", s)
+    return s
+end
+
+function pattern_match_call_finish_checkpoint(f::Expr, id::Union{Int,SymAllGen})
+    @dprintln(3, "pattern_match_call_finish_checkpoint f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id))
+    s = ""
+    if f.head == :call && f.args[1] == TopNode(:getfield)
+        @dprintln(3, "pattern_match_call_finish_checkpoint f is call to getfield")
+        s *= pattern_match_call_finish_checkpoint(GlobalRef(eval(f.args[2]), f.args[3].value), id)
+    end
+    return s
+end
+
+function pattern_match_call_finish_checkpoint(f::Any, id::Any)
+    @dprintln(3, "pattern_match_call_finish_checkpoint f = ", f, " type = ", typeof(f), " id = ", id, " type = ", typeof(id))
+    return ""
+end
+
+
+"""
 Generate code for end checkpoint.
 """
 function pattern_match_call_end_checkpoint(f::GlobalRef, id::Union{Int,SymAllGen})
@@ -604,6 +633,7 @@ function pattern_match_call(ast::Array{Any, 1})
         s *= pattern_match_call_data_src_close(ast[1], ast[2])
         s *= pattern_match_call_start_checkpoint(ast[1], ast[2])
         s *= pattern_match_call_end_checkpoint(ast[1], ast[2])
+        s *= pattern_match_call_finish_checkpoint(ast[1], ast[2])
     elseif(length(ast)==3) 
         s *= pattern_match_call_dist_h5_size(ast[1],ast[2],ast[3])
         s *= pattern_match_call_dist_bcast(ast[1],ast[2],ast[3])
