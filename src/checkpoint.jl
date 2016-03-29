@@ -52,7 +52,23 @@ single_node_mttf = 4000.0   # default to 4000 hours MTTF of a single node
 single_node_faults_per_million = 1000000.0 / single_node_mttf
 checkpoint_time = 1.0 / 3600.0  # 1 minute checkpoint time converted to hours
 
-function hpat_get_sec_since_epoch()
+@noinline function hpat_get_sec_since_epoch()
+    convert(Int32,1)
+end
+
+# Starts a checkpoint session.
+# Return a Int64 checkpoint handle that should be passed to the other checkpoint routines.
+@noinline function hpat_start_checkpoint(checkpoint_location)
+    convert(Int32,1)
+end
+
+@noinline function hpat_value_checkpoint(checkpoint_handle :: Int32, value)
+    convert(Int32,1)
+end
+
+# Finishes a checkpointing session.
+# Takes the handle of the checkpoint session to terminate.
+@noinline function hpat_end_checkpoint(checkpoint_handle :: Int32)
     convert(Int32,1)
 end
 
@@ -119,11 +135,18 @@ function from_root(function_name, ast :: Expr, with_restart :: Bool)
     checkpoint_func_str = string(checkpoint_func_str, "    system_mttf::Float64 = 1000000.0 / system_faults_per_million_hours\n")
     checkpoint_func_str = string(checkpoint_func_str, "    cur_time = HPAT.Checkpointing.hpat_get_sec_since_epoch()\n")
     checkpoint_func_str = string(checkpoint_func_str, "    if ((cur_time - start_time) / 3600.0) > sqrt(2 * system_mttf * ", checkpoint_time, ")\n")
+    # This num_pes < 1 ? unique_num : unique_num is a hack to get the input to start_checkpoint multiple defined
+    # so that ParallelIR doesn't incorrectly hoist the start of the checkpoint before the conditional.
+    checkpoint_func_str = string(checkpoint_func_str, "        checkpoint_handle = HPAT.Checkpointing.hpat_start_checkpoint(num_pes < 1 ? ", unique_num, ":", unique_num, ")\n")
+    for i = 1:length(argument_names)
+    checkpoint_func_str = string(checkpoint_func_str, "        HPAT.Checkpointing.hpat_value_checkpoint(checkpoint_handle, $(argument_names[i]))\n")
+    end
+    checkpoint_func_str = string(checkpoint_func_str, "        HPAT.Checkpointing.hpat_end_checkpoint(checkpoint_handle)\n")
     checkpoint_func_str = string(checkpoint_func_str, "        return cur_time\n")
     checkpoint_func_str = string(checkpoint_func_str, "    end\n")
     checkpoint_func_str = string(checkpoint_func_str, "    return start_time\n")
     checkpoint_func_str = string(checkpoint_func_str, "end\n")
-    @dprintln(3,"checkpoint_func_str = ", checkpoint_func_str)
+    @dprintln(3,"checkpoint_func_str = \n", checkpoint_func_str)
     Main.eval(parse(checkpoint_func_str))   # Force the new checkpoint function into existence.
 
     assert(!isempty(loop_entry_bb.statements))
