@@ -78,6 +78,13 @@ function pattern_match_reduce_sum(reductionFunc::DelayedFunc)
     return false
 end
 
+function pattern_match_reduce_sum(reductionFunc::TopNode)
+    if reductionFunc.name==:add_float || reductionFunc.name==:add_int
+        return true
+    end
+    return false
+end
+
 function pattern_match_call_dist_reduce(f::TopNode, var::SymbolNode, reductionFunc::DelayedFunc, output::Symbol)
     if f.name==:hpat_dist_reduce
         mpi_type = ""
@@ -141,7 +148,7 @@ function pattern_match_call_dist_node_end(f::ANY, total::ANY, div::ANY, num_pes:
     return ""
 end
 
-function pattern_match_call_dist_allreduce(f::TopNode, var::SymAllGen, reductionFunc::TopNode, output::SymAllGen, size::Symbol)
+function pattern_match_call_dist_allreduce(f::TopNode, var::SymAllGen, reductionFunc, output::SymAllGen, size::Union{SymAllGen,Int})
     if f.name==:hpat_dist_allreduce
         mpi_type = ""
         var = toSymGen(var)
@@ -171,7 +178,7 @@ function pattern_match_call_dist_allreduce(f::TopNode, var::SymAllGen, reduction
         end
 
         mpi_func = ""
-        if reductionFunc.name == :add_float
+        if pattern_match_reduce_sum(reductionFunc)
             mpi_func = "MPI_SUM"
         else
             throw("CGen unsupported MPI reduction function")

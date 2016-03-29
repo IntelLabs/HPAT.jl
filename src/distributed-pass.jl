@@ -582,7 +582,7 @@ function gen_dist_reductions(reductions::Array{PIRReduction,1}, state)
         CompilerTools.LambdaHandling.addLocalVar(reduce_var, reduce.reductionVar.typ, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
 
         reduce_var_init = Expr(:(=), reduce_var, 0)
-        reduceCall = Expr(:call,TopNode(:hpat_dist_reduce),reduce.reductionVar,reduce.reductionFunc, reduce_var)
+        reduceCall = Expr(:call,TopNode(:hpat_dist_allreduce),reduce.reductionVar,reduce.reductionFunc, reduce_var, 1)
         rootCopy = Expr(:(=), reduce.reductionVar, reduce_var)
         append!(res,[reduce_var_init; reduceCall; rootCopy])
     end
