@@ -72,6 +72,10 @@ end
     convert(Int32,1)
 end
 
+@noinline function hpat_finish_checkpoint_region(checkpoint_location)
+    convert(Int32,1)
+end
+
 # ENTRY to checkpointing
 function from_root(function_name, ast :: Expr, with_restart :: Bool)
     @assert ast.head == :lambda "Input to Checkpointing should be :lambda Expr"
@@ -92,71 +96,82 @@ function from_root(function_name, ast :: Expr, with_restart :: Bool)
         @dprintln(0,"Checkpointing.from_root currently only supports functions with exactly one loop.  ", function_name, " has ", length(loops), " loops.")
         return ast
     end
-    the_loop = loops[1]
+    for the_loop in loops
+        #the_loop = loops[1]
 
-    loop_entry = the_loop.head
-    loop_entry_bb = lives.cfg.basic_blocks[loop_entry]
-    @dprintln(3,"loop_entry = ", loop_entry)
-    liveness_loop_entry = CompilerTools.LivenessAnalysis.getBasicBlockFromBlockNumber(loop_entry, lives)
-    @dprintln(3,"liveness_loop_entry = ", liveness_loop_entry)
-    bb_loop_members = map(x -> CompilerTools.LivenessAnalysis.getBasicBlockFromBlockNumber(x, lives), the_loop.members)
-    @dprintln(3,"bb_loop_members = ", bb_loop_members)
-    loop_live_in = liveness_loop_entry.live_in
-    @dprintln(3,"loop_live_in = ", loop_live_in)
-    loop_def = reduce((x,y) -> union(x,y), Set{CompilerTools.LambdaHandling.SymGen}(), map(x -> x.def, bb_loop_members))
-    @dprintln(3,"loop_def = ", loop_def)
-    live_in_and_def = intersect(loop_live_in, loop_def)
-    @dprintln(3,"live_in_and_def = ", live_in_and_def)
-    assert(!isempty(live_in_and_def))
-    
-    pre_loop_stmts = Any[]
-    checkpoint_timer_sn = ParallelAccelerator.ParallelIR.createStateVar(state, "__hpat_checkpoint_timer", Int32, ParallelAccelerator.ParallelIR.ISASSIGNED)
+        loop_entry = the_loop.head
+        loop_entry_bb = lives.cfg.basic_blocks[loop_entry]
+        @dprintln(3,"loop_entry = ", loop_entry)
+        liveness_loop_entry = CompilerTools.LivenessAnalysis.getBasicBlockFromBlockNumber(loop_entry, lives)
+        @dprintln(3,"liveness_loop_entry = ", liveness_loop_entry)
+        bb_loop_members = map(x -> CompilerTools.LivenessAnalysis.getBasicBlockFromBlockNumber(x, lives), the_loop.members)
+        @dprintln(3,"bb_loop_members = ", bb_loop_members)
+        loop_live_in = liveness_loop_entry.live_in
+        @dprintln(3,"loop_live_in = ", loop_live_in)
+        loop_def = reduce((x,y) -> union(x,y), Set{CompilerTools.LambdaHandling.SymGen}(), map(x -> x.def, bb_loop_members))
+        @dprintln(3,"loop_def = ", loop_def)
+        live_in_and_def = intersect(loop_live_in, loop_def)
+        @dprintln(3,"live_in_and_def = ", live_in_and_def)
+        assert(!isempty(live_in_and_def))
+        
+        pre_loop_stmts = Any[]
+        checkpoint_timer_sn = ParallelAccelerator.ParallelIR.createStateVar(state, "__hpat_checkpoint_timer", Int32, ParallelAccelerator.ParallelIR.ISASSIGNED)
 
-    push!(pre_loop_stmts, ParallelAccelerator.ParallelIR.mk_assignment_expr(checkpoint_timer_sn, ParallelAccelerator.ParallelIR.TypedExpr(Int32, :call, GlobalRef(HPAT.Checkpointing,:hpat_get_sec_since_epoch))))
+        push!(pre_loop_stmts, ParallelAccelerator.ParallelIR.mk_assignment_expr(checkpoint_timer_sn, ParallelAccelerator.ParallelIR.TypedExpr(Int32, :call, GlobalRef(HPAT.Checkpointing,:hpat_get_sec_since_epoch))))
 
-    CompilerTools.Loops.insertNewBlockBeforeLoop(the_loop, lives.cfg, pre_loop_stmts)
-    @dprintln(3,"CFG after insert = ", lives.cfg)
+        CompilerTools.Loops.insertNewBlockBeforeLoop(the_loop, lives.cfg, pre_loop_stmts)
+        @dprintln(3,"CFG after insert = ", lives.cfg)
 
-    # Create the checkpoint function as a string and then parse/eval to force it into existence.
-    # The function takes the last checkpoint time.  If enough time has expired then do the checkpoint and return the current time.
-    # If checkpoint time has not arrived then return the last checkpoint time.
-    # The time between checkpoints is sqrt( 2 * time_to_checkpoint * system_mttf).
-    # We get system_mttf by assuming some reasonable single_node_mttf, converting to failures per million hours, multiple by the
-    # number of nodes in the system to get full system failures per million hours and then convert back to full system mttf (in hours).
-    checkpoint_func_name = string("__hpat_checkpoint_func_", unique_num)
+        # Add a call after the loop to clean up any checkpoint file.
+        postSet = CompilerTools.Loops.getPostLoopBlock(the_loop, lives.cfg)
+        assert(length(postSet) == 1)
+        postLoopBlockIndex = first(postSet)
+        @dprintln(3,"postLoopBlockIndex = ", postLoopBlockIndex)
+        @dprintln(3,"cfg = ", lives.cfg.basic_blocks)
+        postLoopBB = lives.cfg.basic_blocks[postLoopBlockIndex] 
+        CompilerTools.CFGs.insertStatementBeginningOfBlock(lives.cfg, postLoopBB, ParallelAccelerator.ParallelIR.TypedExpr(Int32, :call, GlobalRef(HPAT.Checkpointing,:hpat_finish_checkpoint_region),unique_num))
 
-    # Creates the first line of the function with these characteristics.
-    #   1. The function name is __hpat_checkpoint_func_ followed by a unique number to make the function name unique.
-    #   2. The first parameter is the last checkpoint time.
-    #   3. Other parameters are the elements that need to go in the checkpoint file.
-    argument_names = [ string("arg",i) for i = 1:length(live_in_and_def) ]
-    checkpoint_func_str = string(                     "function ", checkpoint_func_name, "(start_time, num_pes, ", foldl((a,b) -> "$a, $b", argument_names), ")\n")
-    checkpoint_func_str = string(checkpoint_func_str, "    system_faults_per_million_hours = num_pes * ", single_node_faults_per_million, "\n")
-    checkpoint_func_str = string(checkpoint_func_str, "    system_mttf::Float64 = 1000000.0 / system_faults_per_million_hours\n")
-    checkpoint_func_str = string(checkpoint_func_str, "    cur_time = HPAT.Checkpointing.hpat_get_sec_since_epoch()\n")
-    checkpoint_func_str = string(checkpoint_func_str, "    if ((cur_time - start_time) / 3600.0) > sqrt(2 * system_mttf * ", checkpoint_time, ")\n")
-    # This num_pes < 1 ? unique_num : unique_num is a hack to get the input to start_checkpoint multiple defined
-    # so that ParallelIR doesn't incorrectly hoist the start of the checkpoint before the conditional.
-    checkpoint_func_str = string(checkpoint_func_str, "        checkpoint_handle = HPAT.Checkpointing.hpat_start_checkpoint(num_pes < 1 ? ", unique_num, ":", unique_num, ")\n")
-    for i = 1:length(argument_names)
-    checkpoint_func_str = string(checkpoint_func_str, "        HPAT.Checkpointing.hpat_value_checkpoint(checkpoint_handle, $(argument_names[i]))\n")
+        # Create the checkpoint function as a string and then parse/eval to force it into existence.
+        # The function takes the last checkpoint time.  If enough time has expired then do the checkpoint and return the current time.
+        # If checkpoint time has not arrived then return the last checkpoint time.
+        # The time between checkpoints is sqrt( 2 * time_to_checkpoint * system_mttf).
+        # We get system_mttf by assuming some reasonable single_node_mttf, converting to failures per million hours, multiple by the
+        # number of nodes in the system to get full system failures per million hours and then convert back to full system mttf (in hours).
+        checkpoint_func_name = string("__hpat_checkpoint_func_", unique_num)
+
+        # Creates the first line of the function with these characteristics.
+        #   1. The function name is __hpat_checkpoint_func_ followed by a unique number to make the function name unique.
+        #   2. The first parameter is the last checkpoint time.
+        #   3. Other parameters are the elements that need to go in the checkpoint file.
+        argument_names = [ string("arg",i) for i = 1:length(live_in_and_def) ]
+        checkpoint_func_str = string(                     "function ", checkpoint_func_name, "(start_time, num_pes, ", foldl((a,b) -> "$a, $b", argument_names), ")\n")
+        checkpoint_func_str = string(checkpoint_func_str, "    system_faults_per_million_hours = num_pes * ", single_node_faults_per_million, "\n")
+        checkpoint_func_str = string(checkpoint_func_str, "    system_mttf::Float64 = 1000000.0 / system_faults_per_million_hours\n")
+        checkpoint_func_str = string(checkpoint_func_str, "    cur_time = HPAT.Checkpointing.hpat_get_sec_since_epoch()\n")
+        checkpoint_func_str = string(checkpoint_func_str, "    if ((cur_time - start_time) / 3600.0) > sqrt(2 * system_mttf * ", checkpoint_time, ")\n")
+        # This num_pes < 1 ? unique_num : unique_num is a hack to get the input to start_checkpoint multiple defined
+        # so that ParallelIR doesn't incorrectly hoist the start of the checkpoint before the conditional.
+        checkpoint_func_str = string(checkpoint_func_str, "        checkpoint_handle = HPAT.Checkpointing.hpat_start_checkpoint(num_pes < 1 ? ", unique_num, ":", unique_num, ")\n")
+        for i = 1:length(argument_names)
+        checkpoint_func_str = string(checkpoint_func_str, "        HPAT.Checkpointing.hpat_value_checkpoint(checkpoint_handle, $(argument_names[i]))\n")
+        end
+        checkpoint_func_str = string(checkpoint_func_str, "        HPAT.Checkpointing.hpat_end_checkpoint(checkpoint_handle)\n")
+        checkpoint_func_str = string(checkpoint_func_str, "        return cur_time\n")
+        checkpoint_func_str = string(checkpoint_func_str, "    end\n")
+        checkpoint_func_str = string(checkpoint_func_str, "    return start_time\n")
+        checkpoint_func_str = string(checkpoint_func_str, "end\n")
+        @dprintln(3,"checkpoint_func_str = \n", checkpoint_func_str)
+        Main.eval(parse(checkpoint_func_str))   # Force the new checkpoint function into existence.
+
+        assert(!isempty(loop_entry_bb.statements))
+        first_loop_entry_stmt = loop_entry_bb.statements[1]
+        # We can use this version with the __hpat_num_pes variable once we are able to run the checkpointing pass after the distributed pass.
+        #call_checkpoint_expr  = ParallelAccelerator.ParallelIR.mk_assignment_expr(checkpoint_timer_sn, ParallelAccelerator.ParallelIR.TypedExpr(Uint64, :call, TopNode(symbol(checkpoint_func_name)), checkpoint_timer_sn, :__hpat_num_pes, live_in_and_def...))
+        pes_expr = ParallelAccelerator.ParallelIR.TypedExpr(Int32, :call, TopNode(:hps_dist_num_pes))
+        #pes_expr = 8
+        call_checkpoint_expr  = ParallelAccelerator.ParallelIR.mk_assignment_expr(checkpoint_timer_sn, ParallelAccelerator.ParallelIR.TypedExpr(Int32, :call, GlobalRef(Main,symbol(checkpoint_func_name)), checkpoint_timer_sn, pes_expr, live_in_and_def...))
+        CompilerTools.CFGs.insertStatementBefore(lives.cfg, loop_entry_bb, first_loop_entry_stmt.index, call_checkpoint_expr)
     end
-    checkpoint_func_str = string(checkpoint_func_str, "        HPAT.Checkpointing.hpat_end_checkpoint(checkpoint_handle)\n")
-    checkpoint_func_str = string(checkpoint_func_str, "        return cur_time\n")
-    checkpoint_func_str = string(checkpoint_func_str, "    end\n")
-    checkpoint_func_str = string(checkpoint_func_str, "    return start_time\n")
-    checkpoint_func_str = string(checkpoint_func_str, "end\n")
-    @dprintln(3,"checkpoint_func_str = \n", checkpoint_func_str)
-    Main.eval(parse(checkpoint_func_str))   # Force the new checkpoint function into existence.
-
-    assert(!isempty(loop_entry_bb.statements))
-    first_loop_entry_stmt = loop_entry_bb.statements[1]
-    # We can use this version with the __hpat_num_pes variable once we are able to run the checkpointing pass after the distributed pass.
-    #call_checkpoint_expr  = ParallelAccelerator.ParallelIR.mk_assignment_expr(checkpoint_timer_sn, ParallelAccelerator.ParallelIR.TypedExpr(Uint64, :call, TopNode(symbol(checkpoint_func_name)), checkpoint_timer_sn, :__hpat_num_pes, live_in_and_def...))
-    pes_expr = ParallelAccelerator.ParallelIR.TypedExpr(Int32, :call, TopNode(:hps_dist_num_pes))
-    #pes_expr = 8
-    call_checkpoint_expr  = ParallelAccelerator.ParallelIR.mk_assignment_expr(checkpoint_timer_sn, ParallelAccelerator.ParallelIR.TypedExpr(Int32, :call, GlobalRef(Main,symbol(checkpoint_func_name)), checkpoint_timer_sn, pes_expr, live_in_and_def...))
-    CompilerTools.CFGs.insertStatementBefore(lives.cfg, loop_entry_bb, first_loop_entry_stmt.index, call_checkpoint_expr)
 
     # Reconstitute the body with the new basic block.
     body.args = CompilerTools.CFGs.createFunctionBody(lives.cfg)
