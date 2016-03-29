@@ -113,7 +113,7 @@ function pattern_match_call_dist_reduce(f::Any, v::Any, rf::Any, o::Any)
     return ""
 end
 
-function pattern_match_call_dist_portion(f::Symbol, total::SymAllGen, div::SymAllGen, num_pes::Symbol, node_id::Symbol)
+function pattern_match_call_dist_portion(f::Symbol, total::Union{SymAllGen,Int}, div::Union{SymAllGen,Int}, num_pes::Symbol, node_id::Symbol)
     s = ""
     if f==:__hpat_get_node_portion
         c_total = ParallelAccelerator.CGen.from_expr(total)
