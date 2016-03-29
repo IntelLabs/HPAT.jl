@@ -7,9 +7,9 @@
 
 class file_j2c_array_io : public j2c_array_io {
 protected:
-    std::ofstream *checkpoint_file;
+    std::fstream *checkpoint_file;
 public:
-    file_j2c_array_io(std::ofstream *cf) : checkpoint_file(cf) {}
+    file_j2c_array_io(std::fstream *cf) : checkpoint_file(cf) {}
 
     virtual void write_in(void *arr, uint64_t arr_length, unsigned int elem_size, bool immutable) {
         checkpoint_file->write((char*)&arr_length, sizeof(arr_length));
@@ -33,7 +33,7 @@ public:
 };
 
 int32_t g_checkpoint_handle = 0;
-std::ofstream checkpoint_file;
+std::fstream checkpoint_file;
 int64_t g_unique;
 
 int32_t __hpat_start_checkpoint(int64_t unique_checkpoint_location) {
@@ -56,6 +56,7 @@ int32_t __hpat_value_checkpoint(int32_t checkpoint_handle, int32_t value) {
         assert(checkpoint_file.is_open());
         checkpoint_file.write((char*)&value, sizeof(value));
     }
+    return 0;
 }
 
 int32_t __hpat_value_checkpoint(int32_t checkpoint_handle, int64_t value) {
@@ -65,6 +66,7 @@ int32_t __hpat_value_checkpoint(int32_t checkpoint_handle, int64_t value) {
         assert(checkpoint_file.is_open());
         checkpoint_file.write((char*)&value, sizeof(value));
     }
+    return 0;
 }
 
 int32_t __hpat_value_checkpoint(int32_t checkpoint_handle, float value) {
@@ -74,6 +76,7 @@ int32_t __hpat_value_checkpoint(int32_t checkpoint_handle, float value) {
         assert(checkpoint_file.is_open());
         checkpoint_file.write((char*)&value, sizeof(value));
     }
+    return 0;
 }
 
 int32_t __hpat_value_checkpoint(int32_t checkpoint_handle, double value) {
@@ -83,6 +86,7 @@ int32_t __hpat_value_checkpoint(int32_t checkpoint_handle, double value) {
         assert(checkpoint_file.is_open());
         checkpoint_file.write((char*)&value, sizeof(value));
     }
+    return 0;
 }
 
 int32_t __hpat_value_checkpoint(int32_t checkpoint_handle, j2c_array<float> &value) {
@@ -93,6 +97,7 @@ int32_t __hpat_value_checkpoint(int32_t checkpoint_handle, j2c_array<float> &val
         file_j2c_array_io fjai(&checkpoint_file);
         value.serialize(&fjai);
     }
+    return 0;
 }
 
 int32_t __hpat_value_checkpoint(int32_t checkpoint_handle, j2c_array<double> &value) {
@@ -103,9 +108,12 @@ int32_t __hpat_value_checkpoint(int32_t checkpoint_handle, j2c_array<double> &va
         file_j2c_array_io fjai(&checkpoint_file);
         value.serialize(&fjai);
     }
+    return 0;
 }
 
 int32_t __hpat_end_checkpoint(int32_t checkpoint_handle) {
+    int32_t __hpat_node_id;
+    MPI_Comm_rank(MPI_COMM_WORLD,&__hpat_node_id);
     if (__hpat_node_id == 0) {
         std::stringstream ss;
         ss << "checkpoint_file_" << g_unique; 
@@ -113,5 +121,16 @@ int32_t __hpat_end_checkpoint(int32_t checkpoint_handle) {
         rename("hpat_checkpoint_in_progress", ss.str().c_str()); 
     }
     MPI_Barrier(MPI_COMM_WORLD);
+    return 0;
+}
+
+int32_t __hpat_finish_checkpoint_region(int64_t unique_checkpoint_location) {
+    int32_t __hpat_node_id;
+    MPI_Comm_rank(MPI_COMM_WORLD,&__hpat_node_id);
+    if (__hpat_node_id == 0) {
+        std::stringstream ss;
+        ss << "checkpoint_file_" << g_unique; 
+        remove(ss.str().c_str());
+    }
     return 0;
 }
