@@ -94,7 +94,7 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
             for access_indices in allArrAccesses[arr]
                 indices = map(toSymGen,access_indices)
                 # if array would be accessed in parallel in this Parfor
-                if in(indexVariable, indices)
+                if indices[end]==indexVariable
                     push!(myArrs, arr)
                 end
                 # An array access index can be dependent on parfor's
@@ -102,7 +102,7 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
                 # Parfor can't be parallelized in general cases since array can't be partitioned properly.
                 # ParallelIR should optimize out the trivial cases where indices are essentially equal (i=1+1*index-1 in k-means)   
                 if isAccessIndexDependent(indices, indexVariable, body_lives, state)
-                    push!(myArrs, arr)
+                    #push!(myArrs, arr)
                     @dprintln(2,"DistPass arr info walk arr index dependent: ",arr," ", indices, " ", indexVariable)
                     seq = true
                 end
