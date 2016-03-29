@@ -58,6 +58,15 @@ function pattern_match_call_get_sec_since_epoch(f::GlobalRef)
     end
 end
 
+function pattern_match_call_get_sec_since_epoch(f::Expr)
+    s = ""
+    if f.head == :call && f.args[1] == TopNode(:getfield)
+        @dprintln(3, "pattern_match_call_get_sec_since_epoch f is call to getfield")
+        s *= pattern_match_call_get_sec_since_epoch(GlobalRef(eval(f.args[2]), f.args[3].value))
+    end
+    return s
+end
+
 function pattern_match_call_get_sec_since_epoch(f::Any)
     return ""
 end
@@ -268,6 +277,89 @@ function pattern_match_call_data_src_close(f::Any, v::Any)
     return ""
 end
 
+"""
+Generate code for start checkpoint.
+"""
+function pattern_match_call_start_checkpoint(f::GlobalRef, id::Union{Int,SymAllGen})
+    @dprintln(3, "pattern_match_call_start_checkpoint f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id))
+    s = ""
+    if f.mod == HPAT.Checkpointing && f.name==:hpat_start_checkpoint
+        s *= "__hpat_start_checkpoint(" * ParallelAccelerator.CGen.from_expr(id) * ")"
+    end
+    @dprintln(3, "pattern_match_call_start_checkpoint done s = ", s)
+    return s
+end
+
+function pattern_match_call_start_checkpoint(f::Expr, id::Union{Int,SymAllGen})
+    @dprintln(3, "pattern_match_call_start_checkpoint f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id))
+    s = ""
+    if f.head == :call && f.args[1] == TopNode(:getfield)
+        @dprintln(3, "pattern_match_call_start_checkpoint f is call to getfield")
+        s *= pattern_match_call_start_checkpoint(GlobalRef(eval(f.args[2]), f.args[3].value), id)
+    end
+    return s
+end
+
+function pattern_match_call_start_checkpoint(f::Any, id::Any)
+    @dprintln(3, "pattern_match_call_start_checkpoint f = ", f, " type = ", typeof(f), " id = ", id, " type = ", typeof(id))
+    return ""
+end
+
+"""
+Generate code for end checkpoint.
+"""
+function pattern_match_call_end_checkpoint(f::GlobalRef, id::Union{Int,SymAllGen})
+    @dprintln(3, "pattern_match_call_end_checkpoint f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id))
+    s = ""
+    if f.mod == HPAT.Checkpointing && f.name==:hpat_end_checkpoint
+        s *= "__hpat_end_checkpoint(" * ParallelAccelerator.CGen.from_expr(id) * ")"
+    end
+    @dprintln(3, "pattern_match_call_end_checkpoint done s = ", s)
+    return s
+end
+
+function pattern_match_call_end_checkpoint(f::Expr, id::Union{Int,SymAllGen})
+    @dprintln(3, "pattern_match_call_end_checkpoint f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id))
+    s = ""
+    if f.head == :call && f.args[1] == TopNode(:getfield)
+        @dprintln(3, "pattern_match_call_end_checkpoint f is call to getfield")
+        s *= pattern_match_call_end_checkpoint(GlobalRef(eval(f.args[2]), f.args[3].value), id)
+    end
+    return s
+end
+
+function pattern_match_call_end_checkpoint(f::Any, id::Any)
+    @dprintln(3, "pattern_match_call_end_checkpoint f = ", f, " type = ", typeof(f), " id = ", id, " type = ", typeof(id))
+    return ""
+end
+
+"""
+Generate code for checkpointing a single program element.
+"""
+function pattern_match_call_value_checkpoint(f::GlobalRef, id::Union{Int,SymAllGen}, value::SymAllGen)
+    @dprintln(3, "pattern_match_call_value_checkpoint f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id), " value = ", value, " type = ", typeof(value))
+    s = ""
+    if f.mod == HPAT.Checkpointing && f.name==:hpat_value_checkpoint
+        s *= "__hpat_value_checkpoint(" * ParallelAccelerator.CGen.from_expr(id) * "," * ParallelAccelerator.CGen.from_expr(value) * ")"
+    end
+    @dprintln(3, "pattern_match_call_value_checkpoint done s = ", s)
+    return s
+end
+
+function pattern_match_call_value_checkpoint(f::Expr, id::Union{Int,SymAllGen}, value::SymAllGen)
+    @dprintln(3, "pattern_match_call_value_checkpoint f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id), " value = ", value, " type = ", typeof(value))
+    s = ""
+    if f.head == :call && f.args[1] == TopNode(:getfield)
+        @dprintln(3, "pattern_match_call_value_checkpoint f is call to getfield")
+        s *= pattern_match_call_value_checkpoint(GlobalRef(eval(f.args[2]), f.args[3].value), id, value)
+    end
+    return s
+end
+
+function pattern_match_call_value_checkpoint(f::Any, id::Any, value::Any)
+    @dprintln(3, "pattern_match_call_value_checkpoint f = ", f, " type = ", typeof(f), " id = ", id, " type = ", typeof(id), " value = ", value, " type = ", typeof(value))
+    return ""
+end
 
 """
 Generate code for text file open (no variable name input)
@@ -510,9 +602,12 @@ function pattern_match_call(ast::Array{Any, 1})
         s *= pattern_match_call_get_sec_since_epoch(ast[1]) 
     elseif length(ast)==2
         s *= pattern_match_call_data_src_close(ast[1], ast[2])
+        s *= pattern_match_call_start_checkpoint(ast[1], ast[2])
+        s *= pattern_match_call_end_checkpoint(ast[1], ast[2])
     elseif(length(ast)==3) 
         s *= pattern_match_call_dist_h5_size(ast[1],ast[2],ast[3])
         s *= pattern_match_call_dist_bcast(ast[1],ast[2],ast[3])
+        s *= pattern_match_call_value_checkpoint(ast[1], ast[2], ast[3])
     elseif(length(ast)==4)
         s *= pattern_match_call_dist_reduce(ast[1],ast[2],ast[3], ast[4])
         # text file read
