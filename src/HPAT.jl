@@ -63,6 +63,11 @@ include("cgen-hpat-pattern-match.jl")
 ParallelAccelerator.CGen.setExternalPatternMatchCall(CGenPatternMatch.pattern_match_call)
 ParallelAccelerator.CGen.setExternalPatternMatchAssignment(CGenPatternMatch.from_assignment_match_dist)
 
+HPAT_path = joinpath(dirname(@__FILE__), "..")
+
+HPAT_includes = string("#include <ctime>\n#include \"", HPAT_path, "/deps/include/hpat.h\"\n")
+ParallelAccelerator.CGen.addCgenUserOptions(ParallelAccelerator.CGen.CgenUserOptions(HPAT_includes))
+
 function ns_to_sec(x)
   x / 1000000000.0
 end
