@@ -214,6 +214,15 @@ function from_toplevel_body(nodes::Array{Any,1}, state::DistPassState)
     return res
 end
 
+# nodes are :body of Parfor
+function from_nested_body(nodes::Array{Any,1}, state::DistPassState)
+    res = Any[]
+    for node in nodes
+        new_exprs = from_expr(node, state)
+        append!(res, new_exprs)
+    end
+    return res
+end
 
 function from_expr(node::Expr, state::DistPassState)
     head = node.head
@@ -387,7 +396,8 @@ function from_parfor(node::Expr, state)
     @assert node.head==:parfor "DistributedPass invalid parfor head"
 
     parfor = node.args[1]
-
+    parfor.body = from_nested_body(parfor.body, state)
+    
     if !in(parfor.unique_id, state.seq_parfors)
         @dprintln(3,"DistPass translating parfor: ", parfor.unique_id)
         # TODO: assuming 1st loop nest is the last dimension
