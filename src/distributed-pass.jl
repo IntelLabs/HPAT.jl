@@ -245,9 +245,9 @@ end
 
 # generates initialization code for distributed execution
 function genDistributedInit(state::DistPassState)
-    initCall = Expr(:call,TopNode(:hps_dist_init))
-    numPesCall = Expr(:call,TopNode(:hps_dist_num_pes))
-    nodeIdCall = Expr(:call,TopNode(:hps_dist_node_id))
+    initCall = Expr(:call,TopNode(:hpat_dist_init))
+    numPesCall = Expr(:call,TopNode(:hpat_dist_num_pes))
+    nodeIdCall = Expr(:call,TopNode(:hpat_dist_node_id))
     
     CompilerTools.LambdaHandling.addLocalVar(symbol("__hpat_num_pes"), Int32, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
     CompilerTools.LambdaHandling.addLocalVar(symbol("__hpat_node_id"), Int32, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
@@ -371,7 +371,7 @@ function from_assignment(node::Expr, state::DistPassState)
                     size_expr = Expr(:(=), reduce_size_var, mk_mult_int_expr(out_dim_sizes))
 
                     # add allreduce call
-                    allreduceCall = Expr(:call,TopNode(:hps_dist_allreduce), reduce_var, TopNode(:add_float), rhs.args[2], reduce_size_var)
+                    allreduceCall = Expr(:call,TopNode(:hpat_dist_allreduce), reduce_var, TopNode(:add_float), rhs.args[2], reduce_size_var)
                     res_copy = Expr(:(=), lhs, rhs.args[2])
                     # replace gemm output with local var
                     #node.args[1] = reduce_var
@@ -582,7 +582,7 @@ function gen_dist_reductions(reductions::Array{PIRReduction,1}, state)
         CompilerTools.LambdaHandling.addLocalVar(reduce_var, reduce.reductionVar.typ, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
 
         reduce_var_init = Expr(:(=), reduce_var, 0)
-        reduceCall = Expr(:call,TopNode(:hps_dist_reduce),reduce.reductionVar,reduce.reductionFunc, reduce_var)
+        reduceCall = Expr(:call,TopNode(:hpat_dist_reduce),reduce.reductionVar,reduce.reductionFunc, reduce_var)
         rootCopy = Expr(:(=), reduce.reductionVar, reduce_var)
         append!(res,[reduce_var_init; reduceCall; rootCopy])
     end
