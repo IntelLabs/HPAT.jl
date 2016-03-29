@@ -116,6 +116,9 @@ function captureHPAT(func, ast, sig)
   return ast
 end
 
+"""
+Adds a duplicate of the function to be checkpointed with "_restart" appended to the name.
+"""
 function createCheckpointFunc(func, ast, sig)
   @dprintln(1, "createCheckpointFunc func = ", func)
   new_func = deepcopy(ast)
