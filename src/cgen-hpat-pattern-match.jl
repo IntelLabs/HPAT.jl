@@ -39,7 +39,7 @@ import HPAT
 include("cgen-hpat-pattern-match-daal.jl")
 
 function pattern_match_call_dist_init(f::TopNode)
-    if f.name==:hps_dist_init
+    if f.name==:hpat_dist_init
         return ";"#"MPI_Init(0,0);"
     else
         return ""
@@ -79,7 +79,7 @@ function pattern_match_reduce_sum(reductionFunc::DelayedFunc)
 end
 
 function pattern_match_call_dist_reduce(f::TopNode, var::SymbolNode, reductionFunc::DelayedFunc, output::Symbol)
-    if f.name==:hps_dist_reduce
+    if f.name==:hpat_dist_reduce
         mpi_type = ""
         if var.typ==Float64
             mpi_type = "MPI_DOUBLE"
@@ -113,7 +113,7 @@ function pattern_match_call_dist_reduce(f::Any, v::Any, rf::Any, o::Any)
     return ""
 end
 
-function pattern_match_call_dist_portion(f::Symbol, total::SymAllGen, div::SymAllGen, num_pes::Symbol, node_id::Symbol)
+function pattern_match_call_dist_portion(f::Symbol, total::Union{SymAllGen,Int}, div::Union{SymAllGen,Int}, num_pes::Symbol, node_id::Symbol)
     s = ""
     if f==:__hpat_get_node_portion
         c_total = ParallelAccelerator.CGen.from_expr(total)
@@ -142,7 +142,7 @@ function pattern_match_call_dist_node_end(f::ANY, total::ANY, div::ANY, num_pes:
 end
 
 function pattern_match_call_dist_allreduce(f::TopNode, var::SymAllGen, reductionFunc::TopNode, output::SymAllGen, size::Symbol)
-    if f.name==:hps_dist_allreduce
+    if f.name==:hpat_dist_allreduce
         mpi_type = ""
         var = toSymGen(var)
         c_var = ParallelAccelerator.CGen.from_expr(var)
@@ -664,9 +664,9 @@ function from_assignment_match_dist(lhs::Symbol, rhs::Expr)
     @dprintln(3, "assignment pattern match dist ",lhs," = ",rhs)
     if rhs.head==:call && length(rhs.args)==1 && isTopNode(rhs.args[1])
         dist_call = rhs.args[1].name
-        if dist_call ==:hps_dist_num_pes
+        if dist_call ==:hpat_dist_num_pes
             return "MPI_Comm_size(MPI_COMM_WORLD,&$lhs);"
-        elseif dist_call ==:hps_dist_node_id
+        elseif dist_call ==:hpat_dist_node_id
             return "MPI_Comm_rank(MPI_COMM_WORLD,&$lhs);"
         end
     end
@@ -688,9 +688,9 @@ function from_assignment_match_dist(lhs::GenSym, rhs::Expr)
     elseif rhs.head==:call && length(rhs.args)==1 && isTopNode(rhs.args[1])
         dist_call = rhs.args[1].name
         c_lhs = ParallelAccelerator.CGen.from_expr(lhs)
-        if dist_call ==:hps_dist_num_pes
+        if dist_call ==:hpat_dist_num_pes
             return "MPI_Comm_size(MPI_COMM_WORLD,&$c_lhs);"
-        elseif dist_call ==:hps_dist_node_id
+        elseif dist_call ==:hpat_dist_node_id
             return "MPI_Comm_rank(MPI_COMM_WORLD,&$c_lhs);"
         end
     elseif rhs.head==:call && rhs.args[1]==:__hpat_data_source_TXT_size
