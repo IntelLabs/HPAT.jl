@@ -285,6 +285,35 @@ function pattern_match_call_data_src_close(f::Any, v::Any)
 end
 
 """
+Generate code for get checkpoint time.
+"""
+function pattern_match_call_get_checkpoint_time(f::GlobalRef, id::Union{Int,SymAllGen})
+    @dprintln(3, "pattern_match_call_get_checkpoint_time f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id))
+    s = ""
+    if f.mod == HPAT.Checkpointing && f.name==:hpat_get_checkpoint_time
+        s *= "__hpat_get_checkpoint_time(" * ParallelAccelerator.CGen.from_expr(id) * ")"
+    end
+    @dprintln(3, "pattern_match_call_get_checkpoint_time done s = ", s)
+    return s
+end
+
+function pattern_match_call_get_checkpoint_time(f::Expr, id::Union{Int,SymAllGen})
+    @dprintln(3, "pattern_match_call_get_checkpoint_time f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id))
+    s = ""
+    if f.head == :call && f.args[1] == TopNode(:getfield)
+        @dprintln(3, "pattern_match_call_get_checkpoint_time f is call to getfield")
+        s *= pattern_match_call_get_checkpoint_time(GlobalRef(eval(f.args[2]), f.args[3].value), id)
+    end
+    return s
+end
+
+function pattern_match_call_get_checkpoint_time(f::Any, id::Any)
+    @dprintln(3, "pattern_match_call_get_checkpoint_time f = ", f, " type = ", typeof(f), " id = ", id, " type = ", typeof(id))
+    return ""
+end
+
+
+"""
 Generate code for start checkpoint.
 """
 function pattern_match_call_start_checkpoint(f::GlobalRef, id::Union{Int,SymAllGen})
@@ -719,15 +748,16 @@ function pattern_match_call(ast::Array{Any, 1})
         s *= pattern_match_call_get_sec_since_epoch(ast[1]) 
     elseif length(ast)==2
         s *= pattern_match_call_data_src_close(ast[1], ast[2])
+        s *= pattern_match_call_get_checkpoint_time(ast[1], ast[2])
         s *= pattern_match_call_start_checkpoint(ast[1], ast[2])
         s *= pattern_match_call_end_checkpoint(ast[1], ast[2])
         s *= pattern_match_call_finish_checkpoint(ast[1], ast[2])
-        s *= pattern_match_call_restore_checkpoint_start(ast[1], ast[2])
         s *= pattern_match_call_restore_checkpoint_end(ast[1], ast[2])
     elseif(length(ast)==3) 
         s *= pattern_match_call_dist_h5_size(ast[1],ast[2],ast[3])
         s *= pattern_match_call_dist_bcast(ast[1],ast[2],ast[3])
         s *= pattern_match_call_value_checkpoint(ast[1], ast[2], ast[3])
+        s *= pattern_match_call_restore_checkpoint_start(ast[1], ast[2])
         s *= pattern_match_call_restore_checkpoint_value(ast[1], ast[2], ast[3])
     elseif(length(ast)==4)
         s *= pattern_match_call_dist_reduce(ast[1],ast[2],ast[3], ast[4])
