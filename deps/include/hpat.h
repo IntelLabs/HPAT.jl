@@ -5,6 +5,7 @@
 #include <assert.h>
 #include <iostream>
 #include <ctime>
+#include <string>
 
 #define CHECKPOINT_DEBUG
 
@@ -56,6 +57,19 @@ int64_t g_unique;
 #define TIME_TYPE double
 #endif
 
+const char * getCheckpointDir(void) {
+    const char *def_env = std::getenv("HPAT_DEFAULT_DATA");
+    const char *scr_env = std::getenv("SCRATCH");
+    if (def_env != NULL) return def_env;
+    if (scr_env != NULL) return scr_env;
+    return "."; 
+}
+
+std::string get_file_name(const char *name) {
+    std::string dir_str = std::string(getCheckpointDir());
+    return dir_str + "/" + std::string(name);
+}
+
 TIME_TYPE g_checkpoint_start_time;
 double g_checkpoint_time = 1.0 / 60.0; // Estimated 1 min checkpoint time.  1/60 of hour.
 
@@ -70,10 +84,11 @@ HTYPE __hpat_start_checkpoint(int64_t unique_checkpoint_location) {
     int32_t __hpat_node_id;
     MPI_Comm_rank(MPI_COMM_WORLD,&__hpat_node_id);
     if (__hpat_node_id == 0) {
+        const char *cfname = get_file_name("hpat_checkpoint_in_progress").c_str();
 #ifdef CHECKPOINT_DEBUG
-        std::cout << "__hpat_start_checkpoint location = " << unique_checkpoint_location << " checkpoint# = " << g_checkpoint_handle + 1 << " start_time = " << g_checkpoint_start_time << std::endl;
+        std::cout << "__hpat_start_checkpoint location = " << unique_checkpoint_location << " checkpoint# = " << g_checkpoint_handle + 1 << " start_time = " << g_checkpoint_start_time << " filename = " << cfname << std::endl;
 #endif
-        checkpoint_file.open("hpat_checkpoint_in_progress", std::ios::out | std::ios::binary);
+        checkpoint_file.open(cfname, std::ios::out | std::ios::binary);
         if (checkpoint_file.fail()) {
           std::cout << "Failed to open checkpoint file." << std::endl;
         }
@@ -173,8 +188,13 @@ int32_t __hpat_end_checkpoint(HTYPE checkpoint_handle) {
 
         std::stringstream ss;
         ss << "checkpoint_file_" << g_unique; 
-        remove(ss.str().c_str());
-        rename("hpat_checkpoint_in_progress", ss.str().c_str()); 
+        const char *cfname = get_file_name(ss.str().c_str()).c_str();
+        remove(cfname);
+        const char *new_name = get_file_name("hpat_checkpoint_in_progress").c_str(); 
+        rename(new_name, cfname); 
+#ifdef CHECKPOINT_DEBUG
+        std::cout << "__hpat_end_checkpoint cfname = " << cfname << " newname = " << new_name << std::endl;
+#endif
     }
     MPI_Barrier(MPI_COMM_WORLD);
     int32_t cur_time = TIME_FUNC;
@@ -195,7 +215,8 @@ int32_t __hpat_finish_checkpoint_region(int64_t unique_checkpoint_location) {
     if (__hpat_node_id == 0) {
         std::stringstream ss;
         ss << "checkpoint_file_" << g_unique; 
-        remove(ss.str().c_str());
+        const char *cfname = get_file_name(ss.str().c_str()).c_str();
+        remove(cfname);
     }
     return 0;
 }
@@ -217,7 +238,7 @@ HTYPE __hpat_restore_checkpoint_start(int64_t unique_checkpoint_location) {
         std::stringstream ss;
         ss << "checkpoint_file_" << g_unique; 
  
-        checkpoint_file.open(ss.str().c_str(), std::ios::in | std::ios::binary);
+        checkpoint_file.open(get_file_name(ss.str().c_str()).c_str(), std::ios::in | std::ios::binary);
         if (checkpoint_file.fail()) {
           std::cout << "Failed to open checkpoint file." << std::endl;
           exit(-1);
