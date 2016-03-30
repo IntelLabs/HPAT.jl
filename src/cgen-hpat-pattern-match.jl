@@ -390,6 +390,87 @@ function pattern_match_call_value_checkpoint(f::Any, id::Any, value::Any)
     return ""
 end
 
+function pattern_match_call_restore_checkpoint_start(f::GlobalRef, id::Union{Int,SymAllGen})
+    @dprintln(3, "pattern_match_call_restore_checkpoint_start f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id))
+    s = ""
+    if f.mod == HPAT.Checkpointing && f.name==:hpat_checkpoint_restore_start
+        s *= "__hpat_restore_checkpoint_start(" * ParallelAccelerator.CGen.from_expr(id) * ")"
+    end
+    @dprintln(3, "pattern_match_call_restore_checkpoint_start done s = ", s)
+    return s
+end
+
+function pattern_match_call_restore_checkpoint_start(f::Expr, id::Union{Int,SymAllGen})
+    @dprintln(3, "pattern_match_call_restore_checkpoint_start f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id))
+    s = ""
+    if f.head == :call && f.args[1] == TopNode(:getfield)
+        @dprintln(3, "pattern_match_call_restore_checkpoint_start f is call to getfield")
+        s *= pattern_match_call_restore_checkpoint_start(GlobalRef(eval(f.args[2]), f.args[3].value), id)
+    end
+    return s
+end
+
+function pattern_match_call_restore_checkpoint_start(f::Any, id::Any)
+    @dprintln(3, "pattern_match_call_restore_checkpoint_start f = ", f, " type = ", typeof(f), " id = ", id, " type = ", typeof(id))
+    return ""
+end
+
+"""
+Generate code for end checkpoint.
+"""
+function pattern_match_call_restore_checkpoint_end(f::GlobalRef, id::Union{Int,SymAllGen})
+    @dprintln(3, "pattern_match_call_restore_checkpoint_end f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id))
+    s = ""
+    if f.mod == HPAT.Checkpointing && f.name==:hpat_checkpoint_restore_end
+        s *= "__hpat_restore_checkpoint_end(" * ParallelAccelerator.CGen.from_expr(id) * ")"
+    end
+    @dprintln(3, "pattern_match_call_restore_checkpoint_end done s = ", s)
+    return s
+end
+
+function pattern_match_call_restore_checkpoint_end(f::Expr, id::Union{Int,SymAllGen})
+    @dprintln(3, "pattern_match_call_restore_checkpoint_end f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id))
+    s = ""
+    if f.head == :call && f.args[1] == TopNode(:getfield)
+        @dprintln(3, "pattern_match_call_restore_checkpoint_end f is call to getfield")
+        s *= pattern_match_call_restore_checkpoint_end(GlobalRef(eval(f.args[2]), f.args[3].value), id)
+    end
+    return s
+end
+
+function pattern_match_call_restore_checkpoint_end(f::Any, id::Any)
+    @dprintln(3, "pattern_match_call_restore_checkpoint_end f = ", f, " type = ", typeof(f), " id = ", id, " type = ", typeof(id))
+    return ""
+end
+
+"""
+Generate code for checkpointing a single program element.
+"""
+function pattern_match_call_restore_checkpoint_value(f::GlobalRef, id::Union{Int,SymAllGen}, value::SymAllGen)
+    @dprintln(3, "pattern_match_call_restore_checkpoint_value f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id), " value = ", value, " type = ", typeof(value))
+    s = ""
+    if f.mod == HPAT.Checkpointing && f.name==:hpat_checkpoint_restore_value
+        s *= "__hpat_restore_checkpoint_value(" * ParallelAccelerator.CGen.from_expr(id) * "," * ParallelAccelerator.CGen.from_expr(value) * ")"
+    end
+    @dprintln(3, "pattern_match_call_restore_checkpoint_value done s = ", s)
+    return s
+end
+
+function pattern_match_call_restore_checkpoint_value(f::Expr, id::Union{Int,SymAllGen}, value::SymAllGen)
+    @dprintln(3, "pattern_match_call_restore_checkpoint_value f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id), " value = ", value, " type = ", typeof(value))
+    s = ""
+    if f.head == :call && f.args[1] == TopNode(:getfield)
+        @dprintln(3, "pattern_match_call_restore_checkpoint_value f is call to getfield")
+        s *= pattern_match_call_restore_checkpoint_value(GlobalRef(eval(f.args[2]), f.args[3].value), id, value)
+    end
+    return s
+end
+
+function pattern_match_call_restore_checkpoint_value(f::Any, id::Any, value::Any)
+    @dprintln(3, "pattern_match_call_restore_checkpoint_value f = ", f, " type = ", typeof(f), " id = ", id, " type = ", typeof(id), " value = ", value, " type = ", typeof(value))
+    return ""
+end
+
 """
 Generate code for text file open (no variable name input)
 """
@@ -634,10 +715,13 @@ function pattern_match_call(ast::Array{Any, 1})
         s *= pattern_match_call_start_checkpoint(ast[1], ast[2])
         s *= pattern_match_call_end_checkpoint(ast[1], ast[2])
         s *= pattern_match_call_finish_checkpoint(ast[1], ast[2])
+        s *= pattern_match_call_restore_checkpoint_start(ast[1], ast[2])
+        s *= pattern_match_call_restore_checkpoint_end(ast[1], ast[2])
     elseif(length(ast)==3) 
         s *= pattern_match_call_dist_h5_size(ast[1],ast[2],ast[3])
         s *= pattern_match_call_dist_bcast(ast[1],ast[2],ast[3])
         s *= pattern_match_call_value_checkpoint(ast[1], ast[2], ast[3])
+        s *= pattern_match_call_restore_checkpoint_value(ast[1], ast[2], ast[3])
     elseif(length(ast)==4)
         s *= pattern_match_call_dist_reduce(ast[1],ast[2],ast[3], ast[4])
         # text file read
