@@ -42,6 +42,10 @@ single_node_mttf = 4000.0   # default to 4000 hours MTTF of a single node
 single_node_faults_per_million = 1000000.0 / single_node_mttf
 checkpoint_time = 1.0 / 3600.0  # 1 minute checkpoint time converted to hours
 
+@noinline function hpat_get_checkpoint_time(checkpoint_location)
+    1.0
+end
+
 @noinline function hpat_get_sec_since_epoch()
     convert(Int32,1)
 end
@@ -67,7 +71,8 @@ end
 end
 
 # Start of checkpointing restore functions.
-@noinline function hpat_checkpoint_restore_start(checkpoint_location)
+# Prevent hoist will be removed in the future once ParallelIR reordering issue is fixed.
+@noinline function hpat_checkpoint_restore_start(checkpoint_location, prevent_hoist :: ANY)
     convert(Int32,1)
 end
 
@@ -80,6 +85,12 @@ end
 end
 # End of checkpointing restore functions.
 
+# Set the delay between checkpoints (in seconds).
+# "0" means use Young's formula.
+checkpoint_debug = 0
+function setCheckpointDebug(checkpoint_delay)
+    global checkpoint_debug = checkpoint_delay
+end
 
 # ENTRY to checkpointing
 function from_root(function_name, ast :: Expr, with_restart :: Bool)
@@ -125,7 +136,7 @@ function from_root(function_name, ast :: Expr, with_restart :: Bool)
         if with_restart
            restore_handle = ParallelAccelerator.ParallelIR.createStateVar(state, string("__hpat_restore_handle_", loop_index), Int32, ParallelAccelerator.ParallelIR.ISASSIGNED)
            liad_array = [live_in_and_def...]
-           push!(pre_loop_stmts, ParallelAccelerator.ParallelIR.mk_assignment_expr(restore_handle, ParallelAccelerator.ParallelIR.TypedExpr(Int32, :call, GlobalRef(HPAT.Checkpointing,:hpat_checkpoint_restore_start), loop_index)))
+           push!(pre_loop_stmts, ParallelAccelerator.ParallelIR.mk_assignment_expr(restore_handle, ParallelAccelerator.ParallelIR.TypedExpr(Int32, :call, GlobalRef(HPAT.Checkpointing,:hpat_checkpoint_restore_start), loop_index, liad_array[1])))
            for i = 1:length(liad_array)
            push!(pre_loop_stmts, ParallelAccelerator.ParallelIR.TypedExpr(Int32, :call, GlobalRef(HPAT.Checkpointing,:hpat_checkpoint_restore_value), restore_handle, liad_array[i]))
            end
@@ -143,8 +154,9 @@ function from_root(function_name, ast :: Expr, with_restart :: Bool)
         @dprintln(3,"postLoopBlockIndex = ", postLoopBlockIndex)
         @dprintln(3,"cfg = ", lives.cfg.basic_blocks)
         postLoopBB = lives.cfg.basic_blocks[postLoopBlockIndex] 
-# TEMPORARY COMMENT OUT FOR TESTING
-#        CompilerTools.CFGs.insertStatementBeginningOfBlock(lives.cfg, postLoopBB, ParallelAccelerator.ParallelIR.TypedExpr(Int32, :call, GlobalRef(HPAT.Checkpointing,:hpat_finish_checkpoint_region), loop_index))
+        if checkpoint_debug != 0
+          CompilerTools.CFGs.insertStatementBeginningOfBlock(lives.cfg, postLoopBB, ParallelAccelerator.ParallelIR.TypedExpr(Int32, :call, GlobalRef(HPAT.Checkpointing,:hpat_finish_checkpoint_region), loop_index))
+        end
 
         # Create the checkpoint function as a string and then parse/eval to force it into existence.
         # The function takes the last checkpoint time.  If enough time has expired then do the checkpoint and return the current time.
@@ -163,13 +175,16 @@ function from_root(function_name, ast :: Expr, with_restart :: Bool)
         checkpoint_func_str = string(checkpoint_func_str, "    system_faults_per_million_hours = num_pes * ", single_node_faults_per_million, "\n")
         checkpoint_func_str = string(checkpoint_func_str, "    system_mttf::Float64 = 1000000.0 / system_faults_per_million_hours\n")
         checkpoint_func_str = string(checkpoint_func_str, "    cur_time = HPAT.Checkpointing.hpat_get_sec_since_epoch()\n")
-        checkpoint_func_str = string(checkpoint_func_str, "    if ((cur_time - start_time) > 50)\n")
-        #checkpoint_func_str = string(checkpoint_func_str, "    if ((cur_time - start_time) / 3600.0) > sqrt(2 * system_mttf * ", checkpoint_time, ")\n")
+        if checkpoint_debug != 0
+        checkpoint_func_str = string(checkpoint_func_str, "    if ((cur_time - start_time) > ", checkpoint_debug, ")\n")
+        else
+        checkpoint_func_str = string(checkpoint_func_str, "    if ((cur_time - start_time) / 3600.0) > sqrt(2 * system_mttf * HPAT.Checkpointing.hpat_get_checkpoint_time(", loop_index, "))\n")
+        end
         # This num_pes < 1 ? loop_index : loop_index is a hack to get the input to start_checkpoint multiple defined
         # so that ParallelIR doesn't incorrectly hoist the start of the checkpoint before the conditional.
         checkpoint_func_str = string(checkpoint_func_str, "        checkpoint_handle = HPAT.Checkpointing.hpat_start_checkpoint(num_pes < 1 ? ", loop_index, ":", loop_index, ")\n")
         for i = 1:length(argument_names)
-        checkpoint_func_str = string(checkpoint_func_str, "        HPAT.Checkpointing.hpat_value_checkpoint(checkpoint_handle, $(argument_names[i]))\n")
+        checkpoint_func_str = string(checkpoint_func_str, "        HPAT.Checkpointing.hpat_value_checkpoint(checkpoint_handle, ", argument_names[i], ")\n")
         end
         checkpoint_func_str = string(checkpoint_func_str, "        HPAT.Checkpointing.hpat_end_checkpoint(checkpoint_handle)\n")
         checkpoint_func_str = string(checkpoint_func_str, "        return cur_time\n")
