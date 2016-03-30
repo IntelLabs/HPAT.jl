@@ -42,18 +42,29 @@ public:
     }
 };
 
-int32_t g_checkpoint_handle = 0;
+#define HTYPE int32_t
+HTYPE g_checkpoint_handle = 0;
+
 std::fstream checkpoint_file;
 int64_t g_unique;
-int32_t g_checkpoint_start_time;
-double  g_checkpoint_time = 1.0 / 60.0; // Estimated 1 min checkpoint time.  1/60 of hour.
+
+#ifdef USE_CPP_TIME
+#define TIME_FUNC std::time(nullptr)
+#define TIME_TYPE int32_t
+#else
+#define TIME_FUNC MPI_Wtime()
+#define TIME_TYPE double
+#endif
+
+TIME_TYPE g_checkpoint_start_time;
+double g_checkpoint_time = 1.0 / 60.0; // Estimated 1 min checkpoint time.  1/60 of hour.
 
 double __hpat_get_checkpoint_time(int64_t unique_checkpoint_location) {
     return g_checkpoint_time;
 }
 
-int32_t __hpat_start_checkpoint(int64_t unique_checkpoint_location) {
-    g_checkpoint_start_time = std::time(nullptr);
+HTYPE __hpat_start_checkpoint(int64_t unique_checkpoint_location) {
+    g_checkpoint_start_time = TIME_FUNC;
 
     MPI_Barrier(MPI_COMM_WORLD);
     int32_t __hpat_node_id;
@@ -73,7 +84,7 @@ int32_t __hpat_start_checkpoint(int64_t unique_checkpoint_location) {
     }
 }
 
-int32_t __hpat_value_checkpoint(int32_t checkpoint_handle, int32_t value) {
+int32_t __hpat_value_checkpoint(HTYPE checkpoint_handle, int32_t value) {
     int32_t __hpat_node_id;
     MPI_Comm_rank(MPI_COMM_WORLD,&__hpat_node_id);
     if (__hpat_node_id == 0) {
@@ -86,7 +97,7 @@ int32_t __hpat_value_checkpoint(int32_t checkpoint_handle, int32_t value) {
     return 0;
 }
 
-int32_t __hpat_value_checkpoint(int32_t checkpoint_handle, int64_t value) {
+int32_t __hpat_value_checkpoint(HTYPE checkpoint_handle, int64_t value) {
     int32_t __hpat_node_id;
     MPI_Comm_rank(MPI_COMM_WORLD,&__hpat_node_id);
     if (__hpat_node_id == 0) {
@@ -99,7 +110,7 @@ int32_t __hpat_value_checkpoint(int32_t checkpoint_handle, int64_t value) {
     return 0;
 }
 
-int32_t __hpat_value_checkpoint(int32_t checkpoint_handle, float value) {
+int32_t __hpat_value_checkpoint(HTYPE checkpoint_handle, float value) {
     int32_t __hpat_node_id;
     MPI_Comm_rank(MPI_COMM_WORLD,&__hpat_node_id);
     if (__hpat_node_id == 0) {
@@ -112,7 +123,7 @@ int32_t __hpat_value_checkpoint(int32_t checkpoint_handle, float value) {
     return 0;
 }
 
-int32_t __hpat_value_checkpoint(int32_t checkpoint_handle, double value) {
+int32_t __hpat_value_checkpoint(HTYPE checkpoint_handle, double value) {
     int32_t __hpat_node_id;
     MPI_Comm_rank(MPI_COMM_WORLD,&__hpat_node_id);
     if (__hpat_node_id == 0) {
@@ -125,7 +136,7 @@ int32_t __hpat_value_checkpoint(int32_t checkpoint_handle, double value) {
     return 0;
 }
 
-int32_t __hpat_value_checkpoint(int32_t checkpoint_handle, j2c_array<float> &value) {
+int32_t __hpat_value_checkpoint(HTYPE checkpoint_handle, j2c_array<float> &value) {
     int32_t __hpat_node_id;
     MPI_Comm_rank(MPI_COMM_WORLD,&__hpat_node_id);
     if (__hpat_node_id == 0) {
@@ -139,7 +150,7 @@ int32_t __hpat_value_checkpoint(int32_t checkpoint_handle, j2c_array<float> &val
     return 0;
 }
 
-int32_t __hpat_value_checkpoint(int32_t checkpoint_handle, j2c_array<double> &value) {
+int32_t __hpat_value_checkpoint(HTYPE checkpoint_handle, j2c_array<double> &value) {
     int32_t __hpat_node_id;
     MPI_Comm_rank(MPI_COMM_WORLD,&__hpat_node_id);
     if (__hpat_node_id == 0) {
@@ -153,7 +164,7 @@ int32_t __hpat_value_checkpoint(int32_t checkpoint_handle, j2c_array<double> &va
     return 0;
 }
 
-int32_t __hpat_end_checkpoint(int32_t checkpoint_handle) {
+int32_t __hpat_end_checkpoint(HTYPE checkpoint_handle) {
     int32_t __hpat_node_id;
     MPI_Comm_rank(MPI_COMM_WORLD,&__hpat_node_id);
     if (__hpat_node_id == 0) {
@@ -166,7 +177,7 @@ int32_t __hpat_end_checkpoint(int32_t checkpoint_handle) {
         rename("hpat_checkpoint_in_progress", ss.str().c_str()); 
     }
     MPI_Barrier(MPI_COMM_WORLD);
-    int32_t cur_time = std::time(nullptr);
+    int32_t cur_time = TIME_FUNC;
     int32_t checkpoint_time = cur_time - g_checkpoint_start_time;
     if (checkpoint_time < 1) {
         checkpoint_time = 1;
@@ -194,7 +205,7 @@ int32_t __hpat_finish_checkpoint_region(int64_t unique_checkpoint_location) {
 // Restore functions are implemented below.
 
 
-int32_t __hpat_restore_checkpoint_start(int64_t unique_checkpoint_location) {
+HTYPE __hpat_restore_checkpoint_start(int64_t unique_checkpoint_location) {
     MPI_Barrier(MPI_COMM_WORLD);
     int32_t __hpat_node_id;
     MPI_Comm_rank(MPI_COMM_WORLD,&__hpat_node_id);
@@ -217,7 +228,7 @@ int32_t __hpat_restore_checkpoint_start(int64_t unique_checkpoint_location) {
     }
 }
 
-int32_t __hpat_restore_checkpoint_value(int32_t checkpoint_handle, int32_t &value) {
+int32_t __hpat_restore_checkpoint_value(HTYPE checkpoint_handle, int32_t &value) {
     int32_t __hpat_node_id;
     MPI_Comm_rank(MPI_COMM_WORLD,&__hpat_node_id);
     if (__hpat_node_id == 0) {
@@ -230,7 +241,7 @@ int32_t __hpat_restore_checkpoint_value(int32_t checkpoint_handle, int32_t &valu
     return 0;
 }
 
-int32_t __hpat_restore_checkpoint_value(int32_t checkpoint_handle, int64_t &value) {
+int32_t __hpat_restore_checkpoint_value(HTYPE checkpoint_handle, int64_t &value) {
     int32_t __hpat_node_id;
     MPI_Comm_rank(MPI_COMM_WORLD,&__hpat_node_id);
     if (__hpat_node_id == 0) {
@@ -243,7 +254,7 @@ int32_t __hpat_restore_checkpoint_value(int32_t checkpoint_handle, int64_t &valu
     return 0;
 }
 
-int32_t __hpat_restore_checkpoint_value(int32_t checkpoint_handle, float &value) {
+int32_t __hpat_restore_checkpoint_value(HTYPE checkpoint_handle, float &value) {
     int32_t __hpat_node_id;
     MPI_Comm_rank(MPI_COMM_WORLD,&__hpat_node_id);
     if (__hpat_node_id == 0) {
@@ -256,7 +267,7 @@ int32_t __hpat_restore_checkpoint_value(int32_t checkpoint_handle, float &value)
     return 0;
 }
 
-int32_t __hpat_restore_checkpoint_value(int32_t checkpoint_handle, double &value) {
+int32_t __hpat_restore_checkpoint_value(HTYPE checkpoint_handle, double &value) {
     int32_t __hpat_node_id;
     MPI_Comm_rank(MPI_COMM_WORLD,&__hpat_node_id);
     if (__hpat_node_id == 0) {
@@ -269,7 +280,7 @@ int32_t __hpat_restore_checkpoint_value(int32_t checkpoint_handle, double &value
     return 0;
 }
 
-int32_t __hpat_restore_checkpoint_value(int32_t checkpoint_handle, j2c_array<float> &value) {
+int32_t __hpat_restore_checkpoint_value(HTYPE checkpoint_handle, j2c_array<float> &value) {
     int32_t __hpat_node_id;
     MPI_Comm_rank(MPI_COMM_WORLD,&__hpat_node_id);
     if (__hpat_node_id == 0) {
@@ -283,7 +294,7 @@ int32_t __hpat_restore_checkpoint_value(int32_t checkpoint_handle, j2c_array<flo
     return 0;
 }
 
-int32_t __hpat_restore_checkpoint_value(int32_t checkpoint_handle, j2c_array<double> &value) {
+int32_t __hpat_restore_checkpoint_value(HTYPE checkpoint_handle, j2c_array<double> &value) {
     int32_t __hpat_node_id;
     MPI_Comm_rank(MPI_COMM_WORLD,&__hpat_node_id);
     if (__hpat_node_id == 0) {
@@ -297,7 +308,7 @@ int32_t __hpat_restore_checkpoint_value(int32_t checkpoint_handle, j2c_array<dou
     return 0;
 }
 
-int32_t __hpat_restore_checkpoint_end(int32_t checkpoint_handle) {
+int32_t __hpat_restore_checkpoint_end(HTYPE checkpoint_handle) {
     int32_t __hpat_node_id;
     MPI_Comm_rank(MPI_COMM_WORLD,&__hpat_node_id);
 #ifdef CHECKPOINT_DEBUG

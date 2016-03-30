@@ -47,7 +47,7 @@ checkpoint_time = 1.0 / 3600.0  # 1 minute checkpoint time converted to hours
 end
 
 @noinline function hpat_get_sec_since_epoch()
-    convert(Int32,1)
+    convert(Float64,1)
 end
 
 # Starts a checkpoint session.
@@ -131,7 +131,7 @@ function from_root(function_name, ast :: Expr, with_restart :: Bool)
         assert(!isempty(live_in_and_def))
         
         pre_loop_stmts = Any[]
-        checkpoint_timer_sn = ParallelAccelerator.ParallelIR.createStateVar(state, "__hpat_checkpoint_timer", Int32, ParallelAccelerator.ParallelIR.ISASSIGNED)
+        checkpoint_timer_sn = ParallelAccelerator.ParallelIR.createStateVar(state, "__hpat_checkpoint_timer", Float64, ParallelAccelerator.ParallelIR.ISASSIGNED)
 
         if with_restart
            restore_handle = ParallelAccelerator.ParallelIR.createStateVar(state, string("__hpat_restore_handle_", loop_index), Int32, ParallelAccelerator.ParallelIR.ISASSIGNED)
@@ -142,7 +142,7 @@ function from_root(function_name, ast :: Expr, with_restart :: Bool)
            end
            push!(pre_loop_stmts, ParallelAccelerator.ParallelIR.TypedExpr(Int32, :call, GlobalRef(HPAT.Checkpointing,:hpat_checkpoint_restore_end), restore_handle))
         end
-        push!(pre_loop_stmts, ParallelAccelerator.ParallelIR.mk_assignment_expr(checkpoint_timer_sn, ParallelAccelerator.ParallelIR.TypedExpr(Int32, :call, GlobalRef(HPAT.Checkpointing,:hpat_get_sec_since_epoch))))
+        push!(pre_loop_stmts, ParallelAccelerator.ParallelIR.mk_assignment_expr(checkpoint_timer_sn, ParallelAccelerator.ParallelIR.TypedExpr(Float64, :call, GlobalRef(HPAT.Checkpointing,:hpat_get_sec_since_epoch))))
 
         CompilerTools.Loops.insertNewBlockBeforeLoop(the_loop, lives.cfg, pre_loop_stmts)
         @dprintln(3,"CFG after insert = ", lives.cfg)
@@ -154,7 +154,7 @@ function from_root(function_name, ast :: Expr, with_restart :: Bool)
         @dprintln(3,"postLoopBlockIndex = ", postLoopBlockIndex)
         @dprintln(3,"cfg = ", lives.cfg.basic_blocks)
         postLoopBB = lives.cfg.basic_blocks[postLoopBlockIndex] 
-        if checkpoint_debug != 0
+        if checkpoint_debug == 0
           CompilerTools.CFGs.insertStatementBeginningOfBlock(lives.cfg, postLoopBB, ParallelAccelerator.ParallelIR.TypedExpr(Int32, :call, GlobalRef(HPAT.Checkpointing,:hpat_finish_checkpoint_region), loop_index))
         end
 
@@ -200,7 +200,7 @@ function from_root(function_name, ast :: Expr, with_restart :: Bool)
         #call_checkpoint_expr  = ParallelAccelerator.ParallelIR.mk_assignment_expr(checkpoint_timer_sn, ParallelAccelerator.ParallelIR.TypedExpr(Uint64, :call, TopNode(symbol(checkpoint_func_name)), checkpoint_timer_sn, :__hpat_num_pes, live_in_and_def...))
         pes_expr = ParallelAccelerator.ParallelIR.TypedExpr(Int32, :call, TopNode(:hpat_dist_num_pes))
         #pes_expr = 8
-        call_checkpoint_expr  = ParallelAccelerator.ParallelIR.mk_assignment_expr(checkpoint_timer_sn, ParallelAccelerator.ParallelIR.TypedExpr(Int32, :call, GlobalRef(Main,symbol(checkpoint_func_name)), checkpoint_timer_sn, pes_expr, live_in_and_def...))
+        call_checkpoint_expr  = ParallelAccelerator.ParallelIR.mk_assignment_expr(checkpoint_timer_sn, ParallelAccelerator.ParallelIR.TypedExpr(Float64, :call, GlobalRef(Main,symbol(checkpoint_func_name)), checkpoint_timer_sn, pes_expr, live_in_and_def...))
         CompilerTools.CFGs.insertStatementBefore(lives.cfg, loop_entry_bb, first_loop_entry_stmt.index, call_checkpoint_expr)
     end
 
