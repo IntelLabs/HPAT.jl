@@ -28,9 +28,15 @@ using MPI
 using DocOpt
 
 #CompilerTools.OptFramework.set_debug_level(3)
+#CompilerTools.CFGs.set_debug_level(3)
+#CompilerTools.Loops.set_debug_level(3)
+#ParallelAccelerator.DomainIR.set_debug_level(3)
 #ParallelAccelerator.ParallelIR.set_debug_level(3)
 #ParallelAccelerator.CGen.set_debug_level(3)
 #HPAT.Checkpointing.set_debug_level(3)
+#HPAT.CGenPatternMatch.set_debug_level(3)
+#HPAT.set_debug_level(3)
+#HPAT.Checkpointing.setCheckpointDebug(50)    # Do checkpoints every 50 seconds.
 #CompilerTools.LivenessAnalysis.set_debug_level(5)
 
 @acc hpat_checkpoint function logistic_regression(iterations, file_name)
@@ -52,12 +58,13 @@ function main()
 
 Usage:
   logistic_regression.jl -h | --help
-  logistic_regression.jl [--iterations=<iterations>] [--file=<file>]
+  logistic_regression.jl [--iterations=<iterations>] [--file=<file>] [--restart]
 
 Options:
   -h --help                  Show this screen.
   --iterations=<iterations>  Specify number of iterations; defaults to 20.
   --file=<file>              Specify input file; defaults to HPAT's default generated data file.
+  --restart                  Restart the program from the last checkpoint taken.
 
 """
     arguments = docopt(doc)
@@ -74,6 +81,8 @@ Options:
         file_name = HPAT.getDefaultDataPath()*"logistic_regression.hdf5"
     end 
 
+    do_restart = arguments["--restart"]
+
     srand(0)
     rank = MPI.Comm_rank(MPI.COMM_WORLD)
     pes = MPI.Comm_size(MPI.COMM_WORLD)
@@ -82,18 +91,25 @@ Options:
     if rank==0 println("file= ", file_name) end
 
     tic()
-    logistic_regression(2,file_name)
+    if do_restart
+        HPAT.restart(logistic_regression, 0, file_name)
+    else
+        logistic_regression(0,file_name)
+    end
     time = toq()
     if rank==0 println("SELFPRIMED ", time) end
     MPI.Barrier(MPI.COMM_WORLD)
 
     tic()
-    W = logistic_regression(iterations, file_name)
+    if do_restart
+        W = HPAT.restart(logistic_regression, iterations, file_name)
+    else
+        W = logistic_regression(iterations, file_name)
+    end
     time = toq()
     if rank==0 println("result = ", W) end
     if rank==0 println("rate = ", iterations / time, " iterations/sec") end
     if rank==0 println("SELFTIMED ", time) end
-
 end
 
 main()
