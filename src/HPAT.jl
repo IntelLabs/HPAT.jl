@@ -196,10 +196,15 @@ end
 atexit(HPAT_finalize)
 
 function restart(func, args...)
-  gr = GlobalRef(Base.function_module(func,[]), symbol(func))                                          
-  @dprintln(1, "HPAT restart func = ", func, " type = ", typeof(func), " GlobalRef = ", gr)                             
+  @dprintln(1, "HPAT restart func = ", func, " type = ", typeof(func), " args = ", args...) 
+  arg_type_tuple_expr = Expr(:tuple)
+  arg_type_tuple_expr.args = map(x -> typeof(x), [args...])
+  arg_type_tuple = eval(arg_type_tuple_expr)
+  @dprintln(2, "arg_type_tuple = ", arg_type_tuple)
+  gr = GlobalRef(Base.function_module(func,arg_type_tuple), symbol(func))
+  @dprintln(2, "GlobalRef = ", gr)
   if haskey(CompilerTools.OptFramework.gOptFrameworkDict, gr)
-    res = CompilerTools.OptFramework.gOptFrameworkDict[gr]                                             
+    res = CompilerTools.OptFramework.gOptFrameworkDict[gr]
     @dprintln(2, "CompilerTools.OptFramework internally mapped ", gr, " to ", res)
     assert(typeof(res) == GlobalRef)
     new_gr = GlobalRef(res.mod, symbol(string(res.name,"_restart"))) 
