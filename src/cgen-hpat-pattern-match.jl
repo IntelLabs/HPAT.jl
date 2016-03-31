@@ -320,6 +320,7 @@ function pattern_match_call_start_checkpoint(f::GlobalRef, id::Union{Int,SymAllG
     @dprintln(3, "pattern_match_call_start_checkpoint f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id))
     s = ""
     if f.mod == HPAT.Checkpointing && f.name==:hpat_start_checkpoint
+        @dprintln(3, "pattern_match_call_start_checkpoint doing replacement")
         s *= "__hpat_start_checkpoint(" * ParallelAccelerator.CGen.from_expr(id) * ")"
     end
     @dprintln(3, "pattern_match_call_start_checkpoint done s = ", s)
@@ -780,21 +781,17 @@ function pattern_match_call(ast::Array{Any, 1})
     return s
 end
 
-
-function from_assignment_match_dist(lhs::Symbol, rhs::Expr)
-    @dprintln(3, "assignment pattern match dist ",lhs," = ",rhs)
-    if rhs.head==:call && length(rhs.args)==1 && isTopNode(rhs.args[1])
-        dist_call = rhs.args[1].name
-        if dist_call ==:hpat_dist_num_pes
-            return "MPI_Comm_size(MPI_COMM_WORLD,&$lhs);"
-        elseif dist_call ==:hpat_dist_node_id
-            return "MPI_Comm_rank(MPI_COMM_WORLD,&$lhs);"
-        end
+function assignment_call_internal(c_lhs, dist_call)
+    @dprintln(3, "assignment_call_internal c_lhs = ", c_lhs, " dist_call = ", dist_call)
+    if dist_call==:hpat_dist_num_pes
+        return "MPI_Comm_size(MPI_COMM_WORLD,&$c_lhs);"
+    elseif dist_call==:hpat_dist_node_id
+        return "MPI_Comm_rank(MPI_COMM_WORLD,&$c_lhs);"
     end
     return ""
 end
 
-function from_assignment_match_dist(lhs::GenSym, rhs::Expr)
+function from_assignment_match_dist(lhs::SymAllGen, rhs::Expr)
     @dprintln(3, "assignment pattern match dist2: ",lhs," = ",rhs)
     s = ""
     local num::AbstractString
@@ -807,12 +804,19 @@ function from_assignment_match_dist(lhs::GenSym, rhs::Expr)
         s *= "H5Sget_simple_extent_dims(space_id_$num, space_dims_$num, NULL);\n"
         s *= ParallelAccelerator.CGen.from_expr(lhs)*" = space_dims_$num;"
     elseif rhs.head==:call && length(rhs.args)==1 && isTopNode(rhs.args[1])
+        @dprintln(3, "one arg call to a TopNode")
         dist_call = rhs.args[1].name
         c_lhs = ParallelAccelerator.CGen.from_expr(lhs)
-        if dist_call ==:hpat_dist_num_pes
-            return "MPI_Comm_size(MPI_COMM_WORLD,&$c_lhs);"
-        elseif dist_call ==:hpat_dist_node_id
-            return "MPI_Comm_rank(MPI_COMM_WORLD,&$c_lhs);"
+        return assignment_call_internal(c_lhs, dist_call)
+    elseif rhs.head==:call && length(rhs.args)==1 && isExpr(rhs.args[1])
+        @dprintln(3, "one arg call to an Expr")
+        expr = rhs.args[1]
+        if expr.head == :call && expr.args[1] == TopNode(:getfield)
+            this_mod = eval(expr.args[2])
+            if this_mod == HPAT.Checkpointing
+                c_lhs = ParallelAccelerator.CGen.from_expr(lhs)
+                return assignment_call_internal(c_lhs, expr.args[3].value)
+            end
         end
     elseif rhs.head==:call && rhs.args[1]==:__hpat_data_source_TXT_size
         num = ParallelAccelerator.CGen.from_expr(rhs.args[2])
@@ -891,7 +895,15 @@ function isTopNode(a::TopNode)
     return true
 end
 
-function isTopNode(a::Any)
+function isTopNode(a::ANY)
+    return false
+end
+
+function isExpr(a::Expr)
+    return true
+end
+
+function isExpr(a::ANY)
     return false
 end
 
