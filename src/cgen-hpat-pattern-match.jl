@@ -197,7 +197,9 @@ function pattern_match_call_dist_allreduce(f::Any, v::Any, rf::Any, o::Any, s::A
     return ""
 end
 
-function pattern_match_call_dist_bcast(f::Symbol, var::SymAllGen, size::Symbol)
+function pattern_match_call_dist_bcast(f::Symbol, var::SymAllGen, size::ANY)
+    @dprintln(3, "pattern_match_call_dist_bcast f = ", f)
+    c_size = ParallelAccelerator.CGen.from_expr(size)
     if f==:__hpat_dist_broadcast
         mpi_type = ""
         var = toSymGen(var)
@@ -223,11 +225,19 @@ function pattern_match_call_dist_bcast(f::Symbol, var::SymAllGen, size::Symbol)
             throw("CGen unsupported MPI broadcast type")
         end
                 
-        s="MPI_Bcast($c_var, $size, $mpi_type, 0, MPI_COMM_WORLD);"
+        s="MPI_Bcast($c_var, $c_size, $mpi_type, 0, MPI_COMM_WORLD);"
         return s
     else
         return ""
     end
+end
+
+function pattern_match_call_dist_bcast(f::GlobalRef, var::SymAllGen, size::ANY)
+    @dprintln(3, "pattern_match_call_dist_bcast GlobalRef f = ", f)
+    if f.mod == HPAT
+        return pattern_match_call_dist_bcast(f.name, var, size)
+    end
+    return ""
 end
 
 function pattern_match_call_dist_bcast(f::Any, v::Any, rf::Any)
@@ -745,9 +755,11 @@ function pattern_match_call(ast::Array{Any, 1})
     @dprintln(3,"hpat pattern matching ",ast)
     s = ""
     if length(ast)==1
+        @dprintln(3,"ast1_typ = ", typeof(ast[1]))
         s *= pattern_match_call_dist_init(ast[1])
         s *= pattern_match_call_get_sec_since_epoch(ast[1]) 
     elseif length(ast)==2
+        @dprintln(3,"ast1_typ = ", typeof(ast[1]), " ast2_typ = ", typeof(ast[2]))
         s *= pattern_match_call_data_src_close(ast[1], ast[2])
         s *= pattern_match_call_get_checkpoint_time(ast[1], ast[2])
         s *= pattern_match_call_start_checkpoint(ast[1], ast[2])
@@ -755,6 +767,7 @@ function pattern_match_call(ast::Array{Any, 1})
         s *= pattern_match_call_finish_checkpoint(ast[1], ast[2])
         s *= pattern_match_call_restore_checkpoint_end(ast[1], ast[2])
     elseif(length(ast)==3) 
+        @dprintln(3,"ast1_typ = ", typeof(ast[1]), " ast2_typ = ", typeof(ast[2]), " ast3_typ = ", typeof(ast[3]))
         s *= pattern_match_call_dist_h5_size(ast[1],ast[2],ast[3])
         s *= pattern_match_call_dist_bcast(ast[1],ast[2],ast[3])
         s *= pattern_match_call_value_checkpoint(ast[1], ast[2], ast[3])
