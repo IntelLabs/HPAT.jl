@@ -22,6 +22,15 @@ public:
         checkpoint_file->write((char*)&arr_length, sizeof(arr_length));
         checkpoint_file->write((char*)&elem_size,  sizeof(elem_size));
         checkpoint_file->write((char*)arr, arr_length * elem_size);
+
+#ifdef CHECKPOINT_DEBUG
+        char *carr = (char*)arr;
+        int i;
+        for (i = 0; i < arr_length * elem_size; ++i) {
+            std::cout << (int)carr[i] << " ";
+        }
+        std::cout << std::endl;
+#endif
     }
 
     virtual void write(void *arr, uint64_t arr_length, unsigned int elem_size, bool immutable) {
@@ -40,6 +49,16 @@ public:
 #endif
         *length = arr_length;
         *arr = newarr;
+
+#ifdef CHECKPOINT_DEBUG
+        char *carr = (char*)newarr;
+        int i;
+        for (i = 0; i < arr_length * elem_size; ++i) {
+            std::cout << (int)carr[i] << " ";
+        }
+        std::cout << std::endl;
+#endif
+
     }
 };
 
@@ -187,12 +206,15 @@ int32_t __hpat_end_checkpoint(HTYPE checkpoint_handle) {
 
         std::stringstream ss;
         ss << "checkpoint_file_" << g_unique; 
-        const char *cfname = get_file_name(ss.str().c_str()).c_str();
-        remove(cfname);
-        const char *new_name = get_file_name("hpat_checkpoint_in_progress").c_str(); 
-        rename(new_name, cfname); 
+        std::string cfstr = get_file_name(ss.str().c_str());
 #ifdef CHECKPOINT_DEBUG
-        std::cout << "__hpat_end_checkpoint cfname = " << cfname << " newname = " << new_name << std::endl;
+        std::cout << "cfstr = " << cfstr << std::endl;
+#endif
+        remove(cfstr.c_str());
+        std::string nnstr = get_file_name("hpat_checkpoint_in_progress");
+        rename(nnstr.c_str(), cfstr.c_str()); 
+#ifdef CHECKPOINT_DEBUG
+        std::cout << "__hpat_end_checkpoint cfstr = " << cfstr << " oldname = " << nnstr << std::endl;
 #endif
         int32_t cur_time = TIME_FUNC;
         int32_t checkpoint_time = cur_time - g_checkpoint_start_time;
