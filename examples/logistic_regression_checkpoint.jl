@@ -27,16 +27,16 @@ using HPAT
 using MPI
 using DocOpt
 
-#CompilerTools.OptFramework.set_debug_level(3)
-#CompilerTools.CFGs.set_debug_level(3)
-#CompilerTools.Loops.set_debug_level(3)
-#ParallelAccelerator.DomainIR.set_debug_level(3)
-#ParallelAccelerator.ParallelIR.set_debug_level(3)
-#ParallelAccelerator.CGen.set_debug_level(3)
-#HPAT.Checkpointing.set_debug_level(3)
-#HPAT.CGenPatternMatch.set_debug_level(3)
-#HPAT.set_debug_level(3)
-#HPAT.Checkpointing.setCheckpointDebug(50)    # Do checkpoints every 50 seconds.
+CompilerTools.OptFramework.set_debug_level(3)
+CompilerTools.CFGs.set_debug_level(3)
+CompilerTools.Loops.set_debug_level(3)
+ParallelAccelerator.DomainIR.set_debug_level(3)
+ParallelAccelerator.ParallelIR.set_debug_level(3)
+ParallelAccelerator.CGen.set_debug_level(3)
+HPAT.Checkpointing.set_debug_level(3)
+HPAT.CGenPatternMatch.set_debug_level(3)
+HPAT.set_debug_level(3)
+HPAT.Checkpointing.setCheckpointDebug(50)    # Do checkpoints every 50 seconds.
 #CompilerTools.LivenessAnalysis.set_debug_level(5)
 
 @acc hpat_checkpoint function logistic_regression(iterations, file_name)

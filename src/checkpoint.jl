@@ -85,6 +85,10 @@ end
 end
 # End of checkpointing restore functions.
 
+@noinline function hpat_dist_node_id()
+    convert(Int32,1)
+end
+
 # Set the delay between checkpoints (in seconds).
 # "0" means use Young's formula.
 checkpoint_debug = 0
@@ -172,6 +176,10 @@ function from_root(function_name, ast :: Expr, with_restart :: Bool)
         #   3. Other parameters are the elements that need to go in the checkpoint file.
         argument_names = [ string("arg",i) for i = 1:length(live_in_and_def) ]
         checkpoint_func_str = string(                     "function ", checkpoint_func_name, "(start_time, num_pes, ", foldl((a,b) -> "$a, $b", argument_names), ")\n")
+        checkpoint_func_str = string(checkpoint_func_str, "    node_id = HPAT.Checkpointing.hpat_dist_node_id()\n")
+        checkpoint_func_str = string(checkpoint_func_str, "    if node_id != 0\n")
+        checkpoint_func_str = string(checkpoint_func_str, "        return start_time\n")
+        checkpoint_func_str = string(checkpoint_func_str, "    end\n")
         checkpoint_func_str = string(checkpoint_func_str, "    system_faults_per_million_hours = num_pes * ", single_node_faults_per_million, "\n")
         checkpoint_func_str = string(checkpoint_func_str, "    system_mttf::Float64 = 1000000.0 / system_faults_per_million_hours\n")
         checkpoint_func_str = string(checkpoint_func_str, "    cur_time = HPAT.Checkpointing.hpat_get_sec_since_epoch()\n")
