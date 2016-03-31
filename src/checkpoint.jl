@@ -105,7 +105,7 @@ function from_root(function_name, ast :: Expr, with_restart :: Bool)
     
     body = CompilerTools.LambdaHandling.getBody(ast)
 
-    lives = ParallelAccelerator.ParallelIR.computeLiveness(ast)
+    lives = ParallelAccelerator.ParallelIR.computeLiveness(ast, state.LambdaVarInfo)
     @dprintln(3,"lives = ", lives)
     loop_info = CompilerTools.Loops.compute_dom_loops(lives.cfg)
     @dprintln(3,"loop_info = ", loop_info)
@@ -142,7 +142,18 @@ function from_root(function_name, ast :: Expr, with_restart :: Bool)
            liad_array = [live_in_and_def...]
            push!(pre_loop_stmts, ParallelAccelerator.ParallelIR.mk_assignment_expr(restore_handle, ParallelAccelerator.ParallelIR.TypedExpr(Int32, :call, GlobalRef(HPAT.Checkpointing,:hpat_checkpoint_restore_start), loop_index, liad_array[1])))
            for i = 1:length(liad_array)
-           push!(pre_loop_stmts, ParallelAccelerator.ParallelIR.TypedExpr(Int32, :call, GlobalRef(HPAT.Checkpointing,:hpat_checkpoint_restore_value), restore_handle, liad_array[i]))
+               push!(pre_loop_stmts, ParallelAccelerator.ParallelIR.TypedExpr(Int32, :call, GlobalRef(HPAT.Checkpointing,:hpat_checkpoint_restore_value), restore_handle, liad_array[i]))
+
+               @dprintln(3,"liad_array[i] = ", liad_array[i], " type = ", typeof(liad_array[i]))
+               latyp = CompilerTools.LambdaHandling.getType(liad_array[i], state.LambdaVarInfo) 
+               @dprintln(3,"latyp = ", latyp)
+               if CompilerTools.Helper.isArrayType(latyp)
+                   @dprintln(3,"isArrayType")
+                   push!(pre_loop_stmts, Expr(:call, GlobalRef(HPAT,:__hpat_dist_broadcast), liad_array[i], ParallelAccelerator.ParallelIR.TypedExpr(Int64, :call, GlobalRef(Base,:arraylen), liad_array[i])))
+               else
+                   @dprintln(3,"!isArrayType")
+                   push!(pre_loop_stmts, Expr(:call, GlobalRef(HPAT,:__hpat_dist_broadcast), liad_array[i], 1))
+               end
            end
            push!(pre_loop_stmts, ParallelAccelerator.ParallelIR.TypedExpr(Int32, :call, GlobalRef(HPAT.Checkpointing,:hpat_checkpoint_restore_end), restore_handle))
         end
