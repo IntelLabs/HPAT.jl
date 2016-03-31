@@ -215,4 +215,8 @@ function restart(func, args...)
   end
 end
 
+@noinline function __hpat_dist_broadcast(variable, size)
+   convert(Int32, 1)
+end
+
 end # module
