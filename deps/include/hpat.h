@@ -80,7 +80,7 @@ double __hpat_get_checkpoint_time(int64_t unique_checkpoint_location) {
 HTYPE __hpat_start_checkpoint(int64_t unique_checkpoint_location) {
     g_checkpoint_start_time = TIME_FUNC;
 
-    MPI_Barrier(MPI_COMM_WORLD);
+    // MPI_Barrier(MPI_COMM_WORLD);
     int32_t __hpat_node_id;
     MPI_Comm_rank(MPI_COMM_WORLD,&__hpat_node_id);
     if (__hpat_node_id == 0) {
@@ -196,7 +196,7 @@ int32_t __hpat_end_checkpoint(HTYPE checkpoint_handle) {
         std::cout << "__hpat_end_checkpoint cfname = " << cfname << " newname = " << new_name << std::endl;
 #endif
     }
-    MPI_Barrier(MPI_COMM_WORLD);
+    //MPI_Barrier(MPI_COMM_WORLD);
     int32_t cur_time = TIME_FUNC;
     int32_t checkpoint_time = cur_time - g_checkpoint_start_time;
     if (checkpoint_time < 1) {
