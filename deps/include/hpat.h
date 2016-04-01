@@ -102,7 +102,7 @@ HTYPE __hpat_start_checkpoint(int64_t unique_checkpoint_location) {
     int32_t __hpat_node_id;
     MPI_Comm_rank(MPI_COMM_WORLD,&__hpat_node_id);
     if (__hpat_node_id == 0) {
-        const char *cfname = get_file_name("hpat_checkpoint_in_progress").c_str();
+        std::string cfname = get_file_name("hpat_checkpoint_in_progress");
 #ifdef CHECKPOINT_DEBUG
         std::cout << "__hpat_start_checkpoint location = " << unique_checkpoint_location << " checkpoint# = " << g_checkpoint_handle + 1 << " start_time = " << g_checkpoint_start_time << " filename = " << cfname << std::endl;
 #endif
@@ -235,8 +235,8 @@ int32_t __hpat_finish_checkpoint_region(int64_t unique_checkpoint_location) {
     if (__hpat_node_id == 0) {
         std::stringstream ss;
         ss << "checkpoint_file_" << g_unique; 
-        const char *cfname = get_file_name(ss.str().c_str()).c_str();
-        remove(cfname);
+        std::string cfname = get_file_name(ss.str().c_str());
+        remove(cfname.c_str());
     }
     return 0;
 }
