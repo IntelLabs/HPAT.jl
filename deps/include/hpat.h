@@ -347,10 +347,10 @@ int32_t __hpat_restore_checkpoint_value(HTYPE checkpoint_handle, j2c_array<doubl
 int32_t __hpat_restore_checkpoint_end(HTYPE checkpoint_handle) {
     int32_t __hpat_node_id;
     MPI_Comm_rank(MPI_COMM_WORLD,&__hpat_node_id);
-#ifdef CHECKPOINT_DEBUG
-        std::cout << "__hpat_restore_checkpoint_value array<double>" << " id = " << __hpat_node_id << std::endl;
-#endif
     if (__hpat_node_id == 0) {
+#ifdef CHECKPOINT_DEBUG
+        std::cout << "__hpat_restore_checkpoint_end" << std::endl;
+#endif
         assert(checkpoint_file.is_open());
         checkpoint_file.close();
     }
