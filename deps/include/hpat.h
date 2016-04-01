@@ -45,7 +45,7 @@ public:
         char *newarr = (char*)malloc(arr_length * elem_size);
         checkpoint_file->read(newarr, arr_length * elem_size);
 #ifdef CHECKPOINT_DEBUG
-        std::cout << "checkpoint read arr_length = " << arr_length << " elem_size = " << elem_size << std::endl;
+        std::cout << "checkpoint read arr_length = " << arr_length << " elem_size = " << elem_size << " arr = " << arr << " *arr = " << *arr << std::endl;
 #endif
         *length = arr_length;
         *arr = newarr;
@@ -68,13 +68,8 @@ HTYPE g_checkpoint_handle = 0;
 std::fstream checkpoint_file;
 int64_t g_unique;
 
-#ifdef USE_CPP_TIME
-#define TIME_FUNC std::time(nullptr)
-#define TIME_TYPE int32_t
-#else
 #define TIME_FUNC MPI_Wtime()
 #define TIME_TYPE double
-#endif
 
 const char * getCheckpointDir(void) {
     const char *def_env = std::getenv("HPAT_DEFAULT_DATA");
