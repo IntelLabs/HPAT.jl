@@ -23,6 +23,7 @@ public:
         checkpoint_file->write((char*)&elem_size,  sizeof(elem_size));
         checkpoint_file->write((char*)arr, arr_length * elem_size);
 
+#if 0
 #ifdef CHECKPOINT_DEBUG
         char *carr = (char*)arr;
         int i;
@@ -30,6 +31,7 @@ public:
             std::cout << (int)carr[i] << " ";
         }
         std::cout << std::endl;
+#endif
 #endif
     }
 
@@ -50,6 +52,7 @@ public:
         *length = arr_length;
         *arr = newarr;
 
+#if 0
 #ifdef CHECKPOINT_DEBUG
         char *carr = (char*)newarr;
         int i;
@@ -58,7 +61,7 @@ public:
         }
         std::cout << std::endl;
 #endif
-
+#endif
     }
 };
 
