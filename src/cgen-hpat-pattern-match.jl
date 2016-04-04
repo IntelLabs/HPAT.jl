@@ -52,7 +52,7 @@ end
 
 function pattern_match_call_get_sec_since_epoch(f::GlobalRef)
     if f.mod == HPAT.Checkpointing && f.name==:hpat_get_sec_since_epoch
-        return "std::time(nullptr);"
+        return "MPI_Wtime()"
     else
         return ""
     end

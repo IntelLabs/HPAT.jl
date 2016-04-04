@@ -23,6 +23,7 @@ public:
         checkpoint_file->write((char*)&elem_size,  sizeof(elem_size));
         checkpoint_file->write((char*)arr, arr_length * elem_size);
 
+#if 0
 #ifdef CHECKPOINT_DEBUG
         char *carr = (char*)arr;
         int i;
@@ -30,6 +31,7 @@ public:
             std::cout << (int)carr[i] << " ";
         }
         std::cout << std::endl;
+#endif
 #endif
     }
 
@@ -45,11 +47,12 @@ public:
         char *newarr = (char*)malloc(arr_length * elem_size);
         checkpoint_file->read(newarr, arr_length * elem_size);
 #ifdef CHECKPOINT_DEBUG
-        std::cout << "checkpoint read arr_length = " << arr_length << " elem_size = " << elem_size << std::endl;
+        std::cout << "checkpoint read arr_length = " << arr_length << " elem_size = " << elem_size << " arr = " << arr << " *arr = " << *arr << std::endl;
 #endif
         *length = arr_length;
         *arr = newarr;
 
+#if 0
 #ifdef CHECKPOINT_DEBUG
         char *carr = (char*)newarr;
         int i;
@@ -58,7 +61,7 @@ public:
         }
         std::cout << std::endl;
 #endif
-
+#endif
     }
 };
 
@@ -68,13 +71,8 @@ HTYPE g_checkpoint_handle = 0;
 std::fstream checkpoint_file;
 int64_t g_unique;
 
-#ifdef USE_CPP_TIME
-#define TIME_FUNC std::time(nullptr)
-#define TIME_TYPE int32_t
-#else
 #define TIME_FUNC MPI_Wtime()
 #define TIME_TYPE double
-#endif
 
 const char * getCheckpointDir(void) {
     const char *def_env = std::getenv("HPAT_DEFAULT_DATA");
@@ -352,10 +350,10 @@ int32_t __hpat_restore_checkpoint_value(HTYPE checkpoint_handle, j2c_array<doubl
 int32_t __hpat_restore_checkpoint_end(HTYPE checkpoint_handle) {
     int32_t __hpat_node_id;
     MPI_Comm_rank(MPI_COMM_WORLD,&__hpat_node_id);
-#ifdef CHECKPOINT_DEBUG
-        std::cout << "__hpat_restore_checkpoint_value array<double>" << " id = " << __hpat_node_id << std::endl;
-#endif
     if (__hpat_node_id == 0) {
+#ifdef CHECKPOINT_DEBUG
+        std::cout << "__hpat_restore_checkpoint_end" << std::endl;
+#endif
         assert(checkpoint_file.is_open());
         checkpoint_file.close();
     }
