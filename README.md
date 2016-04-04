@@ -16,8 +16,8 @@ HPAT is in early development and therefore feedback is highly appreciated.
 
 ## Quick Start
 ```shell
-$ julia -e 'Pkg.clone("HPAT")'
-$ mpirun -np 2 julia ~/.julia/v0.4/HPAT/examples/pi.jl 10000 
+$ julia -e 'Pkg.clone("CompilerTools"); Pkg.clone("ParallelAccelerator"); Pkg.clone("HPAT"); Pkg.build("HPAT")'
+$ mpirun -np 2 julia ~/.julia/v0.4/HPAT/examples/pi.jl --points=1000000 
 ```
 
 If there were any issues, make sure [MPI.jl](https://github.com/JuliaParallel/MPI.jl) 
