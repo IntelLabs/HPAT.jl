@@ -392,6 +392,7 @@ function from_assignment(node::Expr, state::DistPassState)
     return [node]
 end
 
+
 function from_parfor(node::Expr, state)
     @assert node.head==:parfor "DistributedPass invalid parfor head"
 
@@ -429,7 +430,8 @@ function from_parfor(node::Expr, state)
         loopnest.upper = loop_end_var
 
         for stmt in parfor.body
-            adjust_arrayrefs(stmt, loop_start_var)
+            #adjust_arrayrefs(stmt, loop_start_var)
+            ParallelIR.AstWalk(stmt, adjust_arrayrefs, loopnest)
         end
         res = [loop_div_expr; loop_start_expr; loop_end_expr; node]
 
@@ -554,24 +556,25 @@ function getDistNewID(state)
     return state.uniqueId
 end
 
-function adjust_arrayrefs(stmt::Expr, loop_start_var::Symbol)
-    
-    if stmt.head==:(=)
-        stmt = stmt.args[2]
-    end
+function adjust_arrayrefs(stmt::Expr, loopnest, top_level_number, is_top_level, read)
     
     if isCall(stmt) && isTopNode(stmt.args[1])
         topCall = stmt.args[1]
         #ref_args = stmt.args[2:end]
         if topCall.name==:unsafe_arrayref || topCall.name==:unsafe_arrayset
             # TODO: simply divide the last dimension, more general partitioning needed
-            index_arg = stmt.args[end]
-            stmt.args[end] = mk_add_int_expr(mk_sub_int_expr(toSymGen(index_arg),loop_start_var),1)
+            index_arg = toSymGen(stmt.args[end])
+            if isa(index_arg,Symbol) && index_arg==toSymGen(loopnest.indexVariable)
+                stmt.args[end] = mk_add_int_expr(mk_sub_int_expr(toSymGen(index_arg),loopnest.lower),1)
+                return stmt
+            end
         end
     end
+    CompilerTools.AstWalker.ASTWALK_RECURSE
 end
 
-function adjust_arrayrefs(stmt::Any, loop_start_var::Symbol)
+function adjust_arrayrefs(stmt::Any, loopnest,top_level_number, is_top_level, read)
+    CompilerTools.AstWalker.ASTWALK_RECURSE
 end
 
 
