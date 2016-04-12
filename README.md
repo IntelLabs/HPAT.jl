@@ -83,12 +83,12 @@ Hence, the computation is performed in registers and there is no extra memory ac
 
 Run Pi example of HPAT:
 ```shell
-$ mpirun -np 64 julia ~/.julia/v0.4/HPAT/examples/pi.jl 10000000
+$ mpirun -np 64 julia ~/.julia/v0.4/HPAT/examples/pi.jl --points=10000000
 ```
 
 Run Pi example of Spark\*:
 ```shell
-$ spark-submit $SPARK_HOME/examples/src/main/python/pi.py /tmp/logistic_regression.csv 100 &> pi_spark.out
+$ spark-submit $SPARK_HOME/examples/src/main/python/pi.py 100 &> pi_spark.out
 ```
 
 ## Usage
