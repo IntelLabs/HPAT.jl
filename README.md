@@ -16,7 +16,7 @@ HPAT is in early development and therefore feedback is highly appreciated.
 
 ## Quick Start
 ```shell
-$ julia -e 'Pkg.clone("CompilerTools"); Pkg.clone("ParallelAccelerator"); Pkg.clone("HPAT"); Pkg.build("HPAT")'
+$ julia -e 'Pkg.add("HPAT")'
 $ mpirun -np 2 julia ~/.julia/v0.4/HPAT/examples/pi.jl --points=1000000 
 ```
 
@@ -50,7 +50,7 @@ $ sudo add-apt-repository ppa:staticfloat/juliareleases
 $ sudo add-apt-repository ppa:staticfloat/julia-deps
 $ sudo apt-get update
 $ sudo apt-get install -y gcc g++ gfortran cmake openmpi-bin openmpi-common libopenmpi-dev libhdf5-openmpi-dev julia libblas-dev libopenblas-dev
-$ julia -e 'Pkg.clone("CompilerTools"); Pkg.clone("ParallelAccelerator"); Pkg.clone("HPAT"); Pkg.build("HPAT")' 
+$ julia -e 'Pkg.add("HPAT")' 
 ```
 
 
@@ -83,12 +83,12 @@ Hence, the computation is performed in registers and there is no extra memory ac
 
 Run Pi example of HPAT:
 ```shell
-$ mpirun -np 64 julia ~/.julia/v0.4/HPAT/examples/pi.jl 10000000
+$ mpirun -np 64 julia ~/.julia/v0.4/HPAT/examples/pi.jl --points=10000000
 ```
 
 Run Pi example of Spark\*:
 ```shell
-$ spark-submit $SPARK_HOME/examples/src/main/python/pi.py /tmp/logistic_regression.csv 100 &> pi_spark.out
+$ spark-submit $SPARK_HOME/examples/src/main/python/pi.py 100 &> pi_spark.out
 ```
 
 ## Usage
