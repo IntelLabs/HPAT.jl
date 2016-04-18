@@ -258,7 +258,7 @@ function pattern_match_call_data_src_open(f::Symbol, id::Int, data_var::Union{Sy
         s *= "hid_t file_id_$num;\n"
         s *= "ret_$num = H5Pset_fapl_mpio(plist_id_$num, MPI_COMM_WORLD, MPI_INFO_NULL);\n"
         s *= "assert(ret_$num != -1);\n"
-        s *= "file_id_$num = H5Fopen("*ParallelAccelerator.CGen.from_expr(file_name)*", H5F_ACC_RDONLY, plist_id_$num);\n"
+        s *= "file_id_$num = H5Fopen((const char*)"*ParallelAccelerator.CGen.from_expr(file_name)*".data.data, H5F_ACC_RDONLY, plist_id_$num);\n"
         s *= "assert(file_id_$num != -1);\n"
         s *= "ret_$num = H5Pclose(plist_id_$num);\n"
         s *= "assert(ret_$num != -1);\n"
@@ -528,7 +528,7 @@ function pattern_match_call_data_src_open(f::Symbol, id::Int, file_name::Union{S
         file_name_str::AbstractString = ParallelAccelerator.CGen.from_expr(file_name)
         s = """
             MPI_File dsrc_txt_file_$num;
-            int ierr_$num = MPI_File_open(MPI_COMM_WORLD, $file_name_str, MPI_MODE_RDONLY, MPI_INFO_NULL, &dsrc_txt_file_$num);
+            int ierr_$num = MPI_File_open(MPI_COMM_WORLD, $file_name_str.data.data, MPI_MODE_RDONLY, MPI_INFO_NULL, &dsrc_txt_file_$num);
             assert(ierr_$num==0);
             """
     end
