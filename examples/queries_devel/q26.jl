@@ -4,7 +4,9 @@ using HPAT
     store_sales = DataSource(DataTable{:ss_item_sk=Int64,:ss_customer_sk=Int64}, HDF5, file_name)
     item = DataSource(DataTable{:item_sk=Int64,:i_category=ASCIIString,:i_class_id=Int64}, HDF5, file_name)
 
-    sale_items = join(store_sales, item, :ss_item_sk==:i_item_sk && :i_category==category)
+    sale_items = join(store_sales, item, :ss_item_sk==:i_item_sk, :ss_item_sk)
+
+    sale_items = sale_items[:i_category==category]
 
     customer_i_class = aggregate(sale_items, :ss_customer_sk, :ss_item_count = size(:ss_item_sk),
                                                               :id1 = sum(:i_class_id==1),
