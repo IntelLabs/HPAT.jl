@@ -32,10 +32,10 @@ end
     map!(makePairs, sold_in_ticket[:item_arr])
 
     all_pairs = flatten(sold_in_ticket[:item_arr])
-    pair_counts = countmap(all_pairs)
+    pair_counts = collect(countmap(all_pairs))
 
-    high_counts = collect(filter((a,b)->b>count_threshod, pair_counts))
-    sort!(high_counts)
+    high_counts = filter(a->a[2]>count_threshod, pair_counts)
+    sort!(high_counts, by=a->a[2])
     return high_counts[1:num_top_items]
 end
 
