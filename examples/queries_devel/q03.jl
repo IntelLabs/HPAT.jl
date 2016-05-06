@@ -39,7 +39,7 @@ end
 
     view_items = flatten(view_items)
     view_items_category = join(view_items, item, :view_items==:i_item_sk, :item_sk)
-    filter!(:i_category_id in my_categories, view_items_category)
+    view_items_category = view_items_category[:i_category_id in my_categories]
     item_counts = collect(countmap(view_items_category[:item_sk]))
     sort!(item_counts, rev=true)
     return item_counts[1:100]
