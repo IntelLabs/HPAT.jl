@@ -30,7 +30,7 @@ DataTable + DataTable
 ---------------------------------------
 
 aggregate
-    aggregate(<table>, :new_column_name1 = :group_by_key_name,
+    aggregate(<table>, :group_by_key_name,
                        :new_column_name2 = aggregation_function(<column_expression>), ...)
     where aggregation_function is count, max, or sum.
 
