@@ -1,0 +1,40 @@
+
+
+# data tables are broken down to individual column arrays, table meta data is saved
+table_name = DataSource(DataTable{:column1=<typeof_column1>, :column2=<typeof_column2>, ...}, HDF5, file_name)
+                ->  table_name_column1 = DataSource(...)
+                    table_name_column2 = DataSource(...)
+                    assertEqShape([table_name_column1, table_name_column2])
+                    newTableMeta(:table_name, [:column1,:column2])
+
+
+# basic join will match first column of each column array
+t3 = join(t1, t2, :c1==:c1, :c2)
+                ->  t3_c1, t3_c2,... = join([t1_c1,t1_c2,...], [t2_c1,t2_c2,...])
+                    assertEqShape(t3_c1, t3_c2,...)
+                    newTableMeta(:t3, [:c1,:c2,...])
+
+# f is a reduction function on grouped data, e is closure for filtering column elements
+t2 = aggregate(t1, :c1, :c3=f(e(:c2)),...)
+                ->  t2_c1, t2_c3,... = aggregate(t1_c2, ([t1_c1],f,e),...)
+                    assertEqShape(t3_c1, t3_c3,...)
+                    newTableMeta(:t3, [:c1,:c3,...])
+
+# e is closure for filtering expression
+t2 = t1[:c1==...]
+                -> table_filter(e(...), [t1_c1, t1_c2,...])
+                   assertEqShape(t3_c2, t3_c4, ...)
+                   newTableMeta(:t3, [:c2,:c4,...])
+                    
+c2 = flatten(t1[:c1]) -> c2 = flatten(t1_c1)
+
+t3 = vcat(t1,t2) -> assertEqSchema(t1,t2)
+                    t3_c1 = vcat(t1_c1,t2_c1)
+                    t3_c2 = vcat(t1_c2,t2_c2)
+                    ...
+                    assertEqShape(t3_c1, t3_c2,...)
+                    newTableMeta(:t3, [:c1,:c2,...])
+
+
+
+
