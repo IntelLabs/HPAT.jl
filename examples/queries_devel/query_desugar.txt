@@ -15,8 +15,10 @@ t3 = join(t1, t2, :c1==:c1, :c2)
                     newTableMeta(:t3, [:c1,:c2,...])
 
 # f is a reduction function on grouped data, e is closure for filtering column elements
-t2 = aggregate(t1, :c1, :c3=f(e(:c2)),...)
-                ->  t2_c1, t2_c3,... = aggregate(t1_c2, ([t1_c1],f,e),...)
+t2 = aggregate(t1, :c1, :c3=f(e(:c2,...)),...)
+                ->  t2_c3_e = e(t1_c2,...)
+                    ...
+                    t2_c1, t2_c3,... = aggregate(t1_c1, (t2_c3_e,f),...)
                     assertEqShape(t3_c1, t3_c3,...)
                     newTableMeta(:t3, [:c1,:c3,...])
 
