@@ -112,7 +112,7 @@ function from_root(function_name, ast::Tuple)
     # transform body
     body.args = from_toplevel_body(body.args, state)
     @dprintln(1,"DistributedPass.from_root returns function = ", function_name, " ast = ", body)
-    return LambdaVarInfo, body
+    return state.LambdaVarInfo, body
 end
 
 type ArrDistInfo
