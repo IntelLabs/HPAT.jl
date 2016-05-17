@@ -176,26 +176,16 @@ end
 function initDistState(linfo::LambdaVarInfo, lives)
     state = DistPassState(linfo, lives)
     
-    #params = linfo.input_params
-    vars = linfo.var_defs
-    gensyms = linfo.gen_sym_typs
-
+    vars = getLocalVariables(linfo)
     # Populate the symbol table
-    for sym in keys(vars)
-        v = vars[sym] # v is a VarDef
-        if isArrayType(v.typ)
-            arrInfo = ArrDistInfo(ndims(v.typ))
-            state.arrs_dist_info[sym] = arrInfo
-        end 
-    end
-
-    for k in 1:length(gensyms)
-        typ = gensyms[k]
+    for var in vars
+        typ = CompilerTools.LambdaHandling.getType(var, linfo)
         if isArrayType(typ)
             arrInfo = ArrDistInfo(ndims(typ))
-            state.arrs_dist_info[GenSym(k-1)] = arrInfo
+            state.arrs_dist_info[var] = arrInfo
         end
     end
+    
     return state
 end
 
