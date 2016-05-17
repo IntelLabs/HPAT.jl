@@ -735,7 +735,7 @@ function pattern_match_call_data_src_read(f::Any, v::Any, rf::Any, o::Any, arr::
     return ""
 end
 
-function pattern_match_call_dist_h5_size(f::Symbol, size_arr::GenSym, ind::Union{Int64,RHSVar})
+function pattern_match_call_dist_h5_size(f::Symbol, size_arr::LHSVar, ind::Union{Int64,RHSVar})
     s = ""
     if f==:__hpat_get_H5_dim_size || f==:__hpat_get_TXT_dim_size
         @dprintln(3,"match dist_dim_size ",f," ", size_arr, " ",ind)
