@@ -116,7 +116,7 @@ function from_assignment(node::Expr, state)
     end
 end
 
-function pattern_match_hpat_dist_calls(lhs::SymGen, rhs::Expr, state)
+function pattern_match_hpat_dist_calls(lhs::LHSVar, rhs::Expr, state)
     # example of data source call: 
     # :((top(typeassert))((top(convert))(Array{Float64,1},(ParallelAccelerator.API.__hpat_data_source_HDF5)("/labels","./test.hdf5")),Array{Float64,1})::Array{Float64,1})
     if rhs.head==:call && length(rhs.args)>=2 && isCall(rhs.args[2])

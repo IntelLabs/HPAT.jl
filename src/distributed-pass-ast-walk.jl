@@ -79,7 +79,7 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
         indexVariable::Symbol = toLHSVar(parfor.loopNests[1].indexVariable)
         
         allArrAccesses = merge(rws.readSet.arrays,rws.writeSet.arrays)
-        myArrs = SymGen[]
+        myArrs = LHSVar[]
 
         fake_body = CompilerTools.LambdaHandling.LambdaVarInfoToLambdaExpr(state.LambdaVarInfo, TypedExpr(nothing, :body, parfor.body...))
         #@dprintln(3,"fake_body = ", fake_body)
@@ -204,7 +204,7 @@ end
 For each statement of parfor's body, see if array access index is in Def set and parfor's indexVariable is in Use set.
 This is a hack to work around not having dependence analysis in CompilerTools.
 """
-function isAccessIndexDependent(index::SymGen, indexVariable::Symbol, body_lives::BlockLiveness, state)
+function isAccessIndexDependent(index::LHSVar, indexVariable::Symbol, body_lives::BlockLiveness, state)
     for bb in collect(values(body_lives.basic_blocks))
         for stmt in bb.statements
             if isBareParfor(stmt.tls.expr)

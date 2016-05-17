@@ -128,7 +128,7 @@ function from_root(function_name, ast :: Expr, with_restart :: Bool)
         @dprintln(3,"bb_loop_members = ", bb_loop_members)
         loop_live_in = liveness_loop_entry.live_in
         @dprintln(3,"loop_live_in = ", loop_live_in)
-        loop_def = reduce((x,y) -> union(x,y), Set{CompilerTools.LambdaHandling.SymGen}(), map(x -> x.def, bb_loop_members))
+        loop_def = reduce((x,y) -> union(x,y), Set{LHSVar}(), map(x -> x.def, bb_loop_members))
         @dprintln(3,"loop_def = ", loop_def)
         live_in_and_def = intersect(loop_live_in, loop_def)
         @dprintln(3,"live_in_and_def = ", live_in_and_def)

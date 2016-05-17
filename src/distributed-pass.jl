@@ -135,20 +135,20 @@ end
 # information about AST gathered and used in DistributedPass
 type DistPassState
     # information about all arrays
-    arrs_dist_info::Dict{SymGen, ArrDistInfo}
-    parfor_info::Dict{Int, Array{SymGen,1}}
+    arrs_dist_info::Dict{LHSVar, ArrDistInfo}
+    parfor_info::Dict{Int, Array{LHSVar,1}}
     LambdaVarInfo::LambdaVarInfo
     seq_parfors::Array{Int,1}
-    dist_arrays::Array{SymGen,1}
+    dist_arrays::Array{LHSVar,1}
     uniqueId::Int
     lives  :: CompilerTools.LivenessAnalysis.BlockLiveness
     # keep values for constant tuples. They are often used for allocating and reshaping arrays.
-    tuple_table              :: Dict{SymGen,Array{Union{SymGen,Int},1}}
+    tuple_table              :: Dict{LHSVar,Array{Union{LHSVar,Int},1}}
     max_label :: Int # holds the max number of all LabelNodes
 
     function DistPassState(linfo, lives)
-        new(Dict{SymGen, Array{ArrDistInfo,1}}(), Dict{Int, Array{SymGen,1}}(), linfo, Int[], SymGen[],0, lives, 
-             Dict{SymGen,Array{Union{SymGen,Int},1}}(),0)
+        new(Dict{LHSVar, Array{ArrDistInfo,1}}(), Dict{Int, Array{LHSVar,1}}(), linfo, Int[], LHSVar[],0, lives, 
+             Dict{LHSVar,Array{Union{LHSVar,Int},1}}(),0)
     end
 end
 
