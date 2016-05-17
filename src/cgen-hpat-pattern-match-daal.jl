@@ -25,9 +25,9 @@ THE POSSIBILITY OF SUCH DAMAGE.
 
 
 
-function pattern_match_call_kmeans(f::Symbol, cluster_out::SymAllGen, arr::SymAllGen, 
-                                   num_clusters::SymAllGen, start::Symbol, count::Symbol, 
-                                   col_size::Union{SymAllGen,Int,Expr}, tot_row_size::Union{SymAllGen,Int,Expr})
+function pattern_match_call_kmeans(f::Symbol, cluster_out::RHSVar, arr::RHSVar, 
+                                   num_clusters::RHSVar, start::Symbol, count::Symbol, 
+                                   col_size::Union{RHSVar,Int,Expr}, tot_row_size::Union{RHSVar,Int,Expr})
     s = ""
     if f==:__hpat_Kmeans
         c_arr = ParallelAccelerator.CGen.from_expr(arr)
@@ -217,11 +217,11 @@ function pattern_match_call_kmeans(f::ANY, cluster_out::ANY, arr::ANY, num_clust
     return ""
 end
 
-function pattern_match_call_linear_regression(f::Symbol, coeff_out::SymAllGen, points::SymAllGen, 
-                                   responses::SymAllGen, start_points::Symbol, count_points::Symbol, 
-                                   col_size_points::Union{SymAllGen,Int,Expr}, tot_row_size_points::Union{SymAllGen,Int,Expr},
+function pattern_match_call_linear_regression(f::Symbol, coeff_out::RHSVar, points::RHSVar, 
+                                   responses::RHSVar, start_points::Symbol, count_points::Symbol, 
+                                   col_size_points::Union{RHSVar,Int,Expr}, tot_row_size_points::Union{RHSVar,Int,Expr},
                                    start_responses::Symbol, count_responses::Symbol, 
-                                   col_size_responses::Union{SymAllGen,Int,Expr}, tot_row_size_responses::Union{SymAllGen,Int,Expr})
+                                   col_size_responses::Union{RHSVar,Int,Expr}, tot_row_size_responses::Union{RHSVar,Int,Expr})
     s = ""
     if f==:__hpat_LinearRegression
         c_points = ParallelAccelerator.CGen.from_expr(points)
@@ -334,11 +334,11 @@ function pattern_match_call_linear_regression(f::ANY, coeff_out::ANY, arr::ANY, 
     return ""
 end
 
-function pattern_match_call_naive_bayes(f::Symbol, coeff_out::SymAllGen, points::SymAllGen, 
-                                   labels::SymAllGen, num_classes::Union{SymAllGen,Int,Expr}, start_points::Symbol, count_points::Symbol, 
-                                   col_size_points::Union{SymAllGen,Int,Expr}, tot_row_size_points::Union{SymAllGen,Int,Expr},
+function pattern_match_call_naive_bayes(f::Symbol, coeff_out::RHSVar, points::RHSVar, 
+                                   labels::RHSVar, num_classes::Union{RHSVar,Int,Expr}, start_points::Symbol, count_points::Symbol, 
+                                   col_size_points::Union{RHSVar,Int,Expr}, tot_row_size_points::Union{RHSVar,Int,Expr},
                                    start_labels::Symbol, count_labels::Symbol, 
-                                   col_size_labels::Union{SymAllGen,Int,Expr}, tot_row_size_labels::Union{SymAllGen,Int,Expr})
+                                   col_size_labels::Union{RHSVar,Int,Expr}, tot_row_size_labels::Union{RHSVar,Int,Expr})
     s = ""
     if f==:__hpat_NaiveBayes
         c_points = ParallelAccelerator.CGen.from_expr(points)

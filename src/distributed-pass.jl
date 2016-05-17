@@ -120,7 +120,7 @@ end
 
 type ArrDistInfo
     isSequential::Bool      # can't be distributed; e.g. it is used in sequential code
-    dim_sizes::Array{Union{SymAllGen,Int,Expr},1}      # sizes of array dimensions
+    dim_sizes::Array{Union{RHSVar,Int,Expr},1}      # sizes of array dimensions
     # assuming only last dimension is partitioned
     arr_id::Int # assign ID to distributed array to access partitioning info later
     

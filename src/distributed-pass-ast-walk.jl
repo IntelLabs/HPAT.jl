@@ -232,7 +232,7 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
     if isAllocation(rhs)
             state.arrs_dist_info[lhs].dim_sizes = map(toSynGemOrInt, get_alloc_shape(rhs.args[2:end]))
             @dprintln(3,"DistPass arr info dim_sizes update: ", state.arrs_dist_info[lhs].dim_sizes)
-    elseif isa(rhs,SymAllGen)
+    elseif isa(rhs,RHSVar)
         rhs = toSymGen(rhs)
         if haskey(state.arrs_dist_info, rhs)
             state.arrs_dist_info[lhs].dim_sizes = state.arrs_dist_info[rhs].dim_sizes
@@ -310,7 +310,7 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
 end
 
 
-function isEqualDimSize(sizes1::Array{Union{SymAllGen,Int,Expr},1} , sizes2::Array{Union{SymAllGen,Int,Expr},1})
+function isEqualDimSize(sizes1::Array{Union{RHSVar,Int,Expr},1} , sizes2::Array{Union{RHSVar,Int,Expr},1})
     if length(sizes1)!=length(sizes2)
         return false
     end

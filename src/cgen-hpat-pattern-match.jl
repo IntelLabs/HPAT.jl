@@ -120,7 +120,7 @@ function pattern_match_call_dist_reduce(f::Any, v::Any, rf::Any, o::Any)
     return ""
 end
 
-function pattern_match_call_dist_portion(f::Symbol, total::Union{SymAllGen,Int}, div::Union{SymAllGen,Int}, num_pes::Symbol, node_id::Symbol)
+function pattern_match_call_dist_portion(f::Symbol, total::Union{RHSVar,Int}, div::Union{RHSVar,Int}, num_pes::Symbol, node_id::Symbol)
     s = ""
     if f==:__hpat_get_node_portion
         c_total = ParallelAccelerator.CGen.from_expr(total)
@@ -134,7 +134,7 @@ function pattern_match_call_dist_portion(f::ANY, total::ANY, div::ANY, num_pes::
     return ""
 end
 
-function pattern_match_call_dist_node_end(f::Symbol, total::SymAllGen, div::SymAllGen, num_pes::Symbol, node_id::Symbol)
+function pattern_match_call_dist_node_end(f::Symbol, total::RHSVar, div::RHSVar, num_pes::Symbol, node_id::Symbol)
     s = ""
     if f==:__hpat_get_node_end
         c_total = ParallelAccelerator.CGen.from_expr(total)
@@ -148,7 +148,7 @@ function pattern_match_call_dist_node_end(f::ANY, total::ANY, div::ANY, num_pes:
     return ""
 end
 
-function pattern_match_call_dist_allreduce(f::TopNode, var::SymAllGen, reductionFunc, output::SymAllGen, size::Union{SymAllGen,Int})
+function pattern_match_call_dist_allreduce(f::TopNode, var::RHSVar, reductionFunc, output::RHSVar, size::Union{RHSVar,Int})
     if f.name==:hpat_dist_allreduce
         mpi_type = ""
         var = toSymGen(var)
@@ -197,7 +197,7 @@ function pattern_match_call_dist_allreduce(f::Any, v::Any, rf::Any, o::Any, s::A
     return ""
 end
 
-function pattern_match_call_dist_bcast(f::Symbol, var::SymAllGen, size::ANY)
+function pattern_match_call_dist_bcast(f::Symbol, var::RHSVar, size::ANY)
     @dprintln(3, "pattern_match_call_dist_bcast f = ", f)
     c_size = ParallelAccelerator.CGen.from_expr(size)
     if f==:__hpat_dist_broadcast
@@ -232,7 +232,7 @@ function pattern_match_call_dist_bcast(f::Symbol, var::SymAllGen, size::ANY)
     end
 end
 
-function pattern_match_call_dist_bcast(f::GlobalRef, var::SymAllGen, size::ANY)
+function pattern_match_call_dist_bcast(f::GlobalRef, var::RHSVar, size::ANY)
     @dprintln(3, "pattern_match_call_dist_bcast GlobalRef f = ", f)
     if f.mod == HPAT
         return pattern_match_call_dist_bcast(f.name, var, size)
@@ -247,7 +247,7 @@ end
 """
 Generate code for HDF5 file open
 """
-function pattern_match_call_data_src_open(f::Symbol, id::Int, data_var::Union{SymAllGen,AbstractString}, file_name::Union{SymAllGen,AbstractString}, arr::Symbol)
+function pattern_match_call_data_src_open(f::Symbol, id::Int, data_var::Union{RHSVar,AbstractString}, file_name::Union{RHSVar,AbstractString}, arr::Symbol)
     s = ""
     if f==:__hpat_data_source_HDF5_open
         num::AbstractString = string(id)
@@ -297,7 +297,7 @@ end
 """
 Generate code for get checkpoint time.
 """
-function pattern_match_call_get_checkpoint_time(f::GlobalRef, id::Union{Int,SymAllGen})
+function pattern_match_call_get_checkpoint_time(f::GlobalRef, id::Union{Int,RHSVar})
     @dprintln(3, "pattern_match_call_get_checkpoint_time f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id))
     s = ""
     if f.mod == HPAT.Checkpointing && f.name==:hpat_get_checkpoint_time
@@ -307,7 +307,7 @@ function pattern_match_call_get_checkpoint_time(f::GlobalRef, id::Union{Int,SymA
     return s
 end
 
-function pattern_match_call_get_checkpoint_time(f::Expr, id::Union{Int,SymAllGen})
+function pattern_match_call_get_checkpoint_time(f::Expr, id::Union{Int,RHSVar})
     @dprintln(3, "pattern_match_call_get_checkpoint_time f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id))
     s = ""
     if f.head == :call && f.args[1] == TopNode(:getfield)
@@ -326,7 +326,7 @@ end
 """
 Generate code for start checkpoint.
 """
-function pattern_match_call_start_checkpoint(f::GlobalRef, id::Union{Int,SymAllGen})
+function pattern_match_call_start_checkpoint(f::GlobalRef, id::Union{Int,RHSVar})
     @dprintln(3, "pattern_match_call_start_checkpoint f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id))
     s = ""
     if f.mod == HPAT.Checkpointing && f.name==:hpat_start_checkpoint
@@ -337,7 +337,7 @@ function pattern_match_call_start_checkpoint(f::GlobalRef, id::Union{Int,SymAllG
     return s
 end
 
-function pattern_match_call_start_checkpoint(f::Expr, id::Union{Int,SymAllGen})
+function pattern_match_call_start_checkpoint(f::Expr, id::Union{Int,RHSVar})
     @dprintln(3, "pattern_match_call_start_checkpoint f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id))
     s = ""
     if f.head == :call && f.args[1] == TopNode(:getfield)
@@ -355,7 +355,7 @@ end
 """
 Generate code for finish checkpoint.
 """
-function pattern_match_call_finish_checkpoint(f::GlobalRef, id::Union{Int,SymAllGen})
+function pattern_match_call_finish_checkpoint(f::GlobalRef, id::Union{Int,RHSVar})
     @dprintln(3, "pattern_match_call_finish_checkpoint f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id))
     s = ""
     if f.mod == HPAT.Checkpointing && f.name==:hpat_finish_checkpoint_region
@@ -365,7 +365,7 @@ function pattern_match_call_finish_checkpoint(f::GlobalRef, id::Union{Int,SymAll
     return s
 end
 
-function pattern_match_call_finish_checkpoint(f::Expr, id::Union{Int,SymAllGen})
+function pattern_match_call_finish_checkpoint(f::Expr, id::Union{Int,RHSVar})
     @dprintln(3, "pattern_match_call_finish_checkpoint f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id))
     s = ""
     if f.head == :call && f.args[1] == TopNode(:getfield)
@@ -384,7 +384,7 @@ end
 """
 Generate code for end checkpoint.
 """
-function pattern_match_call_end_checkpoint(f::GlobalRef, id::Union{Int,SymAllGen})
+function pattern_match_call_end_checkpoint(f::GlobalRef, id::Union{Int,RHSVar})
     @dprintln(3, "pattern_match_call_end_checkpoint f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id))
     s = ""
     if f.mod == HPAT.Checkpointing && f.name==:hpat_end_checkpoint
@@ -394,7 +394,7 @@ function pattern_match_call_end_checkpoint(f::GlobalRef, id::Union{Int,SymAllGen
     return s
 end
 
-function pattern_match_call_end_checkpoint(f::Expr, id::Union{Int,SymAllGen})
+function pattern_match_call_end_checkpoint(f::Expr, id::Union{Int,RHSVar})
     @dprintln(3, "pattern_match_call_end_checkpoint f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id))
     s = ""
     if f.head == :call && f.args[1] == TopNode(:getfield)
@@ -412,7 +412,7 @@ end
 """
 Generate code for checkpointing a single program element.
 """
-function pattern_match_call_value_checkpoint(f::GlobalRef, id::Union{Int,SymAllGen}, value::SymAllGen)
+function pattern_match_call_value_checkpoint(f::GlobalRef, id::Union{Int,RHSVar}, value::RHSVar)
     @dprintln(3, "pattern_match_call_value_checkpoint f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id), " value = ", value, " type = ", typeof(value))
     s = ""
     if f.mod == HPAT.Checkpointing && f.name==:hpat_value_checkpoint
@@ -422,7 +422,7 @@ function pattern_match_call_value_checkpoint(f::GlobalRef, id::Union{Int,SymAllG
     return s
 end
 
-function pattern_match_call_value_checkpoint(f::Expr, id::Union{Int,SymAllGen}, value::SymAllGen)
+function pattern_match_call_value_checkpoint(f::Expr, id::Union{Int,RHSVar}, value::RHSVar)
     @dprintln(3, "pattern_match_call_value_checkpoint f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id), " value = ", value, " type = ", typeof(value))
     s = ""
     if f.head == :call && f.args[1] == TopNode(:getfield)
@@ -437,7 +437,7 @@ function pattern_match_call_value_checkpoint(f::Any, id::Any, value::Any)
     return ""
 end
 
-function pattern_match_call_restore_checkpoint_start(f::GlobalRef, id::Union{Int,SymAllGen})
+function pattern_match_call_restore_checkpoint_start(f::GlobalRef, id::Union{Int,RHSVar})
     @dprintln(3, "pattern_match_call_restore_checkpoint_start f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id))
     s = ""
     if f.mod == HPAT.Checkpointing && f.name==:hpat_checkpoint_restore_start
@@ -447,7 +447,7 @@ function pattern_match_call_restore_checkpoint_start(f::GlobalRef, id::Union{Int
     return s
 end
 
-function pattern_match_call_restore_checkpoint_start(f::Expr, id::Union{Int,SymAllGen})
+function pattern_match_call_restore_checkpoint_start(f::Expr, id::Union{Int,RHSVar})
     @dprintln(3, "pattern_match_call_restore_checkpoint_start f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id))
     s = ""
     if f.head == :call && f.args[1] == TopNode(:getfield)
@@ -465,7 +465,7 @@ end
 """
 Generate code for end checkpoint.
 """
-function pattern_match_call_restore_checkpoint_end(f::GlobalRef, id::Union{Int,SymAllGen})
+function pattern_match_call_restore_checkpoint_end(f::GlobalRef, id::Union{Int,RHSVar})
     @dprintln(3, "pattern_match_call_restore_checkpoint_end f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id))
     s = ""
     if f.mod == HPAT.Checkpointing && f.name==:hpat_checkpoint_restore_end
@@ -475,7 +475,7 @@ function pattern_match_call_restore_checkpoint_end(f::GlobalRef, id::Union{Int,S
     return s
 end
 
-function pattern_match_call_restore_checkpoint_end(f::Expr, id::Union{Int,SymAllGen})
+function pattern_match_call_restore_checkpoint_end(f::Expr, id::Union{Int,RHSVar})
     @dprintln(3, "pattern_match_call_restore_checkpoint_end f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id))
     s = ""
     if f.head == :call && f.args[1] == TopNode(:getfield)
@@ -493,7 +493,7 @@ end
 """
 Generate code for checkpointing a single program element.
 """
-function pattern_match_call_restore_checkpoint_value(f::GlobalRef, id::Union{Int,SymAllGen}, value::SymAllGen)
+function pattern_match_call_restore_checkpoint_value(f::GlobalRef, id::Union{Int,RHSVar}, value::RHSVar)
     @dprintln(3, "pattern_match_call_restore_checkpoint_value f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id), " value = ", value, " type = ", typeof(value))
     s = ""
     if f.mod == HPAT.Checkpointing && f.name==:hpat_checkpoint_restore_value
@@ -503,7 +503,7 @@ function pattern_match_call_restore_checkpoint_value(f::GlobalRef, id::Union{Int
     return s
 end
 
-function pattern_match_call_restore_checkpoint_value(f::Expr, id::Union{Int,SymAllGen}, value::SymAllGen)
+function pattern_match_call_restore_checkpoint_value(f::Expr, id::Union{Int,RHSVar}, value::RHSVar)
     @dprintln(3, "pattern_match_call_restore_checkpoint_value f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id), " value = ", value, " type = ", typeof(value))
     s = ""
     if f.head == :call && f.args[1] == TopNode(:getfield)
@@ -521,7 +521,7 @@ end
 """
 Generate code for text file open (no variable name input)
 """
-function pattern_match_call_data_src_open(f::Symbol, id::Int, file_name::Union{SymAllGen,AbstractString}, arr::Symbol)
+function pattern_match_call_data_src_open(f::Symbol, id::Int, file_name::Union{RHSVar,AbstractString}, arr::Symbol)
     s = ""
     if f==:__hpat_data_source_TXT_open
         num::AbstractString = string(id)
@@ -735,7 +735,7 @@ function pattern_match_call_data_src_read(f::Any, v::Any, rf::Any, o::Any, arr::
     return ""
 end
 
-function pattern_match_call_dist_h5_size(f::Symbol, size_arr::GenSym, ind::Union{Int64,SymAllGen})
+function pattern_match_call_dist_h5_size(f::Symbol, size_arr::GenSym, ind::Union{Int64,RHSVar})
     s = ""
     if f==:__hpat_get_H5_dim_size || f==:__hpat_get_TXT_dim_size
         @dprintln(3,"match dist_dim_size ",f," ", size_arr, " ",ind)
@@ -804,7 +804,7 @@ function assignment_call_internal(c_lhs, dist_call)
     return ""
 end
 
-function from_assignment_match_dist(lhs::SymAllGen, rhs::Expr)
+function from_assignment_match_dist(lhs::RHSVar, rhs::Expr)
     @dprintln(3, "assignment pattern match dist2: ",lhs," = ",rhs)
     s = ""
     local num::AbstractString
