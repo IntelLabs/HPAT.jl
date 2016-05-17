@@ -131,7 +131,7 @@ function pattern_match_hpat_dist_calls(lhs::SymGen, rhs::Expr, state)
                 # update counter and get data source number
                 state.data_source_counter += 1
                 dsrc_num = state.data_source_counter
-                dsrc_id_var = addGenSym(Int64, state.linfo)
+                dsrc_id_var = addTempVariable(Int64, state.linfo)
                 push!(res, TypedExpr(Int64, :(=), dsrc_id_var, dsrc_num))
                 # get array type
                 arr_typ = getType(lhs, state.linfo)
@@ -142,9 +142,9 @@ function pattern_match_hpat_dist_calls(lhs::SymGen, rhs::Expr, state)
                 open_call = mk_call(:__hpat_data_source_HDF5_open, [dsrc_id_var, hdf5_var, hdf5_file, lhs])
                 push!(res, open_call)
                 # generate array size call
-                # arr_size_var = addGenSym(Tuple, state.linfo)
+                # arr_size_var = addTempVariable(Tuple, state.linfo)
                 # assume 1D for now
-                arr_size_var = addGenSym(ParallelAccelerator.H5SizeArr_t, state.linfo)
+                arr_size_var = addTempVariable(ParallelAccelerator.H5SizeArr_t, state.linfo)
                 size_call = mk_call(:__hpat_data_source_HDF5_size, [dsrc_id_var, lhs])
                 push!(res, TypedExpr(arr_size_var, :(=), arr_size_var, size_call))
                 # generate array allocation
@@ -152,7 +152,7 @@ function pattern_match_hpat_dist_calls(lhs::SymGen, rhs::Expr, state)
                 for i in dims:-1:1
                     size_i = symbol("__hpat_h5_dim_size_"*string(dsrc_num)*"_"*string(i))
                     CompilerTools.LambdaHandling.addLocalVar(size_i, Int64, ISASSIGNEDONCE | ISASSIGNED, state.linfo)
-                    # size_i = addGenSym(Int64, state.linfo)
+                    # size_i = addTempVariable(Int64, state.linfo)
                     size_i_call = mk_call(:__hpat_get_H5_dim_size, [arr_size_var, i])
                     push!(res, TypedExpr(Int64, :(=), size_i, size_i_call))
                     push!(size_expr, size_i)
@@ -172,7 +172,7 @@ function pattern_match_hpat_dist_calls(lhs::SymGen, rhs::Expr, state)
                 # update counter and get data source number
                 state.data_source_counter += 1
                 dsrc_num = state.data_source_counter
-                dsrc_id_var = addGenSym(Int64, state.linfo)
+                dsrc_id_var = addTempVariable(Int64, state.linfo)
                 push!(res, TypedExpr(Int64, :(=), dsrc_id_var, dsrc_num))
                 # get array type
                 arr_typ = getType(lhs, state.linfo)
@@ -183,8 +183,8 @@ function pattern_match_hpat_dist_calls(lhs::SymGen, rhs::Expr, state)
                 open_call = mk_call(:__hpat_data_source_TXT_open, [dsrc_id_var, txt_file, lhs])
                 push!(res, open_call)
                 # generate array size call
-                # arr_size_var = addGenSym(Tuple, state.linfo)
-                arr_size_var = addGenSym(ParallelAccelerator.SizeArr_t, state.linfo)
+                # arr_size_var = addTempVariable(Tuple, state.linfo)
+                arr_size_var = addTempVariable(ParallelAccelerator.SizeArr_t, state.linfo)
                 size_call = mk_call(:__hpat_data_source_TXT_size, [dsrc_id_var, lhs])
                 push!(res, TypedExpr(arr_size_var, :(=), arr_size_var, size_call))
                 # generate array allocation
@@ -192,7 +192,7 @@ function pattern_match_hpat_dist_calls(lhs::SymGen, rhs::Expr, state)
                 for i in dims:-1:1
                     size_i = symbol("__hpat_txt_dim_size_"*string(dsrc_num)*"_"*string(i))
                     CompilerTools.LambdaHandling.addLocalVar(size_i, Int64, ISASSIGNEDONCE | ISASSIGNED, state.linfo)
-                    #size_i = addGenSym(Int64, state.linfo)
+                    #size_i = addTempVariable(Int64, state.linfo)
                     size_i_call = mk_call(:__hpat_get_TXT_dim_size, [arr_size_var, i])
                     push!(res, TypedExpr(Int64, :(=), size_i, size_i_call))
                     push!(size_expr, size_i)
