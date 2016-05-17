@@ -236,8 +236,8 @@ function genDistributedInit(state::DistPassState)
     numPesCall = Expr(:call,TopNode(:hpat_dist_num_pes))
     nodeIdCall = Expr(:call,TopNode(:hpat_dist_node_id))
     
-    CompilerTools.LambdaHandling.addLocalVar(symbol("__hpat_num_pes"), Int32, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-    CompilerTools.LambdaHandling.addLocalVar(symbol("__hpat_node_id"), Int32, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+    CompilerTools.LambdaHandling.addLocalVariable(symbol("__hpat_num_pes"), Int32, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+    CompilerTools.LambdaHandling.addLocalVariable(symbol("__hpat_node_id"), Int32, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
 
     num_pes_assign = Expr(:(=), :__hpat_num_pes, numPesCall)
     node_id_assign = Expr(:(=), :__hpat_node_id, nodeIdCall)
@@ -268,9 +268,9 @@ function from_assignment(node::Expr, state::DistPassState)
             darr_div_var = symbol("__hpat_dist_arr_div_"*string(arr_id))
             darr_count_var = symbol("__hpat_dist_arr_count_"*string(arr_id))
 
-            CompilerTools.LambdaHandling.addLocalVar(darr_start_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-            CompilerTools.LambdaHandling.addLocalVar(darr_div_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-            CompilerTools.LambdaHandling.addLocalVar(darr_count_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+            CompilerTools.LambdaHandling.addLocalVariable(darr_start_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+            CompilerTools.LambdaHandling.addLocalVariable(darr_div_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+            CompilerTools.LambdaHandling.addLocalVariable(darr_count_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
 
 
             darr_div_expr = Expr(:(=),darr_div_var, mk_div_int_expr(arr_tot_size,:__hpat_num_pes))
@@ -302,9 +302,9 @@ function from_assignment(node::Expr, state::DistPassState)
             darr_div_var = symbol("__hpat_dist_arr_div_"*string(arr_id))
             darr_count_var = symbol("__hpat_dist_arr_count_"*string(arr_id))
     
-            CompilerTools.LambdaHandling.addLocalVar(darr_start_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-            CompilerTools.LambdaHandling.addLocalVar(darr_div_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-            CompilerTools.LambdaHandling.addLocalVar(darr_count_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+            CompilerTools.LambdaHandling.addLocalVariable(darr_start_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+            CompilerTools.LambdaHandling.addLocalVariable(darr_div_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+            CompilerTools.LambdaHandling.addLocalVariable(darr_count_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
     
     
             darr_div_expr = Expr(:(=), darr_div_var, mk_div_int_expr(arr_tot_size,:__hpat_num_pes))
@@ -317,7 +317,7 @@ function from_assignment(node::Expr, state::DistPassState)
             tup_call = Expr(:call, TopNode(:tuple), dim_sizes[1:end-1]... , darr_count_var)
             reshape_tup_var = symbol("__hpat_dist_tup_var_"*string(arr_id))
             tup_typ = CompilerTools.LambdaHandling.getType(rhs.args[3], state.LambdaVarInfo)
-            CompilerTools.LambdaHandling.addLocalVar(reshape_tup_var, tup_typ, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+            CompilerTools.LambdaHandling.addLocalVariable(reshape_tup_var, tup_typ, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
             tup_expr = Expr(:(=),reshape_tup_var,tup_call)
             rhs.args[3] = reshape_tup_var
             res = [darr_div_expr; darr_start_expr; darr_count_expr; tup_expr; node]
@@ -347,14 +347,14 @@ function from_assignment(node::Expr, state::DistPassState)
                     alloc_call = ParallelIR.from_alloc(alloc_args)
                     reduce_num = getDistNewID(state)
                     reduce_var = symbol("__hpat_gemm_reduce_"*string(reduce_num))
-                    CompilerTools.LambdaHandling.addLocalVar(reduce_var, out_typ, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+                    CompilerTools.LambdaHandling.addLocalVariable(reduce_var, out_typ, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
                     reduce_var_init = Expr(:(=), reduce_var, Expr(:call,alloc_call...))
                     # TODO: deallocate temporary array
                     # reduce_var_dealloc = Expr(:call, TopNode(:ccall), QuoteNode(:jl_dealloc_array), reduce_var)
 
                     # get reduction size
                     reduce_size_var = symbol("__hpat_gemm_reduce_size_"*string(reduce_num))
-                    CompilerTools.LambdaHandling.addLocalVar(reduce_size_var, Int, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+                    CompilerTools.LambdaHandling.addLocalVariable(reduce_size_var, Int, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
                     size_expr = Expr(:(=), reduce_size_var, mk_mult_int_expr(out_dim_sizes))
 
                     # add allreduce call
@@ -397,9 +397,9 @@ function from_parfor(node::Expr, state)
         loop_end_var = symbol("__hpat_loop_end_"*string(parfor.unique_id))
         loop_div_var = symbol("__hpat_loop_div_"*string(parfor.unique_id))
 
-        CompilerTools.LambdaHandling.addLocalVar(loop_start_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-        CompilerTools.LambdaHandling.addLocalVar(loop_end_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-        CompilerTools.LambdaHandling.addLocalVar(loop_div_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+        CompilerTools.LambdaHandling.addLocalVariable(loop_start_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+        CompilerTools.LambdaHandling.addLocalVariable(loop_end_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+        CompilerTools.LambdaHandling.addLocalVariable(loop_div_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
 
         #first_arr = state.parfor_info[parfor.unique_id][1]; 
         #@dprintln(3,"DistPass parfor first array ", first_arr)
@@ -457,7 +457,7 @@ function from_parfor(node::Expr, state)
             goto_node = Expr(:gotoifnot, :(__hpat_node_id==0),label)
             # get broadcast size
             bcast_size_var = symbol("__hpat_bcast_size_"*string(label))
-            CompilerTools.LambdaHandling.addLocalVar(bcast_size_var, Int, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+            CompilerTools.LambdaHandling.addLocalVariable(bcast_size_var, Int, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
             size_expr = Expr(:(=), bcast_size_var, mk_mult_int_expr(state.arrs_dist_info[write_arr].dim_sizes))
             bcast_expr = Expr(:call,:__hpat_dist_broadcast, write_arr, bcast_size_var)
 
@@ -569,7 +569,7 @@ function gen_dist_reductions(reductions::Array{PIRReduction,1}, state)
     res = Any[]
     for reduce in reductions
         reduce_var = symbol("__hpat_reduce_"*string(getDistNewID(state)))
-        CompilerTools.LambdaHandling.addLocalVar(reduce_var, reduce.reductionVar.typ, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+        CompilerTools.LambdaHandling.addLocalVariable(reduce_var, reduce.reductionVar.typ, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
 
         reduce_var_init = Expr(:(=), reduce_var, 0)
         reduceCall = Expr(:call,TopNode(:hpat_dist_allreduce),reduce.reductionVar,reduce.reductionFunc, reduce_var, 1)
