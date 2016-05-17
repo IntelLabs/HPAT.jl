@@ -72,7 +72,7 @@ function pattern_match_call_get_sec_since_epoch(f::Any,linfo)
 end
 
 function pattern_match_reduce_sum(reductionFunc::DelayedFunc,linfo)
-    if reductionFunc.args[1][1].args[2].args[1]==TopNode(:add_float) || reductionFunc.args[1][1].args[2].args[1]==TopNode(:add_int)
+    if reductionFunc.args[1][1].args[2].args[1].name==:add_float || reductionFunc.args[1][1].args[2].args[1].name==:add_int
         return true
     end
     return false
@@ -156,6 +156,7 @@ function pattern_match_call_dist_allreduce(f::TopNode, var::RHSVar, reductionFun
         c_output = ParallelAccelerator.CGen.from_expr(output, linfo)
         var_typ = ParallelAccelerator.CGen.getSymType(var, linfo)
         is_array =  var_typ<:Array
+        
         if is_array
             var_typ = eltype(var_typ)
             c_var *= ".data"
