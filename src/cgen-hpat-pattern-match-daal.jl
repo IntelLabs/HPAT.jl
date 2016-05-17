@@ -27,14 +27,14 @@ THE POSSIBILITY OF SUCH DAMAGE.
 
 function pattern_match_call_kmeans(f::Symbol, cluster_out::RHSVar, arr::RHSVar, 
                                    num_clusters::RHSVar, start::Symbol, count::Symbol, 
-                                   col_size::Union{RHSVar,Int,Expr}, tot_row_size::Union{RHSVar,Int,Expr})
+                                   col_size::Union{RHSVar,Int,Expr}, tot_row_size::Union{RHSVar,Int,Expr}, linfo)
     s = ""
     if f==:__hpat_Kmeans
-        c_arr = ParallelAccelerator.CGen.from_expr(arr)
-        c_num_clusters = ParallelAccelerator.CGen.from_expr(num_clusters)
-        c_col_size = ParallelAccelerator.CGen.from_expr(col_size)
-        c_tot_row_size = ParallelAccelerator.CGen.from_expr(tot_row_size)
-        c_cluster_out = ParallelAccelerator.CGen.from_expr(cluster_out)        
+        c_arr = ParallelAccelerator.CGen.from_expr(arr, linfo)
+        c_num_clusters = ParallelAccelerator.CGen.from_expr(num_clusters, linfo)
+        c_col_size = ParallelAccelerator.CGen.from_expr(col_size, linfo)
+        c_tot_row_size = ParallelAccelerator.CGen.from_expr(tot_row_size, linfo)
+        c_cluster_out = ParallelAccelerator.CGen.from_expr(cluster_out, linfo)        
         
         s *= """
         services::Environment::getInstance()->setNumberOfThreads(omp_get_max_threads());
@@ -213,7 +213,7 @@ function pattern_match_call_kmeans(f::Symbol, cluster_out::RHSVar, arr::RHSVar,
 end
 
 
-function pattern_match_call_kmeans(f::ANY, cluster_out::ANY, arr::ANY, num_clusters::ANY, start::ANY, count::ANY, cols::ANY, rows::ANY)
+function pattern_match_call_kmeans(f::ANY, cluster_out::ANY, arr::ANY, num_clusters::ANY, start::ANY, count::ANY, cols::ANY, rows::ANY, linfo)
     return ""
 end
 
@@ -221,16 +221,16 @@ function pattern_match_call_linear_regression(f::Symbol, coeff_out::RHSVar, poin
                                    responses::RHSVar, start_points::Symbol, count_points::Symbol, 
                                    col_size_points::Union{RHSVar,Int,Expr}, tot_row_size_points::Union{RHSVar,Int,Expr},
                                    start_responses::Symbol, count_responses::Symbol, 
-                                   col_size_responses::Union{RHSVar,Int,Expr}, tot_row_size_responses::Union{RHSVar,Int,Expr})
+                                   col_size_responses::Union{RHSVar,Int,Expr}, tot_row_size_responses::Union{RHSVar,Int,Expr}, linfo)
     s = ""
     if f==:__hpat_LinearRegression
-        c_points = ParallelAccelerator.CGen.from_expr(points)
-        c_responses = ParallelAccelerator.CGen.from_expr(responses)
-        c_col_size_points = ParallelAccelerator.CGen.from_expr(col_size_points)
-        c_tot_row_size_points = ParallelAccelerator.CGen.from_expr(tot_row_size_points)
-        c_col_size_responses = ParallelAccelerator.CGen.from_expr(col_size_responses)
-        c_tot_row_size_responses = ParallelAccelerator.CGen.from_expr(tot_row_size_responses)
-        c_coeff_out = ParallelAccelerator.CGen.from_expr(coeff_out)
+        c_points = ParallelAccelerator.CGen.from_expr(points, linfo)
+        c_responses = ParallelAccelerator.CGen.from_expr(responses, linfo)
+        c_col_size_points = ParallelAccelerator.CGen.from_expr(col_size_points, linfo)
+        c_tot_row_size_points = ParallelAccelerator.CGen.from_expr(tot_row_size_points, linfo)
+        c_col_size_responses = ParallelAccelerator.CGen.from_expr(col_size_responses, linfo)
+        c_tot_row_size_responses = ParallelAccelerator.CGen.from_expr(tot_row_size_responses, linfo)
+        c_coeff_out = ParallelAccelerator.CGen.from_expr(coeff_out, linfo)
         s = """
             assert($c_tot_row_size_points==$c_tot_row_size_responses);
             int mpi_root = 0;
@@ -330,7 +330,7 @@ function pattern_match_call_linear_regression(f::Symbol, coeff_out::RHSVar, poin
 end
 
 function pattern_match_call_linear_regression(f::ANY, coeff_out::ANY, arr::ANY, num_clusters::ANY, 
-          start::ANY, count::ANY, cols::ANY, rows::ANY, start2::ANY, count2::ANY, cols2::ANY, rows2::ANY)
+          start::ANY, count::ANY, cols::ANY, rows::ANY, start2::ANY, count2::ANY, cols2::ANY, rows2::ANY, linfo)
     return ""
 end
 
@@ -338,17 +338,17 @@ function pattern_match_call_naive_bayes(f::Symbol, coeff_out::RHSVar, points::RH
                                    labels::RHSVar, num_classes::Union{RHSVar,Int,Expr}, start_points::Symbol, count_points::Symbol, 
                                    col_size_points::Union{RHSVar,Int,Expr}, tot_row_size_points::Union{RHSVar,Int,Expr},
                                    start_labels::Symbol, count_labels::Symbol, 
-                                   col_size_labels::Union{RHSVar,Int,Expr}, tot_row_size_labels::Union{RHSVar,Int,Expr})
+                                   col_size_labels::Union{RHSVar,Int,Expr}, tot_row_size_labels::Union{RHSVar,Int,Expr}, linfo)
     s = ""
     if f==:__hpat_NaiveBayes
-        c_points = ParallelAccelerator.CGen.from_expr(points)
-        c_labels = ParallelAccelerator.CGen.from_expr(labels)
-        c_col_size_points = ParallelAccelerator.CGen.from_expr(col_size_points)
-        c_tot_row_size_points = ParallelAccelerator.CGen.from_expr(tot_row_size_points)
-        c_col_size_labels = ParallelAccelerator.CGen.from_expr(col_size_labels)
-        c_tot_row_size_labels = ParallelAccelerator.CGen.from_expr(tot_row_size_labels)
-        c_coeff_out = ParallelAccelerator.CGen.from_expr(coeff_out)
-        c_num_classes = ParallelAccelerator.CGen.from_expr(num_classes)
+        c_points = ParallelAccelerator.CGen.from_expr(points, linfo)
+        c_labels = ParallelAccelerator.CGen.from_expr(labels, linfo)
+        c_col_size_points = ParallelAccelerator.CGen.from_expr(col_size_points, linfo)
+        c_tot_row_size_points = ParallelAccelerator.CGen.from_expr(tot_row_size_points, linfo)
+        c_col_size_labels = ParallelAccelerator.CGen.from_expr(col_size_labels, linfo)
+        c_tot_row_size_labels = ParallelAccelerator.CGen.from_expr(tot_row_size_labels, linfo)
+        c_coeff_out = ParallelAccelerator.CGen.from_expr(coeff_out, linfo)
+        c_num_classes = ParallelAccelerator.CGen.from_expr(num_classes, linfo)
         
         s = """
             assert($c_tot_row_size_points==$c_tot_row_size_labels);
@@ -454,6 +454,6 @@ function pattern_match_call_naive_bayes(f::Symbol, coeff_out::RHSVar, points::RH
 end
 
 function pattern_match_call_naive_bayes(f::ANY, coeff_out::ANY, arr::ANY, arr2::ANY, numClass::Any, 
-          start::ANY, count::ANY, cols::ANY, rows::ANY, start2::ANY, count2::ANY, cols2::ANY, rows2::ANY)
+          start::ANY, count::ANY, cols::ANY, rows::ANY, start2::ANY, count2::ANY, cols2::ANY, rows2::ANY, linfo)
     return ""
 end

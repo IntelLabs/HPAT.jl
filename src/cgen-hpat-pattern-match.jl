@@ -38,7 +38,7 @@ import HPAT
 
 include("cgen-hpat-pattern-match-daal.jl")
 
-function pattern_match_call_dist_init(f::TopNode)
+function pattern_match_call_dist_init(f::TopNode,linfo)
     if f.name==:hpat_dist_init
         return ";"#"MPI_Init(0,0);"
     else
@@ -46,11 +46,11 @@ function pattern_match_call_dist_init(f::TopNode)
     end
 end
 
-function pattern_match_call_dist_init(f::Any)
+function pattern_match_call_dist_init(f::Any,linfo)
     return ""
 end
 
-function pattern_match_call_get_sec_since_epoch(f::GlobalRef)
+function pattern_match_call_get_sec_since_epoch(f::GlobalRef,linfo)
     if f.mod == HPAT.Checkpointing && f.name==:hpat_get_sec_since_epoch
         return "MPI_Wtime()"
     else
@@ -58,7 +58,7 @@ function pattern_match_call_get_sec_since_epoch(f::GlobalRef)
     end
 end
 
-function pattern_match_call_get_sec_since_epoch(f::Expr)
+function pattern_match_call_get_sec_since_epoch(f::Expr,linfo)
     s = ""
     if f.head == :call && f.args[1] == TopNode(:getfield)
         @dprintln(3, "pattern_match_call_get_sec_since_epoch f is call to getfield")
@@ -67,25 +67,25 @@ function pattern_match_call_get_sec_since_epoch(f::Expr)
     return s
 end
 
-function pattern_match_call_get_sec_since_epoch(f::Any)
+function pattern_match_call_get_sec_since_epoch(f::Any,linfo)
     return ""
 end
 
-function pattern_match_reduce_sum(reductionFunc::DelayedFunc)
+function pattern_match_reduce_sum(reductionFunc::DelayedFunc,linfo)
     if reductionFunc.args[1][1].args[2].args[1]==TopNode(:add_float) || reductionFunc.args[1][1].args[2].args[1]==TopNode(:add_int)
         return true
     end
     return false
 end
 
-function pattern_match_reduce_sum(reductionFunc::TopNode)
+function pattern_match_reduce_sum(reductionFunc::TopNode,linfo)
     if reductionFunc.name==:add_float || reductionFunc.name==:add_int
         return true
     end
     return false
 end
 
-function pattern_match_call_dist_reduce(f::TopNode, var::SymbolNode, reductionFunc::DelayedFunc, output::Symbol)
+function pattern_match_call_dist_reduce(f::TopNode, var::SymbolNode, reductionFunc::DelayedFunc, output::Symbol,linfo)
     if f.name==:hpat_dist_reduce
         mpi_type = ""
         if var.typ==Float64
@@ -101,7 +101,7 @@ function pattern_match_call_dist_reduce(f::TopNode, var::SymbolNode, reductionFu
         end
 
         mpi_func = ""
-        if pattern_match_reduce_sum(reductionFunc)
+        if pattern_match_reduce_sum(reductionFunc, linfo)
             mpi_func = "MPI_SUM"
         else
             throw("CGen unsupported MPI reduction function")
@@ -116,45 +116,45 @@ function pattern_match_call_dist_reduce(f::TopNode, var::SymbolNode, reductionFu
     end
 end
 
-function pattern_match_call_dist_reduce(f::Any, v::Any, rf::Any, o::Any)
+function pattern_match_call_dist_reduce(f::Any, v::Any, rf::Any, o::Any,linfo)
     return ""
 end
 
-function pattern_match_call_dist_portion(f::Symbol, total::Union{RHSVar,Int}, div::Union{RHSVar,Int}, num_pes::Symbol, node_id::Symbol)
+function pattern_match_call_dist_portion(f::Symbol, total::Union{RHSVar,Int}, div::Union{RHSVar,Int}, num_pes::Symbol, node_id::Symbol,linfo)
     s = ""
     if f==:__hpat_get_node_portion
-        c_total = ParallelAccelerator.CGen.from_expr(total)
-        c_div = ParallelAccelerator.CGen.from_expr(div)
+        c_total = ParallelAccelerator.CGen.from_expr(total, linfo)
+        c_div = ParallelAccelerator.CGen.from_expr(div, linfo)
         s = "(($node_id==$num_pes-1) ? $c_total-$node_id*$c_div : $c_div)"
     end
     return s
 end
 
-function pattern_match_call_dist_portion(f::ANY, total::ANY, div::ANY, num_pes::ANY, node_id::ANY)
+function pattern_match_call_dist_portion(f::ANY, total::ANY, div::ANY, num_pes::ANY, node_id::ANY,linfo)
     return ""
 end
 
-function pattern_match_call_dist_node_end(f::Symbol, total::RHSVar, div::RHSVar, num_pes::Symbol, node_id::Symbol)
+function pattern_match_call_dist_node_end(f::Symbol, total::RHSVar, div::RHSVar, num_pes::Symbol, node_id::Symbol,linfo)
     s = ""
     if f==:__hpat_get_node_end
-        c_total = ParallelAccelerator.CGen.from_expr(total)
-        c_div = ParallelAccelerator.CGen.from_expr(div)
+        c_total = ParallelAccelerator.CGen.from_expr(total, linfo)
+        c_div = ParallelAccelerator.CGen.from_expr(div, linfo)
         s = "(($node_id==$num_pes-1) ? $c_total : ($node_id+1)*$c_div)"
     end
     return s
 end
 
-function pattern_match_call_dist_node_end(f::ANY, total::ANY, div::ANY, num_pes::ANY, node_id::ANY)
+function pattern_match_call_dist_node_end(f::ANY, total::ANY, div::ANY, num_pes::ANY, node_id::ANY,linfo)
     return ""
 end
 
-function pattern_match_call_dist_allreduce(f::TopNode, var::RHSVar, reductionFunc, output::RHSVar, size::Union{RHSVar,Int})
+function pattern_match_call_dist_allreduce(f::TopNode, var::RHSVar, reductionFunc, output::RHSVar, size::Union{RHSVar,Int},linfo)
     if f.name==:hpat_dist_allreduce
         mpi_type = ""
         var = toLHSVar(var)
-        c_var = ParallelAccelerator.CGen.from_expr(var)
-        c_output = ParallelAccelerator.CGen.from_expr(output)
-        var_typ = ParallelAccelerator.CGen.getSymType(var)
+        c_var = ParallelAccelerator.CGen.from_expr(var, linfo)
+        c_output = ParallelAccelerator.CGen.from_expr(output, linfo)
+        var_typ = ParallelAccelerator.CGen.getSymType(var, linfo)
         is_array =  var_typ<:Array
         if is_array
             var_typ = eltype(var_typ)
@@ -178,7 +178,7 @@ function pattern_match_call_dist_allreduce(f::TopNode, var::RHSVar, reductionFun
         end
 
         mpi_func = ""
-        if pattern_match_reduce_sum(reductionFunc)
+        if pattern_match_reduce_sum(reductionFunc, linfo)
             mpi_func = "MPI_SUM"
         else
             throw("CGen unsupported MPI reduction function")
@@ -193,18 +193,18 @@ function pattern_match_call_dist_allreduce(f::TopNode, var::RHSVar, reductionFun
     end
 end
 
-function pattern_match_call_dist_allreduce(f::Any, v::Any, rf::Any, o::Any, s::Any)
+function pattern_match_call_dist_allreduce(f::Any, v::Any, rf::Any, o::Any, s::Any,linfo)
     return ""
 end
 
-function pattern_match_call_dist_bcast(f::Symbol, var::RHSVar, size::ANY)
+function pattern_match_call_dist_bcast(f::Symbol, var::RHSVar, size::ANY,linfo)
     @dprintln(3, "pattern_match_call_dist_bcast f = ", f)
-    c_size = ParallelAccelerator.CGen.from_expr(size)
+    c_size = ParallelAccelerator.CGen.from_expr(size, linfo)
     if f==:__hpat_dist_broadcast
         mpi_type = ""
         var = toLHSVar(var)
-        c_var = ParallelAccelerator.CGen.from_expr(var)
-        var_typ = ParallelAccelerator.CGen.getSymType(var)
+        c_var = ParallelAccelerator.CGen.from_expr(var, linfo)
+        var_typ = ParallelAccelerator.CGen.getSymType(var, linfo)
         is_array =  var_typ<:Array
         if is_array
             var_typ = eltype(var_typ)
@@ -232,7 +232,7 @@ function pattern_match_call_dist_bcast(f::Symbol, var::RHSVar, size::ANY)
     end
 end
 
-function pattern_match_call_dist_bcast(f::GlobalRef, var::RHSVar, size::ANY)
+function pattern_match_call_dist_bcast(f::GlobalRef, var::RHSVar, size::ANY,linfo)
     @dprintln(3, "pattern_match_call_dist_bcast GlobalRef f = ", f)
     if f.mod == HPAT
         return pattern_match_call_dist_bcast(f.name, var, size)
@@ -240,14 +240,14 @@ function pattern_match_call_dist_bcast(f::GlobalRef, var::RHSVar, size::ANY)
     return ""
 end
 
-function pattern_match_call_dist_bcast(f::Any, v::Any, rf::Any)
+function pattern_match_call_dist_bcast(f::Any, v::Any, rf::Any,linfo)
     return ""
 end
 
 """
 Generate code for HDF5 file open
 """
-function pattern_match_call_data_src_open(f::Symbol, id::Int, data_var::Union{RHSVar,AbstractString}, file_name::Union{RHSVar,AbstractString}, arr::Symbol)
+function pattern_match_call_data_src_open(f::Symbol, id::Int, data_var::Union{RHSVar,AbstractString}, file_name::Union{RHSVar,AbstractString}, arr::Symbol,linfo)
     s = ""
     if f==:__hpat_data_source_HDF5_open
         num::AbstractString = string(id)
@@ -258,25 +258,25 @@ function pattern_match_call_data_src_open(f::Symbol, id::Int, data_var::Union{RH
         s *= "hid_t file_id_$num;\n"
         s *= "ret_$num = H5Pset_fapl_mpio(plist_id_$num, MPI_COMM_WORLD, MPI_INFO_NULL);\n"
         s *= "assert(ret_$num != -1);\n"
-        s *= "file_id_$num = H5Fopen((const char*)"*ParallelAccelerator.CGen.from_expr(file_name)*".data.data, H5F_ACC_RDONLY, plist_id_$num);\n"
+        s *= "file_id_$num = H5Fopen((const char*)"*ParallelAccelerator.CGen.from_expr(file_name, linfo)*".data.data, H5F_ACC_RDONLY, plist_id_$num);\n"
         s *= "assert(file_id_$num != -1);\n"
         s *= "ret_$num = H5Pclose(plist_id_$num);\n"
         s *= "assert(ret_$num != -1);\n"
         s *= "hid_t dataset_id_$num;\n"
-        s *= "dataset_id_$num = H5Dopen2(file_id_$num, "*ParallelAccelerator.CGen.from_expr(data_var)*", H5P_DEFAULT);\n"
+        s *= "dataset_id_$num = H5Dopen2(file_id_$num, "*ParallelAccelerator.CGen.from_expr(data_var, linfo)*", H5P_DEFAULT);\n"
         s *= "assert(dataset_id_$num != -1);\n"
     end
     return s
 end
 
-function pattern_match_call_data_src_open(f::Any, v::Any, rf::Any, o::Any, arr::Any)
+function pattern_match_call_data_src_open(f::Any, v::Any, rf::Any, o::Any, arr::Any,linfo)
     return ""
 end
 
 """
 Generate code for HDF5 file close 
 """
-function pattern_match_call_data_src_close(f::Symbol, id::Int)
+function pattern_match_call_data_src_close(f::Symbol, id::Int,linfo)
     s = ""
     if f==:__hpat_data_source_HDF5_close
         num::AbstractString = string(id)
@@ -290,24 +290,24 @@ function pattern_match_call_data_src_close(f::Symbol, id::Int)
     return s
 end
 
-function pattern_match_call_data_src_close(f::Any, v::Any)
+function pattern_match_call_data_src_close(f::Any, v::Any,linfo)
     return ""
 end
 
 """
 Generate code for get checkpoint time.
 """
-function pattern_match_call_get_checkpoint_time(f::GlobalRef, id::Union{Int,RHSVar})
+function pattern_match_call_get_checkpoint_time(f::GlobalRef, id::Union{Int,RHSVar},linfo)
     @dprintln(3, "pattern_match_call_get_checkpoint_time f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id))
     s = ""
     if f.mod == HPAT.Checkpointing && f.name==:hpat_get_checkpoint_time
-        s *= "__hpat_get_checkpoint_time(" * ParallelAccelerator.CGen.from_expr(id) * ")"
+        s *= "__hpat_get_checkpoint_time(" * ParallelAccelerator.CGen.from_expr(id, linfo) * ")"
     end
     @dprintln(3, "pattern_match_call_get_checkpoint_time done s = ", s)
     return s
 end
 
-function pattern_match_call_get_checkpoint_time(f::Expr, id::Union{Int,RHSVar})
+function pattern_match_call_get_checkpoint_time(f::Expr, id::Union{Int,RHSVar},linfo)
     @dprintln(3, "pattern_match_call_get_checkpoint_time f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id))
     s = ""
     if f.head == :call && f.args[1] == TopNode(:getfield)
@@ -317,7 +317,7 @@ function pattern_match_call_get_checkpoint_time(f::Expr, id::Union{Int,RHSVar})
     return s
 end
 
-function pattern_match_call_get_checkpoint_time(f::Any, id::Any)
+function pattern_match_call_get_checkpoint_time(f::Any, id::Any,linfo)
     @dprintln(3, "pattern_match_call_get_checkpoint_time f = ", f, " type = ", typeof(f), " id = ", id, " type = ", typeof(id))
     return ""
 end
@@ -326,18 +326,18 @@ end
 """
 Generate code for start checkpoint.
 """
-function pattern_match_call_start_checkpoint(f::GlobalRef, id::Union{Int,RHSVar})
+function pattern_match_call_start_checkpoint(f::GlobalRef, id::Union{Int,RHSVar},linfo)
     @dprintln(3, "pattern_match_call_start_checkpoint f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id))
     s = ""
     if f.mod == HPAT.Checkpointing && f.name==:hpat_start_checkpoint
         @dprintln(3, "pattern_match_call_start_checkpoint doing replacement")
-        s *= "__hpat_start_checkpoint(" * ParallelAccelerator.CGen.from_expr(id) * ")"
+        s *= "__hpat_start_checkpoint(" * ParallelAccelerator.CGen.from_expr(id, linfo) * ")"
     end
     @dprintln(3, "pattern_match_call_start_checkpoint done s = ", s)
     return s
 end
 
-function pattern_match_call_start_checkpoint(f::Expr, id::Union{Int,RHSVar})
+function pattern_match_call_start_checkpoint(f::Expr, id::Union{Int,RHSVar},linfo)
     @dprintln(3, "pattern_match_call_start_checkpoint f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id))
     s = ""
     if f.head == :call && f.args[1] == TopNode(:getfield)
@@ -347,7 +347,7 @@ function pattern_match_call_start_checkpoint(f::Expr, id::Union{Int,RHSVar})
     return s
 end
 
-function pattern_match_call_start_checkpoint(f::Any, id::Any)
+function pattern_match_call_start_checkpoint(f::Any, id::Any,linfo)
     @dprintln(3, "pattern_match_call_start_checkpoint f = ", f, " type = ", typeof(f), " id = ", id, " type = ", typeof(id))
     return ""
 end
@@ -355,17 +355,17 @@ end
 """
 Generate code for finish checkpoint.
 """
-function pattern_match_call_finish_checkpoint(f::GlobalRef, id::Union{Int,RHSVar})
+function pattern_match_call_finish_checkpoint(f::GlobalRef, id::Union{Int,RHSVar},linfo)
     @dprintln(3, "pattern_match_call_finish_checkpoint f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id))
     s = ""
     if f.mod == HPAT.Checkpointing && f.name==:hpat_finish_checkpoint_region
-        s *= "__hpat_finish_checkpoint_region(" * ParallelAccelerator.CGen.from_expr(id) * ")"
+        s *= "__hpat_finish_checkpoint_region(" * ParallelAccelerator.CGen.from_expr(id, linfo) * ")"
     end
     @dprintln(3, "pattern_match_call_finish_checkpoint done s = ", s)
     return s
 end
 
-function pattern_match_call_finish_checkpoint(f::Expr, id::Union{Int,RHSVar})
+function pattern_match_call_finish_checkpoint(f::Expr, id::Union{Int,RHSVar},linfo)
     @dprintln(3, "pattern_match_call_finish_checkpoint f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id))
     s = ""
     if f.head == :call && f.args[1] == TopNode(:getfield)
@@ -375,7 +375,7 @@ function pattern_match_call_finish_checkpoint(f::Expr, id::Union{Int,RHSVar})
     return s
 end
 
-function pattern_match_call_finish_checkpoint(f::Any, id::Any)
+function pattern_match_call_finish_checkpoint(f::Any, id::Any,linfo)
     @dprintln(3, "pattern_match_call_finish_checkpoint f = ", f, " type = ", typeof(f), " id = ", id, " type = ", typeof(id))
     return ""
 end
@@ -384,17 +384,17 @@ end
 """
 Generate code for end checkpoint.
 """
-function pattern_match_call_end_checkpoint(f::GlobalRef, id::Union{Int,RHSVar})
+function pattern_match_call_end_checkpoint(f::GlobalRef, id::Union{Int,RHSVar},linfo)
     @dprintln(3, "pattern_match_call_end_checkpoint f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id))
     s = ""
     if f.mod == HPAT.Checkpointing && f.name==:hpat_end_checkpoint
-        s *= "__hpat_end_checkpoint(" * ParallelAccelerator.CGen.from_expr(id) * ")"
+        s *= "__hpat_end_checkpoint(" * ParallelAccelerator.CGen.from_expr(id, linfo) * ")"
     end
     @dprintln(3, "pattern_match_call_end_checkpoint done s = ", s)
     return s
 end
 
-function pattern_match_call_end_checkpoint(f::Expr, id::Union{Int,RHSVar})
+function pattern_match_call_end_checkpoint(f::Expr, id::Union{Int,RHSVar},linfo)
     @dprintln(3, "pattern_match_call_end_checkpoint f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id))
     s = ""
     if f.head == :call && f.args[1] == TopNode(:getfield)
@@ -404,7 +404,7 @@ function pattern_match_call_end_checkpoint(f::Expr, id::Union{Int,RHSVar})
     return s
 end
 
-function pattern_match_call_end_checkpoint(f::Any, id::Any)
+function pattern_match_call_end_checkpoint(f::Any, id::Any,linfo)
     @dprintln(3, "pattern_match_call_end_checkpoint f = ", f, " type = ", typeof(f), " id = ", id, " type = ", typeof(id))
     return ""
 end
@@ -412,17 +412,17 @@ end
 """
 Generate code for checkpointing a single program element.
 """
-function pattern_match_call_value_checkpoint(f::GlobalRef, id::Union{Int,RHSVar}, value::RHSVar)
+function pattern_match_call_value_checkpoint(f::GlobalRef, id::Union{Int,RHSVar}, value::RHSVar,linfo)
     @dprintln(3, "pattern_match_call_value_checkpoint f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id), " value = ", value, " type = ", typeof(value))
     s = ""
     if f.mod == HPAT.Checkpointing && f.name==:hpat_value_checkpoint
-        s *= "__hpat_value_checkpoint(" * ParallelAccelerator.CGen.from_expr(id) * "," * ParallelAccelerator.CGen.from_expr(value) * ")"
+        s *= "__hpat_value_checkpoint(" * ParallelAccelerator.CGen.from_expr(id, linfo) * "," * ParallelAccelerator.CGen.from_expr(value, linfo) * ")"
     end
     @dprintln(3, "pattern_match_call_value_checkpoint done s = ", s)
     return s
 end
 
-function pattern_match_call_value_checkpoint(f::Expr, id::Union{Int,RHSVar}, value::RHSVar)
+function pattern_match_call_value_checkpoint(f::Expr, id::Union{Int,RHSVar}, value::RHSVar,linfo)
     @dprintln(3, "pattern_match_call_value_checkpoint f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id), " value = ", value, " type = ", typeof(value))
     s = ""
     if f.head == :call && f.args[1] == TopNode(:getfield)
@@ -432,22 +432,22 @@ function pattern_match_call_value_checkpoint(f::Expr, id::Union{Int,RHSVar}, val
     return s
 end
 
-function pattern_match_call_value_checkpoint(f::Any, id::Any, value::Any)
+function pattern_match_call_value_checkpoint(f::Any, id::Any, value::Any,linfo)
     @dprintln(3, "pattern_match_call_value_checkpoint f = ", f, " type = ", typeof(f), " id = ", id, " type = ", typeof(id), " value = ", value, " type = ", typeof(value))
     return ""
 end
 
-function pattern_match_call_restore_checkpoint_start(f::GlobalRef, id::Union{Int,RHSVar})
+function pattern_match_call_restore_checkpoint_start(f::GlobalRef, id::Union{Int,RHSVar},linfo)
     @dprintln(3, "pattern_match_call_restore_checkpoint_start f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id))
     s = ""
     if f.mod == HPAT.Checkpointing && f.name==:hpat_checkpoint_restore_start
-        s *= "__hpat_restore_checkpoint_start(" * ParallelAccelerator.CGen.from_expr(id) * ")"
+        s *= "__hpat_restore_checkpoint_start(" * ParallelAccelerator.CGen.from_expr(id, linfo) * ")"
     end
     @dprintln(3, "pattern_match_call_restore_checkpoint_start done s = ", s)
     return s
 end
 
-function pattern_match_call_restore_checkpoint_start(f::Expr, id::Union{Int,RHSVar})
+function pattern_match_call_restore_checkpoint_start(f::Expr, id::Union{Int,RHSVar},linfo)
     @dprintln(3, "pattern_match_call_restore_checkpoint_start f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id))
     s = ""
     if f.head == :call && f.args[1] == TopNode(:getfield)
@@ -457,7 +457,7 @@ function pattern_match_call_restore_checkpoint_start(f::Expr, id::Union{Int,RHSV
     return s
 end
 
-function pattern_match_call_restore_checkpoint_start(f::Any, id::Any)
+function pattern_match_call_restore_checkpoint_start(f::Any, id::Any,linfo)
     @dprintln(3, "pattern_match_call_restore_checkpoint_start f = ", f, " type = ", typeof(f), " id = ", id, " type = ", typeof(id))
     return ""
 end
@@ -465,17 +465,17 @@ end
 """
 Generate code for end checkpoint.
 """
-function pattern_match_call_restore_checkpoint_end(f::GlobalRef, id::Union{Int,RHSVar})
+function pattern_match_call_restore_checkpoint_end(f::GlobalRef, id::Union{Int,RHSVar},linfo)
     @dprintln(3, "pattern_match_call_restore_checkpoint_end f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id))
     s = ""
     if f.mod == HPAT.Checkpointing && f.name==:hpat_checkpoint_restore_end
-        s *= "__hpat_restore_checkpoint_end(" * ParallelAccelerator.CGen.from_expr(id) * ")"
+        s *= "__hpat_restore_checkpoint_end(" * ParallelAccelerator.CGen.from_expr(id, linfo) * ")"
     end
     @dprintln(3, "pattern_match_call_restore_checkpoint_end done s = ", s)
     return s
 end
 
-function pattern_match_call_restore_checkpoint_end(f::Expr, id::Union{Int,RHSVar})
+function pattern_match_call_restore_checkpoint_end(f::Expr, id::Union{Int,RHSVar},linfo)
     @dprintln(3, "pattern_match_call_restore_checkpoint_end f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id))
     s = ""
     if f.head == :call && f.args[1] == TopNode(:getfield)
@@ -485,7 +485,7 @@ function pattern_match_call_restore_checkpoint_end(f::Expr, id::Union{Int,RHSVar
     return s
 end
 
-function pattern_match_call_restore_checkpoint_end(f::Any, id::Any)
+function pattern_match_call_restore_checkpoint_end(f::Any, id::Any,linfo)
     @dprintln(3, "pattern_match_call_restore_checkpoint_end f = ", f, " type = ", typeof(f), " id = ", id, " type = ", typeof(id))
     return ""
 end
@@ -493,17 +493,17 @@ end
 """
 Generate code for checkpointing a single program element.
 """
-function pattern_match_call_restore_checkpoint_value(f::GlobalRef, id::Union{Int,RHSVar}, value::RHSVar)
+function pattern_match_call_restore_checkpoint_value(f::GlobalRef, id::Union{Int,RHSVar}, value::RHSVar,linfo)
     @dprintln(3, "pattern_match_call_restore_checkpoint_value f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id), " value = ", value, " type = ", typeof(value))
     s = ""
     if f.mod == HPAT.Checkpointing && f.name==:hpat_checkpoint_restore_value
-        s *= "__hpat_restore_checkpoint_value(" * ParallelAccelerator.CGen.from_expr(id) * "," * ParallelAccelerator.CGen.from_expr(value) * ")"
+        s *= "__hpat_restore_checkpoint_value(" * ParallelAccelerator.CGen.from_expr(id, linfo) * "," * ParallelAccelerator.CGen.from_expr(value, linfo) * ")"
     end
     @dprintln(3, "pattern_match_call_restore_checkpoint_value done s = ", s)
     return s
 end
 
-function pattern_match_call_restore_checkpoint_value(f::Expr, id::Union{Int,RHSVar}, value::RHSVar)
+function pattern_match_call_restore_checkpoint_value(f::Expr, id::Union{Int,RHSVar}, value::RHSVar,linfo)
     @dprintln(3, "pattern_match_call_restore_checkpoint_value f = ", f, " type = GlobalRef id = ", id, " type = ", typeof(id), " value = ", value, " type = ", typeof(value))
     s = ""
     if f.head == :call && f.args[1] == TopNode(:getfield)
@@ -513,7 +513,7 @@ function pattern_match_call_restore_checkpoint_value(f::Expr, id::Union{Int,RHSV
     return s
 end
 
-function pattern_match_call_restore_checkpoint_value(f::Any, id::Any, value::Any)
+function pattern_match_call_restore_checkpoint_value(f::Any, id::Any, value::Any,linfo)
     @dprintln(3, "pattern_match_call_restore_checkpoint_value f = ", f, " type = ", typeof(f), " id = ", id, " type = ", typeof(id), " value = ", value, " type = ", typeof(value))
     return ""
 end
@@ -521,11 +521,11 @@ end
 """
 Generate code for text file open (no variable name input)
 """
-function pattern_match_call_data_src_open(f::Symbol, id::Int, file_name::Union{RHSVar,AbstractString}, arr::Symbol)
+function pattern_match_call_data_src_open(f::Symbol, id::Int, file_name::Union{RHSVar,AbstractString}, arr::Symbol,linfo)
     s = ""
     if f==:__hpat_data_source_TXT_open
         num::AbstractString = string(id)
-        file_name_str::AbstractString = ParallelAccelerator.CGen.from_expr(file_name)
+        file_name_str::AbstractString = ParallelAccelerator.CGen.from_expr(file_name, linfo)
         s = """
             MPI_File dsrc_txt_file_$num;
             int ierr_$num = MPI_File_open(MPI_COMM_WORLD, $file_name_str.data.data, MPI_MODE_RDONLY, MPI_INFO_NULL, &dsrc_txt_file_$num);
@@ -535,18 +535,18 @@ function pattern_match_call_data_src_open(f::Symbol, id::Int, file_name::Union{R
     return s
 end
 
-function pattern_match_call_data_src_open(f::Any, rf::Any, o::Any, arr::Any)
+function pattern_match_call_data_src_open(f::Any, rf::Any, o::Any, arr::Any,linfo)
     return ""
 end
 
 
 
-function pattern_match_call_data_src_read(f::Symbol, id::Int, arr::Symbol, start::Symbol, count::Symbol)
+function pattern_match_call_data_src_read(f::Symbol, id::Int, arr::Symbol, start::Symbol, count::Symbol,linfo)
     s = ""
     num::AbstractString = string(id)
     
     if f==:__hpat_data_source_HDF5_read
-        data_typ = eltype(ParallelAccelerator.CGen.getSymType(arr))
+        data_typ = eltype(ParallelAccelerator.CGen.getSymType(arr, linfo))
         h5_typ = ""
         if data_typ==Float64
             h5_typ = "H5T_NATIVE_DOUBLE"
@@ -584,7 +584,7 @@ function pattern_match_call_data_src_read(f::Symbol, id::Int, arr::Symbol, start
         s *= ";\n"
     elseif f==:__hpat_data_source_TXT_read
         # assuming 1st dimension is partitined
-        data_typ = eltype(ParallelAccelerator.CGen.getSymType(arr))
+        data_typ = eltype(ParallelAccelerator.CGen.getSymType(arr, linfo))
         t_typ = ParallelAccelerator.CGen.toCtype(data_typ)
         
         s = """
@@ -731,70 +731,70 @@ function pattern_match_call_data_src_read(f::Symbol, id::Int, arr::Symbol, start
     return s
 end
 
-function pattern_match_call_data_src_read(f::Any, v::Any, rf::Any, o::Any, arr::Any)
+function pattern_match_call_data_src_read(f::Any, v::Any, rf::Any, o::Any, arr::Any,linfo)
     return ""
 end
 
-function pattern_match_call_dist_h5_size(f::Symbol, size_arr::LHSVar, ind::Union{Int64,RHSVar})
+function pattern_match_call_dist_h5_size(f::Symbol, size_arr::LHSVar, ind::Union{Int64,RHSVar},linfo)
     s = ""
     if f==:__hpat_get_H5_dim_size || f==:__hpat_get_TXT_dim_size
         @dprintln(3,"match dist_dim_size ",f," ", size_arr, " ",ind)
-        s = ParallelAccelerator.CGen.from_expr(size_arr)*"["*ParallelAccelerator.CGen.from_expr(ind)*"-1]"
+        s = ParallelAccelerator.CGen.from_expr(size_arr, linfo)*"["*ParallelAccelerator.CGen.from_expr(ind, linfo)*"-1]"
     end
     return s
 end
 
-function pattern_match_call_dist_h5_size(f::Any, size_arr::Any, ind::Any)
+function pattern_match_call_dist_h5_size(f::Any, size_arr::Any, ind::Any,linfo)
     return ""
 end
 
 
 
-function pattern_match_call(ast::Array{Any, 1})
+function pattern_match_call(ast::Array{Any, 1}, linfo)
 
     @dprintln(3,"hpat pattern matching ",ast)
     s = ""
     if length(ast)==1
         @dprintln(3,"ast1_typ = ", typeof(ast[1]))
-        s *= pattern_match_call_dist_init(ast[1])
-        s *= pattern_match_call_get_sec_since_epoch(ast[1]) 
+        s *= pattern_match_call_dist_init(ast[1], linfo)
+        s *= pattern_match_call_get_sec_since_epoch(ast[1], linfo) 
     elseif length(ast)==2
         @dprintln(3,"ast1_typ = ", typeof(ast[1]), " ast2_typ = ", typeof(ast[2]))
-        s *= pattern_match_call_data_src_close(ast[1], ast[2])
-        s *= pattern_match_call_get_checkpoint_time(ast[1], ast[2])
-        s *= pattern_match_call_start_checkpoint(ast[1], ast[2])
-        s *= pattern_match_call_end_checkpoint(ast[1], ast[2])
-        s *= pattern_match_call_finish_checkpoint(ast[1], ast[2])
-        s *= pattern_match_call_restore_checkpoint_end(ast[1], ast[2])
+        s *= pattern_match_call_data_src_close(ast[1], ast[2], linfo)
+        s *= pattern_match_call_get_checkpoint_time(ast[1], ast[2], linfo)
+        s *= pattern_match_call_start_checkpoint(ast[1], ast[2], linfo)
+        s *= pattern_match_call_end_checkpoint(ast[1], ast[2], linfo)
+        s *= pattern_match_call_finish_checkpoint(ast[1], ast[2], linfo)
+        s *= pattern_match_call_restore_checkpoint_end(ast[1], ast[2], linfo)
     elseif(length(ast)==3) 
         @dprintln(3,"ast1_typ = ", typeof(ast[1]), " ast2_typ = ", typeof(ast[2]), " ast3_typ = ", typeof(ast[3]))
-        s *= pattern_match_call_dist_h5_size(ast[1],ast[2],ast[3])
-        s *= pattern_match_call_dist_bcast(ast[1],ast[2],ast[3])
-        s *= pattern_match_call_value_checkpoint(ast[1], ast[2], ast[3])
-        s *= pattern_match_call_restore_checkpoint_start(ast[1], ast[2])
-        s *= pattern_match_call_restore_checkpoint_value(ast[1], ast[2], ast[3])
+        s *= pattern_match_call_dist_h5_size(ast[1],ast[2],ast[3], linfo)
+        s *= pattern_match_call_dist_bcast(ast[1],ast[2],ast[3], linfo)
+        s *= pattern_match_call_value_checkpoint(ast[1], ast[2], ast[3], linfo)
+        s *= pattern_match_call_restore_checkpoint_start(ast[1], ast[2], linfo)
+        s *= pattern_match_call_restore_checkpoint_value(ast[1], ast[2], ast[3], linfo)
     elseif(length(ast)==4)
-        s *= pattern_match_call_dist_reduce(ast[1],ast[2],ast[3], ast[4])
+        s *= pattern_match_call_dist_reduce(ast[1],ast[2],ast[3], ast[4], linfo)
         # text file read
-        s *= pattern_match_call_data_src_open(ast[1],ast[2],ast[3], ast[4])
+        s *= pattern_match_call_data_src_open(ast[1],ast[2],ast[3], ast[4], linfo)
     elseif(length(ast)==5)
         # HDF5 open
-        s *= pattern_match_call_data_src_open(ast[1],ast[2],ast[3], ast[4], ast[5])
-        s *= pattern_match_call_data_src_read(ast[1],ast[2],ast[3], ast[4], ast[5])
-        s *= pattern_match_call_dist_allreduce(ast[1],ast[2],ast[3], ast[4], ast[5])
-        s *= pattern_match_call_dist_portion(ast[1],ast[2],ast[3], ast[4], ast[5])
-        s *= pattern_match_call_dist_node_end(ast[1],ast[2],ast[3], ast[4], ast[5])
+        s *= pattern_match_call_data_src_open(ast[1],ast[2],ast[3], ast[4], ast[5], linfo)
+        s *= pattern_match_call_data_src_read(ast[1],ast[2],ast[3], ast[4], ast[5], linfo)
+        s *= pattern_match_call_dist_allreduce(ast[1],ast[2],ast[3], ast[4], ast[5], linfo)
+        s *= pattern_match_call_dist_portion(ast[1],ast[2],ast[3], ast[4], ast[5], linfo)
+        s *= pattern_match_call_dist_node_end(ast[1],ast[2],ast[3], ast[4], ast[5], linfo)
     elseif(length(ast)==8)
-        s *= pattern_match_call_kmeans(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8])
+        s *= pattern_match_call_kmeans(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8], linfo)
     elseif(length(ast)==12)
-        s *= pattern_match_call_linear_regression(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8],ast[9],ast[10],ast[11],ast[12])
+        s *= pattern_match_call_linear_regression(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8],ast[9],ast[10],ast[11],ast[12], linfo)
     elseif(length(ast)==13)
-        s *= pattern_match_call_naive_bayes(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8],ast[9],ast[10],ast[11],ast[12],ast[13])
+        s *= pattern_match_call_naive_bayes(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8],ast[9],ast[10],ast[11],ast[12],ast[13], linfo)
     end
     return s
 end
 
-function assignment_call_internal(c_lhs, dist_call)
+function assignment_call_internal(c_lhs, dist_call, linfo)
     @dprintln(3, "assignment_call_internal c_lhs = ", c_lhs, " dist_call = ", dist_call)
     if dist_call==:hpat_dist_num_pes
         return "MPI_Comm_size(MPI_COMM_WORLD,&$c_lhs);"
@@ -804,36 +804,36 @@ function assignment_call_internal(c_lhs, dist_call)
     return ""
 end
 
-function from_assignment_match_dist(lhs::RHSVar, rhs::Expr)
+function from_assignment_match_dist(lhs::RHSVar, rhs::Expr, linfo)
     @dprintln(3, "assignment pattern match dist2: ",lhs," = ",rhs)
     s = ""
     local num::AbstractString
     if rhs.head==:call && rhs.args[1]==:__hpat_data_source_HDF5_size
-        num = ParallelAccelerator.CGen.from_expr(rhs.args[2])
+        num = ParallelAccelerator.CGen.from_expr(rhs.args[2], linfo)
         s = "hid_t space_id_$num = H5Dget_space(dataset_id_$num);\n"    
         s *= "assert(space_id_$num != -1);\n"    
         s *= "hsize_t data_ndim_$num = H5Sget_simple_extent_ndims(space_id_$num);\n"
         s *= "hsize_t space_dims_$num[data_ndim_$num];\n"    
         s *= "H5Sget_simple_extent_dims(space_id_$num, space_dims_$num, NULL);\n"
-        s *= ParallelAccelerator.CGen.from_expr(lhs)*" = space_dims_$num;"
+        s *= ParallelAccelerator.CGen.from_expr(lhs, linfo)*" = space_dims_$num;"
     elseif rhs.head==:call && length(rhs.args)==1 && isTopNode(rhs.args[1])
         @dprintln(3, "one arg call to a TopNode")
         dist_call = rhs.args[1].name
-        c_lhs = ParallelAccelerator.CGen.from_expr(lhs)
-        return assignment_call_internal(c_lhs, dist_call)
+        c_lhs = ParallelAccelerator.CGen.from_expr(lhs, linfo)
+        return assignment_call_internal(c_lhs, dist_call, linfo)
     elseif rhs.head==:call && length(rhs.args)==1 && isExpr(rhs.args[1])
         @dprintln(3, "one arg call to an Expr")
         expr = rhs.args[1]
         if expr.head == :call && expr.args[1] == TopNode(:getfield)
             this_mod = eval(expr.args[2])
             if this_mod == HPAT.Checkpointing
-                c_lhs = ParallelAccelerator.CGen.from_expr(lhs)
-                return assignment_call_internal(c_lhs, expr.args[3].value)
+                c_lhs = ParallelAccelerator.CGen.from_expr(lhs, linfo)
+                return assignment_call_internal(c_lhs, expr.args[3].value, linfo)
             end
         end
     elseif rhs.head==:call && rhs.args[1]==:__hpat_data_source_TXT_size
-        num = ParallelAccelerator.CGen.from_expr(rhs.args[2])
-        c_lhs = ParallelAccelerator.CGen.from_expr(lhs)
+        num = ParallelAccelerator.CGen.from_expr(rhs.args[2], linfo)
+        c_lhs = ParallelAccelerator.CGen.from_expr(lhs, linfo)
         s = """
             MPI_Offset CGen_txt_tot_file_size_$num;
             MPI_Offset CGen_txt_buff_size_$num;
@@ -920,7 +920,7 @@ function isExpr(a::ANY)
     return false
 end
 
-function from_assignment_match_dist(lhs::Any, rhs::Any)
+function from_assignment_match_dist(lhs::Any, rhs::Any, linfo)
     return ""
 end
 
