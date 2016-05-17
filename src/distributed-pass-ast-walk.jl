@@ -62,7 +62,7 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
     @dprintln(3,"DistPass arr info walk Expr head: ", head)
     if head==:(=)
         @dprintln(3,"DistPass arr info walk assignment: ", node)
-        lhs = toSymGen(node.args[1])
+        lhs = toLHSVar(node.args[1])
         rhs = node.args[2]
         return get_arr_dist_info_assignment(node, state, top_level_number, lhs, rhs)
     elseif head==:parfor
@@ -76,7 +76,7 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
             seq = true
         end
         
-        indexVariable::Symbol = toSymGen(parfor.loopNests[1].indexVariable)
+        indexVariable::Symbol = toLHSVar(parfor.loopNests[1].indexVariable)
         
         allArrAccesses = merge(rws.readSet.arrays,rws.writeSet.arrays)
         myArrs = SymGen[]
@@ -92,7 +92,7 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
             # an array can be accessed multiple times in Pafor
             # for each access:
             for access_indices in allArrAccesses[arr]
-                indices = map(toSymGen,access_indices)
+                indices = map(toLHSVar,access_indices)
                 # if array would be accessed in parallel in this Parfor
                 if indices[end]==indexVariable
                     push!(myArrs, arr)
@@ -145,13 +145,13 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
             @dprintln(2,"DistPass arr info walk kmeans ", node)
             # first array is cluster output and is sequential
             # second array is input matrix and is parallel
-            state.arrs_dist_info[toSymGen(node.args[2])].isSequential = true
+            state.arrs_dist_info[toLHSVar(node.args[2])].isSequential = true
         elseif func==:__hpat_LinearRegression || func==:__hpat_NaiveBayes
             @dprintln(2,"DistPass arr info walk LinearRegression/NaiveBayes ", node)
             # first array is cluster output and is sequential
             # second array is input matrix and is parallel
             # third array is responses and is parallel
-            state.arrs_dist_info[toSymGen(node.args[2])].isSequential = true
+            state.arrs_dist_info[toLHSVar(node.args[2])].isSequential = true
         end
         return node
     elseif head==:gotoifnot
@@ -184,10 +184,10 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
         #allArrs = [readArrs;writeArrs]
         
         for var in all_vars
-            if haskey(state.arrs_dist_info, toSymGen(var))
+            if haskey(state.arrs_dist_info, toLHSVar(var))
                 @dprintln(2,"DistPass arr info walk array in sequential code: ", var, " ", node)
                 
-                state.arrs_dist_info[toSymGen(var)].isSequential = true
+                state.arrs_dist_info[toLHSVar(var)].isSequential = true
             end
         end
         return node
@@ -233,7 +233,7 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
             state.arrs_dist_info[lhs].dim_sizes = map(toLHSVarOrInt, get_alloc_shape(rhs.args[2:end]))
             @dprintln(3,"DistPass arr info dim_sizes update: ", state.arrs_dist_info[lhs].dim_sizes)
     elseif isa(rhs,RHSVar)
-        rhs = toSymGen(rhs)
+        rhs = toLHSVar(rhs)
         if haskey(state.arrs_dist_info, rhs)
             state.arrs_dist_info[lhs].dim_sizes = state.arrs_dist_info[rhs].dim_sizes
             # lhs and rhs are sequential if either is sequential
@@ -249,11 +249,11 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
                 state.arrs_dist_info[lhs].dim_sizes = state.tuple_table[rhs.args[3]]
                 @dprintln(3,"DistPass arr info dim_sizes update: ", state.arrs_dist_info[lhs].dim_sizes)
                 # lhs and rhs are sequential if either is sequential
-                seq = state.arrs_dist_info[lhs].isSequential || state.arrs_dist_info[toSymGen(rhs.args[2])].isSequential
-                state.arrs_dist_info[lhs].isSequential = state.arrs_dist_info[toSymGen(rhs.args[2])].isSequential = seq
+                seq = state.arrs_dist_info[lhs].isSequential || state.arrs_dist_info[toLHSVar(rhs.args[2])].isSequential
+                state.arrs_dist_info[lhs].isSequential = state.arrs_dist_info[toLHSVar(rhs.args[2])].isSequential = seq
             else
                 @dprintln(3,"DistPass arr info reshape tuple not found: ", rhs.args[3])
-                state.arrs_dist_info[lhs].isSequential = state.arrs_dist_info[toSymGen(rhs.args[2])].isSequential = true
+                state.arrs_dist_info[lhs].isSequential = state.arrs_dist_info[toLHSVar(rhs.args[2])].isSequential = true
             end
         elseif rhs.args[1]==TopNode(:tuple)
             ok = true
@@ -263,17 +263,17 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
                 end 
             end 
             if ok
-                state.tuple_table[lhs] = [  toSymGenOrNum(s) for s in rhs.args[2:end] ]
+                state.tuple_table[lhs] = [  toLHSVarOrNum(s) for s in rhs.args[2:end] ]
                 @dprintln(3,"DistPass arr info tuple constant: ", lhs," ",rhs.args[2:end])
             else
                 @dprintln(3,"DistPass arr info tuple not constant: ", lhs," ",rhs.args[2:end])
             end 
         elseif func==GlobalRef(Base.LinAlg,:gemm_wrapper!)
             # determine output dimensions
-            state.arrs_dist_info[lhs].dim_sizes = state.arrs_dist_info[toSymGen(rhs.args[2])].dim_sizes
-            arr1 = toSymGen(rhs.args[5])
+            state.arrs_dist_info[lhs].dim_sizes = state.arrs_dist_info[toLHSVar(rhs.args[2])].dim_sizes
+            arr1 = toLHSVar(rhs.args[5])
             t1 = (rhs.args[3]=='T')
-            arr2 = toSymGen(rhs.args[6])
+            arr2 = toLHSVar(rhs.args[6])
             t2 = (rhs.args[4]=='T')
             
             seq = false
@@ -301,7 +301,7 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
             if seq
                 @dprintln(3,"DistPass arr info gemm output is sequential: ", lhs," ",rhs.args[2])
             end
-            state.arrs_dist_info[lhs].isSequential = state.arrs_dist_info[toSymGen(rhs.args[2])].isSequential = seq
+            state.arrs_dist_info[lhs].isSequential = state.arrs_dist_info[toLHSVar(rhs.args[2])].isSequential = seq
         end
     else
         return CompilerTools.AstWalker.ASTWALK_RECURSE

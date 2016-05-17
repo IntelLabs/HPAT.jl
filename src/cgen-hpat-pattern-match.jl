@@ -151,7 +151,7 @@ end
 function pattern_match_call_dist_allreduce(f::TopNode, var::RHSVar, reductionFunc, output::RHSVar, size::Union{RHSVar,Int})
     if f.name==:hpat_dist_allreduce
         mpi_type = ""
-        var = toSymGen(var)
+        var = toLHSVar(var)
         c_var = ParallelAccelerator.CGen.from_expr(var)
         c_output = ParallelAccelerator.CGen.from_expr(output)
         var_typ = ParallelAccelerator.CGen.getSymType(var)
@@ -202,7 +202,7 @@ function pattern_match_call_dist_bcast(f::Symbol, var::RHSVar, size::ANY)
     c_size = ParallelAccelerator.CGen.from_expr(size)
     if f==:__hpat_dist_broadcast
         mpi_type = ""
-        var = toSymGen(var)
+        var = toLHSVar(var)
         c_var = ParallelAccelerator.CGen.from_expr(var)
         var_typ = ParallelAccelerator.CGen.getSymType(var)
         is_array =  var_typ<:Array

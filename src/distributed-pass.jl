@@ -42,7 +42,6 @@ import HPAT
 
 using ParallelAccelerator
 import ParallelAccelerator.ParallelIR
-import ParallelAccelerator.ParallelIR.toSynGemOrInt
 import ParallelAccelerator.ParallelIR.isArrayType
 import ParallelAccelerator.ParallelIR.getParforNode
 import ParallelAccelerator.ParallelIR.isBareParfor
@@ -264,7 +263,7 @@ function from_assignment(node::Expr, state::DistPassState)
     rhs = node.args[2]
     
     if isAllocation(rhs)
-        arr = toSymGen(lhs)
+        arr = toLHSVar(lhs)
         if in(arr, state.dist_arrays)
             @dprintln(3,"DistPass allocation array: ", arr)
             #shape = get_alloc_shape(node.args[2].args[2:end])
@@ -300,7 +299,7 @@ function from_assignment(node::Expr, state::DistPassState)
             return res
         end
     elseif isa(rhs,Expr) && rhs.head==:call && rhs.args[1]==GlobalRef(Base,:reshape)
-        arr = toSymGen(lhs)
+        arr = toLHSVar(lhs)
         if in(arr, state.dist_arrays)
             @dprintln(3,"DistPass reshape array: ", arr)
             dim_sizes = state.arrs_dist_info[arr].dim_sizes
@@ -340,9 +339,9 @@ function from_assignment(node::Expr, state::DistPassState)
         end
     elseif isa(rhs,Expr) && rhs.head==:call && rhs.args[1]==GlobalRef(Base.LinAlg,:gemm_wrapper!)
 
-                arr1 = toSymGen(rhs.args[5])
+                arr1 = toLHSVar(rhs.args[5])
                 t1 = (rhs.args[3]=='T')
-                arr2 = toSymGen(rhs.args[6])
+                arr2 = toLHSVar(rhs.args[6])
                 t2 = (rhs.args[4]=='T')
                 
                 # result is sequential but with reduction if both inputs are partitioned and second one is transposed
@@ -463,7 +462,7 @@ function from_parfor(node::Expr, state)
             # only rank 0 executes rand(), then broadcasts results
             writeArrs = collect(keys(parfor.rws.writeSet.arrays))
             @assert length(writeArrs)==1 "Only one parfor output supported now"
-            write_arr = toSymGen(writeArrs[1])
+            write_arr = toLHSVar(writeArrs[1])
             # generate new label
             label = next_label(state)
             label_node = LabelNode(label)
@@ -491,8 +490,8 @@ function from_call(node::Expr, state)
     @dprintln(2,"DistPass from_call ", node)
 
     func = node.args[1]
-    if (func==:__hpat_data_source_HDF5_read || func==:__hpat_data_source_TXT_read) && in(toSymGen(node.args[3]), state.dist_arrays)
-        arr = toSymGen(node.args[3])
+    if (func==:__hpat_data_source_HDF5_read || func==:__hpat_data_source_TXT_read) && in(toLHSVar(node.args[3]), state.dist_arrays)
+        arr = toLHSVar(node.args[3])
         @dprintln(3,"DistPass data source for array: ", arr)
         
         arr_id = state.arrs_dist_info[arr].arr_id 
@@ -502,8 +501,8 @@ function from_call(node::Expr, state)
 
         push!(node.args, dsrc_start_var, dsrc_count_var)
         return [node]
-    elseif func==:__hpat_Kmeans && in(toSymGen(node.args[3]), state.dist_arrays)
-        arr = toSymGen(node.args[3])
+    elseif func==:__hpat_Kmeans && in(toLHSVar(node.args[3]), state.dist_arrays)
+        arr = toLHSVar(node.args[3])
         @dprintln(3,"DistPass kmeans call for array: ", arr)
         
         arr_id = state.arrs_dist_info[arr].arr_id 
@@ -514,9 +513,9 @@ function from_call(node::Expr, state)
         push!(node.args, dsrc_start_var, dsrc_count_var, 
                 state.arrs_dist_info[arr].dim_sizes[1], state.arrs_dist_info[arr].dim_sizes[end])
         return [node]
-    elseif (func==:__hpat_LinearRegression || func==:__hpat_NaiveBayes) && in(toSymGen(node.args[3]), state.dist_arrays) && in(toSymGen(node.args[4]), state.dist_arrays)
-        arr1 = toSymGen(node.args[3])
-        arr2 = toSymGen(node.args[4])
+    elseif (func==:__hpat_LinearRegression || func==:__hpat_NaiveBayes) && in(toLHSVar(node.args[3]), state.dist_arrays) && in(toLHSVar(node.args[4]), state.dist_arrays)
+        arr1 = toLHSVar(node.args[3])
+        arr2 = toLHSVar(node.args[4])
         @dprintln(3,"DistPass LinearRegression/NaiveBayes call for arrays: ", arr1," ", arr2)
         
         arr1_id = state.arrs_dist_info[arr1].arr_id 
@@ -533,15 +532,15 @@ function from_call(node::Expr, state)
         push!(node.args, dsrc_start_var2, dsrc_count_var2,
                 state.arrs_dist_info[arr2].dim_sizes[1], state.arrs_dist_info[arr2].dim_sizes[end])
         return [node]
-    elseif isTopNode(func) && func.name==:arraysize && in(toSymGen(node.args[2]), state.dist_arrays)
-        arr = toSymGen(node.args[2])
+    elseif isTopNode(func) && func.name==:arraysize && in(toLHSVar(node.args[2]), state.dist_arrays)
+        arr = toLHSVar(node.args[2])
         @dprintln(3,"found arraysize on dist array: ",node," ",arr)
         # replace last dimension size queries since it is partitioned
         if node.args[3]==length(state.arrs_dist_info[arr].dim_sizes)
             return [state.arrs_dist_info[arr].dim_sizes[end]]
         end
-    elseif func==GlobalRef(Base,:arraylen) && in(toSymGen(node.args[2]), state.dist_arrays)
-        arr = toSymGen(node.args[2])
+    elseif func==GlobalRef(Base,:arraylen) && in(toLHSVar(node.args[2]), state.dist_arrays)
+        arr = toLHSVar(node.args[2])
         #len = parse(foldl((a,b)->"$a*$b", "1",state.arrs_dist_info[arr].dim_sizes))
         len = mk_mult_int_expr(state.arrs_dist_info[arr].dim_sizes)
         @dprintln(3,"found arraylen on dist array: ",node," ",arr," len: ",len)
@@ -563,9 +562,9 @@ function adjust_arrayrefs(stmt::Expr, loopnest, top_level_number, is_top_level, 
         #ref_args = stmt.args[2:end]
         if topCall.name==:unsafe_arrayref || topCall.name==:unsafe_arrayset
             # TODO: simply divide the last dimension, more general partitioning needed
-            index_arg = toSymGen(stmt.args[end])
-            if isa(index_arg,Symbol) && index_arg==toSymGen(loopnest.indexVariable)
-                stmt.args[end] = mk_add_int_expr(mk_sub_int_expr(toSymGen(index_arg),loopnest.lower),1)
+            index_arg = toLHSVar(stmt.args[end])
+            if isa(index_arg,Symbol) && index_arg==toLHSVar(loopnest.indexVariable)
+                stmt.args[end] = mk_add_int_expr(mk_sub_int_expr(toLHSVar(index_arg),loopnest.lower),1)
                 return stmt
             end
         end
