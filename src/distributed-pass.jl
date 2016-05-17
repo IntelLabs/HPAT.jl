@@ -48,6 +48,7 @@ import ParallelAccelerator.ParallelIR.isBareParfor
 import ParallelAccelerator.ParallelIR.isAllocation
 import ParallelAccelerator.ParallelIR.TypedExpr
 import ParallelAccelerator.ParallelIR.get_alloc_shape
+import ParallelAccelerator.ParallelIR.computeLiveness
 
 import ParallelAccelerator.ParallelIR.ISCAPTURED
 import ParallelAccelerator.ParallelIR.ISASSIGNED
@@ -97,24 +98,21 @@ dist_ir_funcs = Set([   TopNode(:unsafe_arrayref),
                         GlobalRef(Base.LinAlg,:gemm_wrapper!)])
 
 # ENTRY to distributedIR
-function from_root(function_name, ast :: Expr)
-    @assert ast.head == :lambda "Input to DistributedPass should be :lambda Expr"
+function from_root(function_name, ast::Tuple)
     @dprintln(1,"Starting main DistributedPass.from_root.  function = ", function_name, " ast = ", ast)
 
-    linfo = CompilerTools.LambdaHandling.lambdaExprToLambdaVarInfo(ast)
-    lives = CompilerTools.LivenessAnalysis.from_expr(ast, ParallelIR.pir_live_cb, linfo)
+    (linfo, body) = ast
+
+    lives = computeLiveness(body, linfo)
     state::DistPassState = initDistState(linfo,lives)
     
     # find if an array should be partitioned, sequential, or shared
-    getArrayDistributionInfo(ast, state)
+    getArrayDistributionInfo(body, state)
     
     # transform body
-    @assert ast.args[3].head==:body "DistributedPass: invalid lambda input"
-    body = TypedExpr(ast.args[3].typ, :body, from_toplevel_body(ast.args[3].args, state)...)
-    new_ast = CompilerTools.LambdaHandling.LambdaVarInfoToLambdaExpr(state.LambdaVarInfo, body)
-    @dprintln(1,"DistributedPass.from_root returns function = ", function_name, " ast = ", new_ast)
-    # ast = from_expr(ast)
-    return new_ast
+    body.args = from_toplevel_body(body.args, state)
+    @dprintln(1,"DistributedPass.from_root returns function = ", function_name, " ast = ", body)
+    return LambdaVarInfo, body
 end
 
 type ArrDistInfo

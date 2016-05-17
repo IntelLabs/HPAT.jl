@@ -72,7 +72,7 @@ function ns_to_sec(x)
   x / 1000000000.0
 end
 
-function runDistributedPass(func :: GlobalRef, ast :: Expr, signature :: Tuple)
+function runDistributedPass(func :: GlobalRef, ast, signature :: Tuple)
   dir_start = time_ns()
   code = DistributedPass.from_root(string(func.name), ast)
   dir_time = time_ns() - dir_start
@@ -81,7 +81,7 @@ function runDistributedPass(func :: GlobalRef, ast :: Expr, signature :: Tuple)
   return code
 end
 
-function runDomainPass(func :: GlobalRef, ast :: Expr, signature :: Tuple)
+function runDomainPass(func :: GlobalRef, ast, signature :: Tuple)
   dir_start = time_ns()
   code = DomainPass.from_root(string(func.name), ast)
   dir_time = time_ns() - dir_start
@@ -90,7 +90,7 @@ function runDomainPass(func :: GlobalRef, ast :: Expr, signature :: Tuple)
   return code
 end
 
-function addCheckpointing(func :: GlobalRef, ast :: Expr, signature :: Tuple)
+function addCheckpointing(func :: GlobalRef, ast, signature :: Tuple)
   dir_start = time_ns()
   code = Checkpointing.from_root(string(func.name), ast, false)
   dir_time = time_ns() - dir_start
@@ -99,7 +99,7 @@ function addCheckpointing(func :: GlobalRef, ast :: Expr, signature :: Tuple)
   return code
 end
 
-function addCheckpointingRestart(func :: GlobalRef, ast :: Expr, signature :: Tuple)
+function addCheckpointingRestart(func :: GlobalRef, ast, signature :: Tuple)
   dir_start = time_ns()
   code = Checkpointing.from_root(string(func.name), ast, true)
   dir_time = time_ns() - dir_start

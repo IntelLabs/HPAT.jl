@@ -54,21 +54,17 @@ const generatedFuncs = [:__hpat_data_source_HDF5_open,
                         :__hpat_LinearRegression,
                         :__hpat_NaiveBayes]
 
-# ENTRY to distributedIR
-function from_root(function_name, ast :: Expr)
-    @assert ast.head == :lambda "Input to DomainPass should be :lambda Expr"
+# ENTRY to DomainPass
+function from_root(function_name, ast)
     @dprintln(1,"Starting main DomainPass.from_root.  function = ", function_name, " ast = ", ast)
 
-    linfo = CompilerTools.LambdaHandling.lambdaExprToLambdaVarInfo(ast)
+    linfo, body = CompilerTools.LambdaHandling.lambdaToLambdaVarInfo(ast)
     state::DomainState = DomainState(linfo, 0)
     
     # transform body
-    @assert ast.args[3].head==:body "DomainPass: invalid lambda input"
-    body = TypedExpr(ast.args[3].typ, :body, from_toplevel_body(ast.args[3].args, state)...)
-    new_ast = CompilerTools.LambdaHandling.LambdaVarInfoToLambdaExpr(state.linfo, body)
-    @dprintln(1,"DomainPass.from_root returns function = ", function_name, " ast = ", new_ast)
-    # ast = from_expr(ast)
-    return new_ast
+    body.args = from_toplevel_body(body.args, state)
+    @dprintln(1,"DomainPass.from_root returns function = ", function_name, " body = ", body)
+    return LambdaVarInfoToLambda(state.linfo, body.args)
 end
 
 # information about AST gathered and used in DomainPass

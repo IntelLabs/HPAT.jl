@@ -80,11 +80,8 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
         
         allArrAccesses = merge(rws.readSet.arrays,rws.writeSet.arrays)
         myArrs = LHSVar[]
-
-        fake_body = CompilerTools.LambdaHandling.LambdaVarInfoToLambdaExpr(state.LambdaVarInfo, TypedExpr(nothing, :body, parfor.body...))
-        #@dprintln(3,"fake_body = ", fake_body)
-
-        body_lives = CompilerTools.LivenessAnalysis.from_expr(fake_body, ParallelIR.pir_live_cb, state.LambdaVarInfo)
+        
+        body_lives = CompilerTools.LivenessAnalysis.from_lambda(state.LambdaVarInfo, parfor.body, ParallelIR.pir_live_cb, state.LambdaVarInfo)
         #@dprintln(3, "body_lives = ", body_lives)
 
         # If an array is accessed with a Parfor's index variable, the parfor and array should have same partitioning
@@ -161,10 +158,7 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
     elseif head!=:body && head!=:block && head!=:lambda
         @dprintln(3,"DistPass arr info walk sequential code: ", node)
         
-        fake_body = CompilerTools.LambdaHandling.LambdaVarInfoToLambdaExpr(state.LambdaVarInfo, TypedExpr(nothing, :body, node))
-        #@dprintln(3,"fake_body = ", fake_body)
-
-        live_info = CompilerTools.LivenessAnalysis.from_expr(fake_body, ParallelIR.pir_live_cb, state.LambdaVarInfo)
+        live_info = CompilerTools.LivenessAnalysis.from_lambda(state.LambdaVarInfo, TypedExpr(nothing, :body, node), ParallelIR.pir_live_cb, state.LambdaVarInfo)
         #@dprintln(3, "body_lives = ", body_lives)
         # live_info = CompilerTools.LivenessAnalysis.find_top_number(top_level_number, state.lives)
         # all_vars = union(live_info.def, live_info.use)
