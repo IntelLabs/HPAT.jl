@@ -278,7 +278,7 @@ function from_assignment(node::Expr, state::DistPassState)
             # zero-based index to match C interface of HDF5
             darr_start_expr = Expr(:(=), darr_start_var, mk_mult_int_expr([:__hpat_node_id,darr_div_var])) 
             # darr_count_expr = :($darr_count_var = __hpat_node_id==__hpat_num_pes-1 ? $arr_tot_size-__hpat_node_id*$darr_div_var : $darr_div_var)
-            darr_count_expr = Expr(:(=), darr_count_var, mk_call(:__hpat_get_node_portion,[arr_tot_size, darr_div_var, :__hpat_num_pes, :__hpat_node_id])) 
+            darr_count_expr = Expr(:(=), darr_count_var, mk_call(GlobalRef(HPAT.API,:__hpat_get_node_portion),[arr_tot_size, darr_div_var, :__hpat_num_pes, :__hpat_node_id])) 
 
             rhs.args[end-1] = darr_count_var
 
@@ -312,7 +312,7 @@ function from_assignment(node::Expr, state::DistPassState)
             # zero-based index to match C interface of HDF5
             darr_start_expr = Expr(:(=),darr_start_var, mk_mult_int_expr([:__hpat_node_id, darr_div_var]))
             #darr_count_expr = :($darr_count_var = __hpat_node_id==__hpat_num_pes-1 ? $arr_tot_size-__hpat_node_id*$darr_div_var : $darr_div_var)
-            darr_count_expr = Expr(:(=), darr_count_var, mk_call(:__hpat_get_node_portion,[arr_tot_size, darr_div_var, :__hpat_num_pes, :__hpat_node_id])) 
+            darr_count_expr = Expr(:(=), darr_count_var, mk_call(GlobalRef(HPAT.API,:__hpat_get_node_portion),[arr_tot_size, darr_div_var, :__hpat_num_pes, :__hpat_node_id])) 
     
             # create a new tuple for reshape
             tup_call = Expr(:call, TopNode(:tuple), dim_sizes[1:end-1]... , darr_count_var)
@@ -412,7 +412,7 @@ function from_parfor(node::Expr, state)
         loop_div_expr = Expr(:(=),loop_div_var, mk_div_int_expr(global_size,:__hpat_num_pes))
         loop_start_expr = Expr(:(=), loop_start_var, mk_add_int_expr(mk_mult_int_expr([:__hpat_node_id,loop_div_var]),1))
         #loop_end_expr = :($loop_end_var = __hpat_node_id==__hpat_num_pes-1 ?$(global_size):(__hpat_node_id+1)*$loop_div_var)
-        loop_end_expr = Expr(:(=), loop_end_var, mk_call(:__hpat_get_node_end,[global_size, loop_div_var, :__hpat_num_pes, :__hpat_node_id]))
+        loop_end_expr = Expr(:(=), loop_end_var, mk_call(GlobalRef(HPAT.API,:__hpat_get_node_end),[global_size, loop_div_var, :__hpat_num_pes, :__hpat_node_id]))
 
         loopnest.lower = loop_start_var
         loopnest.upper = loop_end_var

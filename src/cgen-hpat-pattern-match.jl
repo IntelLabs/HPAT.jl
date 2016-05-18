@@ -85,7 +85,7 @@ function pattern_match_reduce_sum(reductionFunc::GlobalRef,linfo)
     return false
 end
 
-function pattern_match_call_dist_reduce(f::GlobalRef, var::SymbolNode, reductionFunc::DelayedFunc, output::Symbol,linfo)
+function pattern_match_call_dist_reduce(f::GlobalRef, var::TypedVar, reductionFunc::DelayedFunc, output::LHSVar,linfo)
     if f.name==:hpat_dist_reduce
         mpi_type = ""
         if var.typ==Float64
@@ -120,9 +120,9 @@ function pattern_match_call_dist_reduce(f::Any, v::Any, rf::Any, o::Any,linfo)
     return ""
 end
 
-function pattern_match_call_dist_portion(f::Symbol, total::Union{RHSVar,Int}, div::Union{RHSVar,Int}, num_pes::Symbol, node_id::Symbol,linfo)
+function pattern_match_call_dist_portion(f::GlobalRef, total::Union{RHSVar,Int}, div::Union{RHSVar,Int}, num_pes::RHSVar, node_id::LHSVar,linfo)
     s = ""
-    if f==:__hpat_get_node_portion
+    if f.name==:__hpat_get_node_portion
         c_total = ParallelAccelerator.CGen.from_expr(total, linfo)
         c_div = ParallelAccelerator.CGen.from_expr(div, linfo)
         s = "(($node_id==$num_pes-1) ? $c_total-$node_id*$c_div : $c_div)"
@@ -134,9 +134,9 @@ function pattern_match_call_dist_portion(f::ANY, total::ANY, div::ANY, num_pes::
     return ""
 end
 
-function pattern_match_call_dist_node_end(f::Symbol, total::RHSVar, div::RHSVar, num_pes::Symbol, node_id::Symbol,linfo)
+function pattern_match_call_dist_node_end(f::GlobalRef, total::RHSVar, div::RHSVar, num_pes::LHSVar, node_id::LHSVar,linfo)
     s = ""
-    if f==:__hpat_get_node_end
+    if f.name==:__hpat_get_node_end
         c_total = ParallelAccelerator.CGen.from_expr(total, linfo)
         c_div = ParallelAccelerator.CGen.from_expr(div, linfo)
         s = "(($node_id==$num_pes-1) ? $c_total : ($node_id+1)*$c_div)"
@@ -198,10 +198,10 @@ function pattern_match_call_dist_allreduce(f::Any, v::Any, rf::Any, o::Any, s::A
     return ""
 end
 
-function pattern_match_call_dist_bcast(f::Symbol, var::RHSVar, size::ANY,linfo)
+function pattern_match_call_dist_bcast(f::GlobalRef, var::RHSVar, size::ANY,linfo)
     @dprintln(3, "pattern_match_call_dist_bcast f = ", f)
     c_size = ParallelAccelerator.CGen.from_expr(size, linfo)
-    if f==:__hpat_dist_broadcast
+    if f.name==:__hpat_dist_broadcast
         mpi_type = ""
         var = toLHSVar(var)
         c_var = ParallelAccelerator.CGen.from_expr(var, linfo)
@@ -233,13 +233,6 @@ function pattern_match_call_dist_bcast(f::Symbol, var::RHSVar, size::ANY,linfo)
     end
 end
 
-function pattern_match_call_dist_bcast(f::GlobalRef, var::RHSVar, size::ANY,linfo)
-    @dprintln(3, "pattern_match_call_dist_bcast GlobalRef f = ", f)
-    if f.mod == HPAT
-        return pattern_match_call_dist_bcast(f.name, var, size)
-    end
-    return ""
-end
 
 function pattern_match_call_dist_bcast(f::Any, v::Any, rf::Any,linfo)
     return ""
@@ -248,9 +241,9 @@ end
 """
 Generate code for HDF5 file open
 """
-function pattern_match_call_data_src_open(f::Symbol, id::Int, data_var::Union{RHSVar,AbstractString}, file_name::Union{RHSVar,AbstractString}, arr::Symbol,linfo)
+function pattern_match_call_data_src_open(f::GlobalRef, id::Int, data_var::Union{RHSVar,AbstractString}, file_name::Union{RHSVar,AbstractString}, arr::RHSVar,linfo)
     s = ""
-    if f==:__hpat_data_source_HDF5_open
+    if f.name==:__hpat_data_source_HDF5_open
         num::AbstractString = string(id)
     
         s = "hid_t plist_id_$num = H5Pcreate(H5P_FILE_ACCESS);\n"
@@ -277,14 +270,14 @@ end
 """
 Generate code for HDF5 file close 
 """
-function pattern_match_call_data_src_close(f::Symbol, id::Int,linfo)
+function pattern_match_call_data_src_close(f::GlobalRef, id::Int,linfo)
     s = ""
-    if f==:__hpat_data_source_HDF5_close
+    if f.name==:__hpat_data_source_HDF5_close
         num::AbstractString = string(id)
     
         s *= "H5Dclose(dataset_id_$num);\n"
         s *= "H5Fclose(file_id_$num);\n"
-    elseif f==:__hpat_data_source_TXT_close
+    elseif f.name==:__hpat_data_source_TXT_close
         num = string(id)
         s *= "MPI_File_close(&dsrc_txt_file_$num);\n"
     end
@@ -522,9 +515,9 @@ end
 """
 Generate code for text file open (no variable name input)
 """
-function pattern_match_call_data_src_open(f::Symbol, id::Int, file_name::Union{RHSVar,AbstractString}, arr::Symbol,linfo)
+function pattern_match_call_data_src_open(f::GlobalRef, id::Int, file_name::Union{RHSVar,AbstractString}, arr,linfo)
     s = ""
-    if f==:__hpat_data_source_TXT_open
+    if f.name==:__hpat_data_source_TXT_open
         num::AbstractString = string(id)
         file_name_str::AbstractString = ParallelAccelerator.CGen.from_expr(file_name, linfo)
         s = """
@@ -542,13 +535,14 @@ end
 
 
 
-function pattern_match_call_data_src_read(f::Symbol, id::Int, arr::Symbol, start::Symbol, count::Symbol,linfo)
+function pattern_match_call_data_src_read(f::GlobalRef, id::Int, arr::RHSVar, start::LHSVar, count::LHSVar,linfo)
     s = ""
     num::AbstractString = string(id)
     
-    if f==:__hpat_data_source_HDF5_read
+    if f.name==:__hpat_data_source_HDF5_read
         data_typ = eltype(ParallelAccelerator.CGen.getSymType(arr, linfo))
         h5_typ = ""
+        carr = ParallelAccelerator.CGen.from_expr(toLHSVar(arr), linfo)
         if data_typ==Float64
             h5_typ = "H5T_NATIVE_DOUBLE"
         elseif data_typ==Float32
@@ -579,11 +573,11 @@ function pattern_match_call_data_src_read(f::Symbol, id::Int, arr::Symbol, start
         s *= "hid_t xfer_plist_$num = H5Pcreate (H5P_DATASET_XFER);\n"
         s *= "assert(xfer_plist_$num != -1);\n"
         s *= "double h5_read_start_$num = MPI_Wtime();\n"
-        s *= "ret_$num = H5Dread(dataset_id_$num, $h5_typ, mem_dataspace_$num, space_id_$num, xfer_plist_$num, $arr.getData());\n"
+        s *= "ret_$num = H5Dread(dataset_id_$num, $h5_typ, mem_dataspace_$num, space_id_$num, xfer_plist_$num, $carr.getData());\n"
         s *= "assert(ret_$num != -1);\n"
         #s*="if(__hpat_node_id==__hpat_num_pes/2) printf(\"h5 read %lf\\n\", MPI_Wtime()-h5_read_start_$num);\n"
         s *= ";\n"
-    elseif f==:__hpat_data_source_TXT_read
+    elseif f.name==:__hpat_data_source_TXT_read
         # assuming 1st dimension is partitined
         data_typ = eltype(ParallelAccelerator.CGen.getSymType(arr, linfo))
         t_typ = ParallelAccelerator.CGen.toCtype(data_typ)
@@ -736,9 +730,9 @@ function pattern_match_call_data_src_read(f::Any, v::Any, rf::Any, o::Any, arr::
     return ""
 end
 
-function pattern_match_call_dist_h5_size(f::Symbol, size_arr::LHSVar, ind::Union{Int64,RHSVar},linfo)
+function pattern_match_call_dist_h5_size(f::GlobalRef, size_arr::LHSVar, ind::Union{Int64,RHSVar},linfo)
     s = ""
-    if f==:__hpat_get_H5_dim_size || f==:__hpat_get_TXT_dim_size
+    if f.name==:__hpat_get_H5_dim_size || f.name==:__hpat_get_TXT_dim_size
         @dprintln(3,"match dist_dim_size ",f," ", size_arr, " ",ind)
         s = ParallelAccelerator.CGen.from_expr(size_arr, linfo)*"["*ParallelAccelerator.CGen.from_expr(ind, linfo)*"-1]"
     end
@@ -826,7 +820,7 @@ function from_assignment_match_dist(lhs::RHSVar, rhs::Expr, linfo)
                 return assignment_call_internal(c_lhs, expr.args[3].value, linfo)
             end
         end
-    elseif rhs.head==:call && rhs.args[1]==:__hpat_data_source_TXT_size
+    elseif rhs.head==:call && rhs.args[1].name==:__hpat_data_source_TXT_size
         num = ParallelAccelerator.CGen.from_expr(rhs.args[2], linfo)
         c_lhs = ParallelAccelerator.CGen.from_expr(lhs, linfo)
         s = """
