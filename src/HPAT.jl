@@ -38,7 +38,7 @@ using ParallelAccelerator
 using ParallelAccelerator.Driver
 using ParallelAccelerator.CGen
 using CompilerTools.AstWalker
-using MPI
+import MPI
 
 export hpat, hpat_checkpoint, @acc, @noacc
 
