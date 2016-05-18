@@ -64,6 +64,7 @@ function from_root(function_name, ast)
     # transform body
     body.args = from_toplevel_body(body.args, state)
     @dprintln(1,"DomainPass.from_root returns function = ", function_name, " body = ", body)
+    println("DomainPass.from_root returns function = ", function_name, " body = ", body)
     return LambdaVarInfoToLambda(state.linfo, body.args)
 end
 
@@ -103,104 +104,139 @@ end
 function from_assignment(node::Expr, state)
     
     # pattern match distributed calls that need domain translation
-    matched::Array{Any,1} = pattern_match_hpat_dist_calls(node.args[1], node.args[2], state)
-    # matched is an expression, :not_matched head is used if not matched 
-    if length(matched)!=0
-        return matched
-    else
+    hpat_call::Symbol = getHPATcall(node.args[2])
+    if hpat_call==:null
         return [node]
+    end
+    return translate_hpat_dist_calls(node.args[1], node.args[2], hpat_call, state)
+end
+
+function translate_hpat_dist_calls(lhs::LHSVar, rhs::Expr, hpat_call::Symbol, state)
+    if hpat_call==:data_source_HDF5
+        return translate_data_source_HDF5(lhs, rhs, state)
+    elseif hpat_call==:data_source_TXT
+        return translate_data_source_TXT(lhs, rhs, state)
+    elseif hpat_call in [:Kmeans,:LinearRegression,:NaiveBayes]
+        # enable OpenMP for DAAL calls
+        HPAT.enableOMP()
+        # no change
+        return Expr(:(=),lhs,rhs)
     end
 end
 
-function pattern_match_hpat_dist_calls(lhs::LHSVar, rhs::Expr, state)
-    # example of data source call: 
-    # :((top(typeassert))((top(convert))(Array{Float64,1},(ParallelAccelerator.API.__hpat_data_source_HDF5)("/labels","./test.hdf5")),Array{Float64,1})::Array{Float64,1})
-    if rhs.head==:call && length(rhs.args)>=2 && isCall(rhs.args[2])
-        in_call = rhs.args[2]
-        if length(in_call.args)>=3 && isCall(in_call.args[3]) 
-            inner_call = in_call.args[3]
-            if isa(inner_call.args[1],GlobalRef) && inner_call.args[1].name==:__hpat_data_source_HDF5
-                res = Any[]
-                dprintln(3,"data source found ", inner_call)
-                hdf5_var = inner_call.args[2]
-                hdf5_file = inner_call.args[3]
-                # update counter and get data source number
-                state.data_source_counter += 1
-                dsrc_num = state.data_source_counter
-                dsrc_id_var = addTempVariable(Int64, state.linfo)
-                push!(res, TypedExpr(Int64, :(=), dsrc_id_var, dsrc_num))
-                # get array type
-                arr_typ = getType(lhs, state.linfo)
-                dims = ndims(arr_typ)
-                elem_typ = eltype(arr_typ)
-                # generate open call
-                # lhs is dummy argument so ParallelIR wouldn't reorder
-                open_call = mk_call(:__hpat_data_source_HDF5_open, [dsrc_id_var, hdf5_var, hdf5_file, lhs])
-                push!(res, open_call)
-                # generate array size call
-                # arr_size_var = addTempVariable(Tuple, state.linfo)
-                # assume 1D for now
-                arr_size_var = addTempVariable(ParallelAccelerator.H5SizeArr_t, state.linfo)
-                size_call = mk_call(:__hpat_data_source_HDF5_size, [dsrc_id_var, lhs])
-                push!(res, TypedExpr(arr_size_var, :(=), arr_size_var, size_call))
-                # generate array allocation
-                size_expr = Any[]
-                for i in dims:-1:1
-                    size_i = symbol("__hpat_h5_dim_size_"*string(dsrc_num)*"_"*string(i))
-                    CompilerTools.LambdaHandling.addLocalVariable(size_i, Int64, ISASSIGNEDONCE | ISASSIGNED, state.linfo)
-                    # size_i = addTempVariable(Int64, state.linfo)
-                    size_i_call = mk_call(:__hpat_get_H5_dim_size, [arr_size_var, i])
-                    push!(res, TypedExpr(Int64, :(=), size_i, size_i_call))
-                    push!(size_expr, size_i)
-                end
-                arrdef = TypedExpr(arr_typ, :alloc, elem_typ, size_expr)
-                push!(res, TypedExpr(arr_typ, :(=), lhs, arrdef))
-                # generate read call
-                read_call = mk_call(:__hpat_data_source_HDF5_read, [dsrc_id_var, lhs])
-                push!(res, read_call)
-                close_call = mk_call(:__hpat_data_source_HDF5_close, [dsrc_id_var])
-                push!(res, close_call)
-                return res
-            elseif isa(inner_call.args[1],GlobalRef) && inner_call.args[1].name==:__hpat_data_source_TXT
-                dprintln(3,"data source found ", inner_call)
-                res = Any[]
-                txt_file = inner_call.args[2]
-                # update counter and get data source number
-                state.data_source_counter += 1
-                dsrc_num = state.data_source_counter
-                dsrc_id_var = addTempVariable(Int64, state.linfo)
-                push!(res, TypedExpr(Int64, :(=), dsrc_id_var, dsrc_num))
-                # get array type
-                arr_typ = getType(lhs, state.linfo)
-                dims = ndims(arr_typ)
-                elem_typ = eltype(arr_typ)
-                # generate open call
-                # lhs is dummy argument so ParallelIR wouldn't reorder
-                open_call = mk_call(:__hpat_data_source_TXT_open, [dsrc_id_var, txt_file, lhs])
-                push!(res, open_call)
-                # generate array size call
-                # arr_size_var = addTempVariable(Tuple, state.linfo)
-                arr_size_var = addTempVariable(ParallelAccelerator.SizeArr_t, state.linfo)
-                size_call = mk_call(:__hpat_data_source_TXT_size, [dsrc_id_var, lhs])
-                push!(res, TypedExpr(arr_size_var, :(=), arr_size_var, size_call))
-                # generate array allocation
-                size_expr = Any[]
-                for i in dims:-1:1
-                    size_i = symbol("__hpat_txt_dim_size_"*string(dsrc_num)*"_"*string(i))
-                    CompilerTools.LambdaHandling.addLocalVariable(size_i, Int64, ISASSIGNEDONCE | ISASSIGNED, state.linfo)
-                    #size_i = addTempVariable(Int64, state.linfo)
-                    size_i_call = mk_call(:__hpat_get_TXT_dim_size, [arr_size_var, i])
-                    push!(res, TypedExpr(Int64, :(=), size_i, size_i_call))
-                    push!(size_expr, size_i)
-                end
-                arrdef = TypedExpr(arr_typ, :alloc, elem_typ, size_expr)
-                push!(res, TypedExpr(arr_typ, :(=), lhs, arrdef))
-                # generate read call
-                read_call = mk_call(:__hpat_data_source_TXT_read, [dsrc_id_var, lhs])
-                push!(res, read_call)
-                close_call = mk_call(:__hpat_data_source_TXT_close, [dsrc_id_var])
-                push!(res, close_call)
-                return res
+function translate_hpat_dist_calls(lhs::ANY, rhs::ANY, hpat_call::Symbol, state)
+    return Any[]
+end
+
+function getHPATcall(call::Expr)
+    if call.head==:call
+        return getHPATcall_inner(call.args[1])
+    end
+    return :null
+end
+
+function getHPATcall(call::ANY)
+    return :null
+end
+
+function getHPATcall_inner(func::GlobalRef)
+    if func.mod==HPAT.API
+        return func.name
+    end
+    return :null
+end
+
+function getHPATcall_inner(func::ANY)
+    return :null
+end
+
+function translate_data_source_HDF5(lhs::LHSVar, rhs::Expr, state)
+    res = Any[]
+    dprintln(3,"HPAT data source found ", rhs)
+    hdf5_var = rhs.args[3]
+    hdf5_file = rhs.args[4]
+    # update counter and get data source number
+    state.data_source_counter += 1
+    dsrc_num = state.data_source_counter
+    dsrc_id_var = addTempVariable(Int64, state.linfo)
+    push!(res, TypedExpr(Int64, :(=), dsrc_id_var, dsrc_num))
+    # get array type
+    arr_typ = getType(lhs, state.linfo)
+    dims = ndims(arr_typ)
+    elem_typ = eltype(arr_typ)
+    # generate open call
+    # lhs is dummy argument so ParallelIR wouldn't reorder
+    open_call = mk_call(GlobalRef(HPAT.API,:__hpat_data_source_HDF5_open), [dsrc_id_var, hdf5_var, hdf5_file, lhs])
+    push!(res, open_call)
+    # generate array size call
+    # arr_size_var = addTempVariable(Tuple, state.linfo)
+    # assume 1D for now
+    arr_size_var = addTempVariable(ParallelAccelerator.H5SizeArr_t, state.linfo)
+    size_call = mk_call(GlobalRef(HPAT.API,:__hpat_data_source_HDF5_size), [dsrc_id_var, lhs])
+    push!(res, TypedExpr(arr_size_var, :(=), arr_size_var, size_call))
+    # generate array allocation
+    size_expr = Any[]
+    for i in dims:-1:1
+        size_i = symbol("__hpat_h5_dim_size_"*string(dsrc_num)*"_"*string(i))
+        CompilerTools.LambdaHandling.addLocalVariable(size_i, Int64, ISASSIGNEDONCE | ISASSIGNED, state.linfo)
+        # size_i = addTempVariable(Int64, state.linfo)
+        size_i_call = mk_call(GlobalRef(HPAT.API,:__hpat_get_H5_dim_size), [arr_size_var, i])
+        push!(res, TypedExpr(Int64, :(=), size_i, size_i_call))
+        push!(size_expr, size_i)
+    end
+    arrdef = TypedExpr(arr_typ, :alloc, elem_typ, size_expr)
+    push!(res, TypedExpr(arr_typ, :(=), lhs, arrdef))
+    # generate read call
+    read_call = mk_call(GlobalRef(HPAT.API,:__hpat_data_source_HDF5_read), [dsrc_id_var, lhs])
+    push!(res, read_call)
+    close_call = mk_call(GlobalRef(HPAT.API,:__hpat_data_source_HDF5_close), [dsrc_id_var])
+    push!(res, close_call)
+    return res
+end
+
+function translate_data_source_TXT(lhs::LHSVar, rhs::Expr, state)
+    dprintln(3,"TXT data source found ", rhs)
+    res = Any[]
+    txt_file = rhs.args[3]
+    # update counter and get data source number
+    state.data_source_counter += 1
+    dsrc_num = state.data_source_counter
+    dsrc_id_var = addTempVariable(Int64, state.linfo)
+    push!(res, TypedExpr(Int64, :(=), dsrc_id_var, dsrc_num))
+    # get array type
+    arr_typ = getType(lhs, state.linfo)
+    dims = ndims(arr_typ)
+    elem_typ = eltype(arr_typ)
+    # generate open call
+    # lhs is dummy argument so ParallelIR wouldn't reorder
+    open_call = mk_call(:__hpat_data_source_TXT_open, [dsrc_id_var, txt_file, lhs])
+    push!(res, open_call)
+    # generate array size call
+    # arr_size_var = addTempVariable(Tuple, state.linfo)
+    arr_size_var = addTempVariable(ParallelAccelerator.SizeArr_t, state.linfo)
+    size_call = mk_call(:__hpat_data_source_TXT_size, [dsrc_id_var, lhs])
+    push!(res, TypedExpr(arr_size_var, :(=), arr_size_var, size_call))
+    # generate array allocation
+    size_expr = Any[]
+    for i in dims:-1:1
+        size_i = symbol("__hpat_txt_dim_size_"*string(dsrc_num)*"_"*string(i))
+        CompilerTools.LambdaHandling.addLocalVariable(size_i, Int64, ISASSIGNEDONCE | ISASSIGNED, state.linfo)
+        #size_i = addTempVariable(Int64, state.linfo)
+        size_i_call = mk_call(:__hpat_get_TXT_dim_size, [arr_size_var, i])
+        push!(res, TypedExpr(Int64, :(=), size_i, size_i_call))
+        push!(size_expr, size_i)
+    end
+    arrdef = TypedExpr(arr_typ, :alloc, elem_typ, size_expr)
+    push!(res, TypedExpr(arr_typ, :(=), lhs, arrdef))
+    # generate read call
+    read_call = mk_call(:__hpat_data_source_TXT_read, [dsrc_id_var, lhs])
+    push!(res, read_call)
+    close_call = mk_call(:__hpat_data_source_TXT_close, [dsrc_id_var])
+    push!(res, close_call)
+    return res
+end
+                
+            #=
             elseif isa(inner_call.args[1],GlobalRef) && inner_call.args[1].name==:__hpat_Kmeans
                 dprintln(3,"kmeans found ", inner_call)
                 HPAT.enableOMP()
@@ -226,7 +262,7 @@ end
 function pattern_match_hpat_dist_calls(lhs::Any, rhs::Any, state)
     return Any[]
 end
-
+=#
 
 end # module
 
