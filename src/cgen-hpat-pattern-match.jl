@@ -38,7 +38,7 @@ import HPAT
 
 include("cgen-hpat-pattern-match-daal.jl")
 
-function pattern_match_call_dist_init(f::TopNode,linfo)
+function pattern_match_call_dist_init(f::GlobalRef,linfo)
     if f.name==:hpat_dist_init
         return ";"#"MPI_Init(0,0);"
     else
@@ -78,14 +78,14 @@ function pattern_match_reduce_sum(reductionFunc::DelayedFunc,linfo)
     return false
 end
 
-function pattern_match_reduce_sum(reductionFunc::TopNode,linfo)
+function pattern_match_reduce_sum(reductionFunc::GlobalRef,linfo)
     if reductionFunc.name==:add_float || reductionFunc.name==:add_int
         return true
     end
     return false
 end
 
-function pattern_match_call_dist_reduce(f::TopNode, var::SymbolNode, reductionFunc::DelayedFunc, output::Symbol,linfo)
+function pattern_match_call_dist_reduce(f::GlobalRef, var::SymbolNode, reductionFunc::DelayedFunc, output::Symbol,linfo)
     if f.name==:hpat_dist_reduce
         mpi_type = ""
         if var.typ==Float64
@@ -148,7 +148,7 @@ function pattern_match_call_dist_node_end(f::ANY, total::ANY, div::ANY, num_pes:
     return ""
 end
 
-function pattern_match_call_dist_allreduce(f::TopNode, var::RHSVar, reductionFunc, output::RHSVar, size::Union{RHSVar,Int},linfo)
+function pattern_match_call_dist_allreduce(f::GlobalRef, var::RHSVar, reductionFunc, output::RHSVar, size::Union{RHSVar,Int},linfo)
     if f.name==:hpat_dist_allreduce
         mpi_type = ""
         var = toLHSVar(var)
@@ -795,21 +795,12 @@ function pattern_match_call(ast::Array{Any, 1}, linfo)
     return s
 end
 
-function assignment_call_internal(c_lhs, dist_call, linfo)
-    @dprintln(3, "assignment_call_internal c_lhs = ", c_lhs, " dist_call = ", dist_call)
-    if dist_call==:hpat_dist_num_pes
-        return "MPI_Comm_size(MPI_COMM_WORLD,&$c_lhs);"
-    elseif dist_call==:hpat_dist_node_id
-        return "MPI_Comm_rank(MPI_COMM_WORLD,&$c_lhs);"
-    end
-    return ""
-end
 
 function from_assignment_match_dist(lhs::RHSVar, rhs::Expr, linfo)
     @dprintln(3, "assignment pattern match dist2: ",lhs," = ",rhs)
     s = ""
     local num::AbstractString
-    if rhs.head==:call && rhs.args[1]==:__hpat_data_source_HDF5_size
+    if rhs.head==:call && rhs.args[1].name==:__hpat_data_source_HDF5_size
         num = ParallelAccelerator.CGen.from_expr(rhs.args[2], linfo)
         s = "hid_t space_id_$num = H5Dget_space(dataset_id_$num);\n"    
         s *= "assert(space_id_$num != -1);\n"    
@@ -817,11 +808,14 @@ function from_assignment_match_dist(lhs::RHSVar, rhs::Expr, linfo)
         s *= "hsize_t space_dims_$num[data_ndim_$num];\n"    
         s *= "H5Sget_simple_extent_dims(space_id_$num, space_dims_$num, NULL);\n"
         s *= ParallelAccelerator.CGen.from_expr(lhs, linfo)*" = space_dims_$num;"
-    elseif rhs.head==:call && length(rhs.args)==1 && isTopNode(rhs.args[1])
-        @dprintln(3, "one arg call to a TopNode")
-        dist_call = rhs.args[1].name
+    elseif rhs.head==:call && length(rhs.args)==1 && rhs.args[1]==GlobalRef(HPAT.API,:hpat_dist_num_pes)
+        @dprintln(3, "num_pes call")
         c_lhs = ParallelAccelerator.CGen.from_expr(lhs, linfo)
-        return assignment_call_internal(c_lhs, dist_call, linfo)
+        return "MPI_Comm_size(MPI_COMM_WORLD,&$c_lhs);"
+    elseif rhs.head==:call && length(rhs.args)==1 && rhs.args[1]==GlobalRef(HPAT.API,:hpat_dist_node_id)
+        @dprintln(3, "node_id call")
+        c_lhs = ParallelAccelerator.CGen.from_expr(lhs, linfo)
+        return "MPI_Comm_rank(MPI_COMM_WORLD,&$c_lhs);"
     elseif rhs.head==:call && length(rhs.args)==1 && isExpr(rhs.args[1])
         @dprintln(3, "one arg call to an Expr")
         expr = rhs.args[1]

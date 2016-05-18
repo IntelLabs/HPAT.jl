@@ -134,7 +134,7 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
         return CompilerTools.AstWalker.ASTWALK_RECURSE
     # functions dist_ir_funcs are either handled here or do not make arrays sequential  
     elseif head==:call && in(node.args[1].name, dist_ir_funcs)
-        func = node.args[1]
+        func = node.args[1].name
         if func==:__hpat_data_source_HDF5_read || func==:__hpat_data_source_TXT_read
             @dprintln(2,"DistPass arr info walk data source read ", node)
             # will be parallel IO, intentionally do nothing
