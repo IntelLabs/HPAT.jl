@@ -53,6 +53,9 @@ function enableOMP()
     end
 end
 
+include("api.jl")
+using HPAT.API
+export data_source_HDF5, data_source_TXT
 include("checkpoint.jl")
 include("distributed-pass.jl")
 include("domain-pass.jl")

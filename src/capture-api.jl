@@ -1,6 +1,8 @@
 module CaptureAPI
 
 using CompilerTools
+import ..API
+import HPAT
 
 """
 At macro level, translate DataSource into function calls so that type inference
@@ -19,10 +21,10 @@ end
 
 function process_assignment(node, lhs::Symbol, rhs::Expr)
     if rhs.head ==:call && rhs.args[1]==:DataSource
-        arr_var_expr = node.args[2].args[2]
+        arr_var_expr = rhs.args[2]
         
         @assert arr_var_expr.args[1]==:Array || arr_var_expr.args[1]==:Matrix || arr_var_expr.args[1]==:Vector "Data sources need Vector or Array or Matrix as type"
-        
+#=        
         if arr_var_expr.args[1]==:Matrix
             dims = 2 # Matrix type is 2D array
         elseif arr_var_expr.args[1]==:Vector
@@ -30,24 +32,28 @@ function process_assignment(node, lhs::Symbol, rhs::Expr)
         elseif arr_var_expr.args[1]==:Array
             dims = arr_var_expr.args[3]
         end
-
-        node.args[1] = :($(node.args[1])::$arr_var_expr)
-        source_typ = node.args[2].args[3]
+=#
+#        node.args[1] = :($(node.args[1])::$arr_var_expr)
+        source_typ = rhs.args[3]
         @assert source_typ==:HDF5 || source_typ==:TXT "Only HDF5 and TXT (text) data sources supported for now."
-        call_name = symbol("__hpat_data_source_$source_typ")
-        
-        call = Expr(:call)
+        # desugar call
+        call_name = symbol("data_source_$source_typ")
+        # GlobalRef since Julia doesn't resolve the module!
+        rhs.args[1] = GlobalRef(HPAT.API, call_name)
+        # remove the source type arg
+        splice!(rhs.args, 3) 
+       #= call = Expr(:call)
         
         if source_typ==:HDF5
             hdf_var_name = node.args[2].args[4]
             hdf_file_name = node.args[2].args[5]
-            call = :($(call_name)($hdf_var_name,$hdf_file_name))
+            call = :($(call_name)($arr_var_expr,$hdf_var_name,$hdf_file_name))
         else
             txt_file_name = node.args[2].args[4]
-            call = :($(call_name)($txt_file_name))
+            call = :($(call_name)($arr_var_expr, $txt_file_name))
         end
-        
-        node.args[2] = call
+        =#
+        #node.args[2] = call
 #=        arr_var_expr = node.args[2].args[2]
         dims = arr_var_expr.args[3]
         @assert arr_var_expr.args[1]==:Array "Data sources need arrays as type"
