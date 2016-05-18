@@ -81,8 +81,8 @@ mk_add_int_expr(a,b) = mk_call(GlobalRef(Base,:box),[Int64, mk_call(GlobalRef(Ba
 mk_sub_int_expr(a,b) = mk_call(GlobalRef(Base,:box),[Int64, mk_call(GlobalRef(Base,:sub_int),[a,b])])
 mk_div_int_expr(a,b) = mk_call(GlobalRef(Base,:box),[Int64, mk_call(GlobalRef(Base,:sdiv_int),[a,b])])
 
-dist_ir_funcs = Set([   TopNode(:unsafe_arrayref),
-                        TopNode(:unsafe_arrayset),
+dist_ir_funcs = Set([   :unsafe_arrayref,
+                        :unsafe_arrayset,
                         :__hpat_data_source_HDF5_open, 
                         :__hpat_data_source_HDF5_size, 
                         :__hpat_get_H5_dim_size, 
@@ -94,15 +94,15 @@ dist_ir_funcs = Set([   TopNode(:unsafe_arrayref),
                         :__hpat_Kmeans,
                         :__hpat_LinearRegression,
                         :__hpat_NaiveBayes,
-                        GlobalRef(Base,:arraylen), TopNode(:arraysize), GlobalRef(Base,:reshape), TopNode(:tuple), 
-                        GlobalRef(Base.LinAlg,:gemm_wrapper!)])
+                        :arraylen, :arraysize, :reshape, :tuple, 
+                        :gemm_wrapper!])
 
 # ENTRY to distributedIR
 function from_root(function_name, ast::Tuple)
     @dprintln(1,"Starting main DistributedPass.from_root.  function = ", function_name, " ast = ", ast)
 
     (linfo, body) = ast
-
+    println("Starting main DistributedPass.from_root.  function = ", function_name, " ast = ", ast)
     lives = computeLiveness(body, linfo)
     state::DistPassState = initDistState(linfo,lives)
     
@@ -112,6 +112,7 @@ function from_root(function_name, ast::Tuple)
     # transform body
     body.args = from_toplevel_body(body.args, state)
     @dprintln(1,"DistributedPass.from_root returns function = ", function_name, " ast = ", body)
+    println("DistributedPass.from_root returns function = ", function_name, " ast = ", body)
     return state.LambdaVarInfo, body
 end
 
@@ -232,9 +233,9 @@ end
 
 # generates initialization code for distributed execution
 function genDistributedInit(state::DistPassState)
-    initCall = Expr(:call,TopNode(:hpat_dist_init))
-    numPesCall = Expr(:call,TopNode(:hpat_dist_num_pes))
-    nodeIdCall = Expr(:call,TopNode(:hpat_dist_node_id))
+    initCall = Expr(:call, GlobalRef(HPAT.API,:hpat_dist_init))
+    numPesCall = Expr(:call, GlobalRef(HPAT.API,:hpat_dist_num_pes))
+    nodeIdCall = Expr(:call, GlobalRef(HPAT.API,:hpat_dist_node_id))
     
     CompilerTools.LambdaHandling.addLocalVariable(symbol("__hpat_num_pes"), Int32, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
     CompilerTools.LambdaHandling.addLocalVariable(symbol("__hpat_node_id"), Int32, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
@@ -286,7 +287,7 @@ function from_assignment(node::Expr, state::DistPassState)
             #push!(res,debug_size_print)
             return res
         end
-    elseif isa(rhs,Expr) && rhs.head==:call && rhs.args[1]==GlobalRef(Base,:reshape)
+    elseif isa(rhs,Expr) && rhs.head==:call && isBaseFunc(rhs.args[1],:reshape)
         arr = toLHSVar(lhs)
         if in(arr, state.dist_arrays)
             @dprintln(3,"DistPass reshape array: ", arr)
@@ -325,7 +326,7 @@ function from_assignment(node::Expr, state::DistPassState)
             #push!(res,debug_size_print)
             return res
         end
-    elseif isa(rhs,Expr) && rhs.head==:call && rhs.args[1]==GlobalRef(Base.LinAlg,:gemm_wrapper!)
+    elseif isa(rhs,Expr) && rhs.head==:call && isBaseFunc(rhs.args[1],:gemm_wrapper!)
 
                 arr1 = toLHSVar(rhs.args[5])
                 t1 = (rhs.args[3]=='T')
@@ -358,7 +359,7 @@ function from_assignment(node::Expr, state::DistPassState)
                     size_expr = Expr(:(=), reduce_size_var, mk_mult_int_expr(out_dim_sizes))
 
                     # add allreduce call
-                    allreduceCall = Expr(:call,TopNode(:hpat_dist_allreduce), reduce_var, TopNode(:add_float), rhs.args[2], reduce_size_var)
+                    allreduceCall = Expr(:call, GlobalRef(HPAT.API,:hpat_dist_allreduce), reduce_var, GlobalRef(Base,:add_float), rhs.args[2], reduce_size_var)
                     res_copy = Expr(:(=), lhs, rhs.args[2])
                     # replace gemm output with local var
                     #node.args[1] = reduce_var
@@ -441,7 +442,7 @@ function from_parfor(node::Expr, state)
         # broadcast results of sequential parfors if rand() is used
         has_rand = false
         for stmt in parfor.body
-            if isa(stmt,Expr) && stmt.head==:(=) && isa(stmt.args[2],Expr) && stmt.args[2].head==:call && stmt.args[2].args[1]==TopNode(:rand!)
+            if isa(stmt,Expr) && stmt.head==:(=) && isa(stmt.args[2],Expr) && stmt.args[2].head==:call && isBaseFunc(stmt.args[2].args[1],:rand!)
                 has_rand = true
                 break
             end
@@ -478,7 +479,7 @@ function from_call(node::Expr, state)
     @dprintln(2,"DistPass from_call ", node)
 
     func = node.args[1]
-    if (func==:__hpat_data_source_HDF5_read || func==:__hpat_data_source_TXT_read) && in(toLHSVar(node.args[3]), state.dist_arrays)
+    if (func==GlobalRef(HPAT.API,:__hpat_data_source_HDF5_read) || func==GlobalRef(HPAT.API,:__hpat_data_source_TXT_read)) && in(toLHSVar(node.args[3]), state.dist_arrays)
         arr = toLHSVar(node.args[3])
         @dprintln(3,"DistPass data source for array: ", arr)
         
@@ -520,14 +521,14 @@ function from_call(node::Expr, state)
         push!(node.args, dsrc_start_var2, dsrc_count_var2,
                 state.arrs_dist_info[arr2].dim_sizes[1], state.arrs_dist_info[arr2].dim_sizes[end])
         return [node]
-    elseif isTopNode(func) && func.name==:arraysize && in(toLHSVar(node.args[2]), state.dist_arrays)
+    elseif isBaseFunc(func, :arraysize) && in(toLHSVar(node.args[2]), state.dist_arrays)
         arr = toLHSVar(node.args[2])
         @dprintln(3,"found arraysize on dist array: ",node," ",arr)
         # replace last dimension size queries since it is partitioned
         if node.args[3]==length(state.arrs_dist_info[arr].dim_sizes)
             return [state.arrs_dist_info[arr].dim_sizes[end]]
         end
-    elseif func==GlobalRef(Base,:arraylen) && in(toLHSVar(node.args[2]), state.dist_arrays)
+    elseif isBaseFunc(func,:arraylen) && in(toLHSVar(node.args[2]), state.dist_arrays)
         arr = toLHSVar(node.args[2])
         #len = parse(foldl((a,b)->"$a*$b", "1",state.arrs_dist_info[arr].dim_sizes))
         len = mk_mult_int_expr(state.arrs_dist_info[arr].dim_sizes)
@@ -545,10 +546,10 @@ end
 
 function adjust_arrayrefs(stmt::Expr, loopnest, top_level_number, is_top_level, read)
     
-    if isCall(stmt) && isTopNode(stmt.args[1])
+    if isCall(stmt)
         topCall = stmt.args[1]
         #ref_args = stmt.args[2:end]
-        if topCall.name==:unsafe_arrayref || topCall.name==:unsafe_arrayset
+        if isBaseFunc(topCall,:unsafe_arrayref) || isBaseFunc(topCall,:unsafe_arrayset)
             # TODO: simply divide the last dimension, more general partitioning needed
             index_arg = toLHSVar(stmt.args[end])
             if isa(index_arg,Symbol) && index_arg==toLHSVar(loopnest.indexVariable)
@@ -572,7 +573,7 @@ function gen_dist_reductions(reductions::Array{PIRReduction,1}, state)
         CompilerTools.LambdaHandling.addLocalVariable(reduce_var, reduce.reductionVar.typ, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
 
         reduce_var_init = Expr(:(=), reduce_var, 0)
-        reduceCall = Expr(:call,TopNode(:hpat_dist_allreduce),reduce.reductionVar,reduce.reductionFunc, reduce_var, 1)
+        reduceCall = Expr(:call,GlobalRef(HPAT.API,:hpat_dist_allreduce),reduce.reductionVar,reduce.reductionFunc, reduce_var, 1)
         rootCopy = Expr(:(=), reduce.reductionVar, reduce_var)
         append!(res,[reduce_var_init; reduceCall; rootCopy])
     end
