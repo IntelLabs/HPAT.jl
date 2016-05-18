@@ -64,7 +64,7 @@ function from_root(function_name, ast)
     # transform body
     body.args = from_toplevel_body(body.args, state)
     @dprintln(1,"DomainPass.from_root returns function = ", function_name, " body = ", body)
-    println("DomainPass.from_root returns function = ", function_name, " body = ", body)
+    #println("DomainPass.from_root returns function = ", function_name, " body = ", body)
     return LambdaVarInfoToLambda(state.linfo, body.args)
 end
 

@@ -62,6 +62,18 @@ include("domain-pass.jl")
 include("capture-api.jl")
 include("cgen-hpat-pattern-match.jl")
 
+# overwrite print so only rank 0 prints
+#=function Base.print(xs...)
+    rank = MPI.Comm_rank(MPI.COMM_WORLD)
+    if rank==0 Base.print(STDOUT, xs) end
+end
+
+function Base.println(xs...)
+    rank = MPI.Comm_rank(MPI.COMM_WORLD)
+    if rank==0 Base.println(STDOUT, xs) end
+end=#
+
+
 # add HPAT pattern matching code generators to CGen
 ParallelAccelerator.CGen.setExternalPatternMatchCall(CGenPatternMatch.pattern_match_call)
 ParallelAccelerator.CGen.setExternalPatternMatchAssignment(CGenPatternMatch.from_assignment_match_dist)
