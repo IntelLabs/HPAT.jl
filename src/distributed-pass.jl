@@ -91,9 +91,9 @@ dist_ir_funcs = Set([   :unsafe_arrayref,
                         :__hpat_data_source_TXT_size,
                         :__hpat_get_TXT_dim_size,
                         :__hpat_data_source_TXT_read,
-                        :__hpat_Kmeans,
-                        :__hpat_LinearRegression,
-                        :__hpat_NaiveBayes,
+                        :Kmeans,
+                        :LinearRegression,
+                        :NaiveBayes,
                         :arraylen, :arraysize, :reshape, :tuple, 
                         :gemm_wrapper!])
 
@@ -102,7 +102,6 @@ function from_root(function_name, ast::Tuple)
     @dprintln(1,"Starting main DistributedPass.from_root.  function = ", function_name, " ast = ", ast)
 
     (linfo, body) = ast
-    println("Starting main DistributedPass.from_root.  function = ", function_name, " ast = ", ast)
     lives = computeLiveness(body, linfo)
     state::DistPassState = initDistState(linfo,lives)
     
@@ -112,7 +111,6 @@ function from_root(function_name, ast::Tuple)
     # transform body
     body.args = from_toplevel_body(body.args, state)
     @dprintln(1,"DistributedPass.from_root returns function = ", function_name, " ast = ", body)
-    println("DistributedPass.from_root returns function = ", function_name, " ast = ", body)
     return state.LambdaVarInfo, body
 end
 
@@ -490,10 +488,10 @@ function from_call(node::Expr, state)
 
         push!(node.args, dsrc_start_var, dsrc_count_var)
         return [node]
-    elseif func==:__hpat_Kmeans && in(toLHSVar(node.args[3]), state.dist_arrays)
+    elseif func==GlobalRef(HPAT.API,:Kmeans) && in(toLHSVar(node.args[3]), state.dist_arrays)
         arr = toLHSVar(node.args[3])
         @dprintln(3,"DistPass kmeans call for array: ", arr)
-        
+        node.args[1].name = :Kmeans_dist
         arr_id = state.arrs_dist_info[arr].arr_id 
         
         dsrc_start_var = symbol("__hpat_dist_arr_start_"*string(arr_id))
@@ -502,11 +500,11 @@ function from_call(node::Expr, state)
         push!(node.args, dsrc_start_var, dsrc_count_var, 
                 state.arrs_dist_info[arr].dim_sizes[1], state.arrs_dist_info[arr].dim_sizes[end])
         return [node]
-    elseif (func==:__hpat_LinearRegression || func==:__hpat_NaiveBayes) && in(toLHSVar(node.args[3]), state.dist_arrays) && in(toLHSVar(node.args[4]), state.dist_arrays)
+    elseif (func==GlobalRef(HPAT.API,:LinearRegression) || func==GlobalRef(HPAT.API,:NaiveBayes)) && in(toLHSVar(node.args[3]), state.dist_arrays) && in(toLHSVar(node.args[4]), state.dist_arrays)
         arr1 = toLHSVar(node.args[3])
         arr2 = toLHSVar(node.args[4])
         @dprintln(3,"DistPass LinearRegression/NaiveBayes call for arrays: ", arr1," ", arr2)
-        
+        node.args[1].name = symbol("$(func)_dist")
         arr1_id = state.arrs_dist_info[arr1].arr_id 
         arr2_id = state.arrs_dist_info[arr2].arr_id 
         

@@ -138,12 +138,12 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
         if func==:__hpat_data_source_HDF5_read || func==:__hpat_data_source_TXT_read
             @dprintln(2,"DistPass arr info walk data source read ", node)
             # will be parallel IO, intentionally do nothing
-        elseif func==:__hpat_Kmeans
+        elseif func==:Kmeans
             @dprintln(2,"DistPass arr info walk kmeans ", node)
             # first array is cluster output and is sequential
             # second array is input matrix and is parallel
             state.arrs_dist_info[toLHSVar(node.args[2])].isSequential = true
-        elseif func==:__hpat_LinearRegression || func==:__hpat_NaiveBayes
+        elseif func==:LinearRegression || func==:NaiveBayes
             @dprintln(2,"DistPass arr info walk LinearRegression/NaiveBayes ", node)
             # first array is cluster output and is sequential
             # second array is input matrix and is parallel

@@ -73,11 +73,13 @@ function process_assignment(node, lhs::Symbol, rhs::Expr)
         size_expr = :( $hps_source_size_var = $hps_source_size_call($hps_source_var))
         return [declare_expr; size_expr]
 =#
+#=
    elseif rhs.head==:call && isa(rhs.args[1],Expr) && rhs.args[1].head==:. && rhs.args[1].args[1]==:HPAT
         hps_call = rhs.args[1].args[2].args[1]
         new_opr = symbol("__hpat_$hps_call")
         node.args[2].args[1] = new_opr
         node.args[1] = :($lhs::Matrix{Float64})
+=#
    end
 end
 

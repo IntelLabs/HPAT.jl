@@ -25,11 +25,11 @@ THE POSSIBILITY OF SUCH DAMAGE.
 
 
 
-function pattern_match_call_kmeans(f::Symbol, cluster_out::RHSVar, arr::RHSVar, 
+function pattern_match_call_kmeans(f::GlobalRef, cluster_out::RHSVar, arr::RHSVar, 
                                    num_clusters::RHSVar, start::Symbol, count::Symbol, 
                                    col_size::Union{RHSVar,Int,Expr}, tot_row_size::Union{RHSVar,Int,Expr}, linfo)
     s = ""
-    if f==:__hpat_Kmeans
+    if f.name==:Kmeans_dist
         c_arr = ParallelAccelerator.CGen.from_expr(arr, linfo)
         c_num_clusters = ParallelAccelerator.CGen.from_expr(num_clusters, linfo)
         c_col_size = ParallelAccelerator.CGen.from_expr(col_size, linfo)
@@ -217,13 +217,13 @@ function pattern_match_call_kmeans(f::ANY, cluster_out::ANY, arr::ANY, num_clust
     return ""
 end
 
-function pattern_match_call_linear_regression(f::Symbol, coeff_out::RHSVar, points::RHSVar, 
+function pattern_match_call_linear_regression(f::GlobalRef, coeff_out::RHSVar, points::RHSVar, 
                                    responses::RHSVar, start_points::Symbol, count_points::Symbol, 
                                    col_size_points::Union{RHSVar,Int,Expr}, tot_row_size_points::Union{RHSVar,Int,Expr},
                                    start_responses::Symbol, count_responses::Symbol, 
                                    col_size_responses::Union{RHSVar,Int,Expr}, tot_row_size_responses::Union{RHSVar,Int,Expr}, linfo)
     s = ""
-    if f==:__hpat_LinearRegression
+    if f.name==:LinearRegression_dist
         c_points = ParallelAccelerator.CGen.from_expr(points, linfo)
         c_responses = ParallelAccelerator.CGen.from_expr(responses, linfo)
         c_col_size_points = ParallelAccelerator.CGen.from_expr(col_size_points, linfo)
@@ -334,13 +334,13 @@ function pattern_match_call_linear_regression(f::ANY, coeff_out::ANY, arr::ANY, 
     return ""
 end
 
-function pattern_match_call_naive_bayes(f::Symbol, coeff_out::RHSVar, points::RHSVar, 
+function pattern_match_call_naive_bayes(f::GlobalRef, coeff_out::RHSVar, points::RHSVar, 
                                    labels::RHSVar, num_classes::Union{RHSVar,Int,Expr}, start_points::Symbol, count_points::Symbol, 
                                    col_size_points::Union{RHSVar,Int,Expr}, tot_row_size_points::Union{RHSVar,Int,Expr},
                                    start_labels::Symbol, count_labels::Symbol, 
                                    col_size_labels::Union{RHSVar,Int,Expr}, tot_row_size_labels::Union{RHSVar,Int,Expr}, linfo)
     s = ""
-    if f==:__hpat_NaiveBayes
+    if f.name==:NaiveBayes_dist
         c_points = ParallelAccelerator.CGen.from_expr(points, linfo)
         c_labels = ParallelAccelerator.CGen.from_expr(labels, linfo)
         c_col_size_points = ParallelAccelerator.CGen.from_expr(col_size_points, linfo)
