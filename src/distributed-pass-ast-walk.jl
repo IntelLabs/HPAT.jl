@@ -202,10 +202,10 @@ function isAccessIndexDependent(index::LHSVar, indexVariable::Symbol, body_lives
     for bb in collect(values(body_lives.basic_blocks))
         for stmt in bb.statements
             if isBareParfor(stmt.tls.expr)
-                inner_fake_body = CompilerTools.LambdaHandling.LambdaVarInfoToLambdaExpr(state.LambdaVarInfo, TypedExpr(nothing, :body, getParforNode(stmt.tls.expr).body...))
+                #inner_fake_body = CompilerTools.LambdaHandling.LambdaVarInfoToLambdaExpr(state.LambdaVarInfo, TypedExpr(nothing, :body, getParforNode(stmt.tls.expr).body...))
                 #@dprintln(3,"inner fake_body = ", fake_body)
 
-                inner_body_lives = CompilerTools.LivenessAnalysis.from_expr(inner_fake_body, ParallelIR.pir_live_cb, state.LambdaVarInfo)
+                inner_body_lives = CompilerTools.LivenessAnalysis.from_lambda(state.LambdaVarInfo, TypedExpr(nothing, :body, getParforNode(stmt.tls.expr).body...), ParallelIR.pir_live_cb, state.LambdaVarInfo)
                 #@dprintln(3, "inner body_lives = ", body_lives)
                 return isAccessIndexDependent(index, indexVariable, inner_body_lives, state)
             elseif in(index,stmt.def) && in(indexVariable, stmt.use)
