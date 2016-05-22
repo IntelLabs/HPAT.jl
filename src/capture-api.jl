@@ -73,12 +73,12 @@ function process_assignment(node, state, lhs::Symbol, rhs::Expr)
             # aggregation expression
             e = col_expr.args[2].args[2]
             # replace column name with actual array in expression
-            AstWalk(e, replace_col_with_array,  (t1, state[t1]))
+            e = AstWalk(e, replace_col_with_array,  (t1, state[t1]))
             out_e_arr = symbol("_$(lhs)_$(out_col)_e")
             push!(out_aggs, :(($out_e_arr, $func)))
             push!(out_e,:($out_e_arr=$e))
         end
-        out_call = Expr(:(=), :($(out_arrs...)), :(aggregate($c1_arr,[$(out_aggs...)])) )
+        out_call = Expr(:(=), Expr(:tuple, out_arrs...), :(aggregate($c1_arr,[$(out_aggs...)])) )
         push!(out_e, out_call)
         state[lhs] = out_cols
         return quote $(out_e...) end
@@ -121,7 +121,7 @@ function translate_data_table(lhs, state, arr_var_expr, source_typ, other_args)
         push!(col_names, col_name)
         col_type = column.args[2]
         col_lhs = getColName(lhs,col_name)
-        col_source = translate_data_source(col_lhs, state, :(Vector{$(col_type)}), source_typ, other_args)
+        col_source = translate_data_source(col_lhs, state, :(Vector{$(col_type)}), source_typ, ["/"*string(col_name);other_args])
         push!(out, col_source)
     end
     state[lhs] = col_names

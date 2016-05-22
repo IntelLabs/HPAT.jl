@@ -1,0 +1,9 @@
+exp = quote
+       t1 = DataSource(DataTable{:column1=Int64, :column2=Float64}, HDF5, file_name)
+       t2 = DataSource(DataTable{:column1=Int64, :column3=Float64}, HDF5, file_name)
+       t3 = join(t1,t2, :column1==:column1, :column4)
+       t4 = aggregate(t3, :column4, :column5 = sum(:column2==1.1), :column6 = size(:column2))
+       end
+using HPAT
+HPAT.captureHPAT("test", exp, ())
+
