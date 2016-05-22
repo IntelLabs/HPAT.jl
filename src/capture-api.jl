@@ -78,7 +78,7 @@ function process_assignment(node, state, lhs::Symbol, rhs::Expr)
             push!(out_aggs, :(($out_e_arr, $func)))
             push!(out_e,:($out_e_arr=$e))
         end
-        out_call = :($(out_arrs...) = aggregate($c1_arr,[$(out_aggs...)]))
+        out_call = Expr(:(=), :($(out_arrs...)), :(aggregate($c1_arr,[$(out_aggs...)])) )
         push!(out_e, out_call)
         state[lhs] = out_cols
         return quote $(out_e...) end
