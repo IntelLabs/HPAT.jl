@@ -127,7 +127,7 @@ end
 A macro pass that translates extensions such as DataSource()
 """
 function captureHPAT(func, ast, sig)
-  AstWalk(ast, CaptureAPI.process_node, nothing)
+  AstWalk(ast, CaptureAPI.process_node, Dict{Symbol,Vector{Symbol}}())
   return ast
 end
 
