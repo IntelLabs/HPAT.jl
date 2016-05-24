@@ -37,7 +37,7 @@ end
     web_clickstreams = DataSource(DataTable{:wcs_user_sk=Int64,:wcs_item_sk=Int64,wcs_click_time_sk=Int64,wcs_click_date_sk=Int64}, HDF5, file_name)
     web_clickstreams[:tstamp_inSec] = web_clickstreams[:wcs_click_date_sk]*24*60*60 .+ web_clickstreams[:wcs_click_time_sk]
     
-    user_clicks = aggregate(web_clickstreams, :wcs_user_sk, collect(:tstamp_inSec,:wcs_item_sk))
+    user_clicks = aggregate(web_clickstreams, :wcs_user_sk, collect(:tstamp_inSec),collect(:wcs_item_sk))
     map!(sort!, user_clicks)
     session_clicks = map(x->session_split(x,timeout), user_clicks)
     map!(session-> filter!(x->(my_item in x), session), session_clicks)
