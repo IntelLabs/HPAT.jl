@@ -27,7 +27,7 @@ using HPAT
 
     customer_i_class = customer_i_class[:ss_item_count>item_count]
 
-    model = HPAT.Kmeans(customer_i_class, num_centroids)
+    model = Kmeans(customer_i_class, num_centroids)
     return model
 end
 
