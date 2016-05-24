@@ -34,7 +34,7 @@ end
     web_clickstreams[:tstamp_inSec] = web_clickstreams[:wcs_click_date_sk]*24*60*60 .+ web_clickstreams[:wcs_click_time_sk]
     item = DataSource(DataTable{:item_sk=Int64,:i_category_id=Int64}, HDF5, file_name)
     
-    user_clicks = aggregate(web_clickstreams, :wcs_user_sk, collect(:tstamp_inSec,:wcs_item_sk,:wcs_sales_sk))
+    user_clicks = aggregate(web_clickstreams, :wcs_user_sk, collect(:tstamp_inSec),collect(:wcs_item_sk),collect(:wcs_sales_sk))
     view_items = map(a->get_view_items(a, days_in_sec_before_purchase, views_before_purchase, purchased_item), user_clicks)
 
     view_items = flatten(view_items)

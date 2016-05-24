@@ -30,7 +30,7 @@ t2 = t1[:c1==...]
                     
 c2 = flatten(t1[:c1]) -> c2 = flatten(t1_c1)
 
-t3 = vcat(t1,t2) -> assertEqSchema(t1,t2)
+t3 = [t1;t2] or vcat(t1,t2) -> assertEqSchema(t1,t2)
                     t3_c1 = vcat(t1_c1,t2_c1)
                     t3_c2 = vcat(t1_c2,t2_c2)
                     ...
