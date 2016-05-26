@@ -10,7 +10,7 @@ os:
 #  - osx
 
 julia:
-  - 0.4.3
+  - 0.4.5
 
 notifications:
   email: false
@@ -25,7 +25,7 @@ script:
   - julia -e 'Pkg.build("ParallelAccelerator")'
     #  - julia -e 'Pkg.clone(pwd()); Pkg.build("HPAT"); Pkg.test("HPAT")'
   - julia -e 'Pkg.clone(pwd()); Pkg.build("HPAT")'
-  - julia -e 'Pkg.add("HDF5")'
+  - julia examples/pi.jl 
   - mpirun -np 2 julia examples/pi.jl 
   - julia generate_data/generate_logistic_regression.jl --instances=10000 --path=/tmp/
   - mpirun -np 2 julia examples/logistic_regression.jl --iterations=10 --file=/tmp/logistic_regression.hdf5
