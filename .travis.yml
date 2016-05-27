@@ -24,7 +24,7 @@ script:
   - julia -e 'Pkg.clone("ParallelAccelerator")'
   - julia -e 'Pkg.build("ParallelAccelerator")'
     #  - julia -e 'Pkg.clone(pwd()); Pkg.build("HPAT"); Pkg.test("HPAT")'
-  - julia -e 'Pkg.clone(pwd()); Pkg.build("HPAT")'
+  - julia -e 'Pkg.clone(pwd()); Pkg.build("HPAT"); Pkg.test("HPAT")'
   - julia examples/pi.jl 
   - mpirun -np 2 julia examples/pi.jl 
   - julia generate_data/generate_logistic_regression.jl --instances=10000 --path=/tmp/
