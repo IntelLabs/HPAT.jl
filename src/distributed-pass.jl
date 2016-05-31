@@ -327,52 +327,93 @@ function from_assignment(node::Expr, state::DistPassState)
         end
     elseif isa(rhs,Expr) && rhs.head==:call && isBaseFunc(rhs.args[1],:gemm_wrapper!)
 
-                arr1 = toLHSVar(rhs.args[5])
-                t1 = (rhs.args[3]=='T')
-                arr2 = toLHSVar(rhs.args[6])
-                t2 = (rhs.args[4]=='T')
-                
-                # result is sequential but with reduction if both inputs are partitioned and second one is transposed
-                # e.g. labels*points'
-                if !state.arrs_dist_info[arr1].isSequential && !state.arrs_dist_info[arr2].isSequential && t2 && !t1 &&
-                            state.arrs_dist_info[lhs].isSequential
-                    @dprintln(3,"DistPass translating gemm reduce: ", node)
-                    # rhs.args[1] = :__hpat_gemm_reduce
-                    # allocate temporary array for local gemm values
-                    alloc_args = Array(Any,2)
-                    out_typ = CompilerTools.LambdaHandling.getType(lhs, state.LambdaVarInfo)
-                    alloc_args[1] = eltype(out_typ)
-                    out_dim_sizes = state.arrs_dist_info[lhs].dim_sizes
-                    alloc_args[2] = out_dim_sizes
-                    alloc_call = ParallelIR.from_alloc(alloc_args)
-                    reduce_num = getDistNewID(state)
-                    reduce_var = symbol("__hpat_gemm_reduce_"*string(reduce_num))
-                    CompilerTools.LambdaHandling.addLocalVariable(reduce_var, out_typ, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-                    reduce_var_init = Expr(:(=), reduce_var, Expr(:call,alloc_call...))
-                    # TODO: deallocate temporary array
-                    # reduce_var_dealloc = Expr(:call, TopNode(:ccall), QuoteNode(:jl_dealloc_array), reduce_var)
+        arr1 = toLHSVar(rhs.args[5])
+        t1 = (rhs.args[3]=='T')
+        arr2 = toLHSVar(rhs.args[6])
+        t2 = (rhs.args[4]=='T')
+        
+        # result is sequential but with reduction if both inputs are partitioned and second one is transposed
+        # e.g. labels*points'
+        if !state.arrs_dist_info[arr1].isSequential && !state.arrs_dist_info[arr2].isSequential && t2 && !t1 &&
+                    state.arrs_dist_info[lhs].isSequential
+            @dprintln(3,"DistPass translating gemm reduce: ", node)
+            # rhs.args[1] = :__hpat_gemm_reduce
+            # allocate temporary array for local gemm values
+            alloc_args = Array(Any,2)
+            out_typ = CompilerTools.LambdaHandling.getType(lhs, state.LambdaVarInfo)
+            alloc_args[1] = eltype(out_typ)
+            out_dim_sizes = state.arrs_dist_info[lhs].dim_sizes
+            alloc_args[2] = out_dim_sizes
+            alloc_call = ParallelIR.from_alloc(alloc_args)
+            reduce_num = getDistNewID(state)
+            reduce_var = symbol("__hpat_gemm_reduce_"*string(reduce_num))
+            CompilerTools.LambdaHandling.addLocalVariable(reduce_var, out_typ, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+            reduce_var_init = Expr(:(=), reduce_var, Expr(:call,alloc_call...))
+            # TODO: deallocate temporary array
+            # reduce_var_dealloc = Expr(:call, TopNode(:ccall), QuoteNode(:jl_dealloc_array), reduce_var)
 
-                    # get reduction size
-                    reduce_size_var = symbol("__hpat_gemm_reduce_size_"*string(reduce_num))
-                    CompilerTools.LambdaHandling.addLocalVariable(reduce_size_var, Int, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-                    size_expr = Expr(:(=), reduce_size_var, mk_mult_int_expr(out_dim_sizes))
+            # get reduction size
+            reduce_size_var = symbol("__hpat_gemm_reduce_size_"*string(reduce_num))
+            CompilerTools.LambdaHandling.addLocalVariable(reduce_size_var, Int, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+            size_expr = Expr(:(=), reduce_size_var, mk_mult_int_expr(out_dim_sizes))
 
-                    # add allreduce call
-                    allreduceCall = Expr(:call, GlobalRef(HPAT.API,:hpat_dist_allreduce), reduce_var, GlobalRef(Base,:add_float), rhs.args[2], reduce_size_var)
-                    res_copy = Expr(:(=), lhs, rhs.args[2])
-                    # replace gemm output with local var
-                    #node.args[1] = reduce_var
-                    rhs.args[2] = reduce_var
+            # add allreduce call
+            allreduceCall = Expr(:call, GlobalRef(HPAT.API,:hpat_dist_allreduce), reduce_var, GlobalRef(Base,:add_float), rhs.args[2], reduce_size_var)
+            res_copy = Expr(:(=), lhs, rhs.args[2])
+            # replace gemm output with local var
+            #node.args[1] = reduce_var
+            rhs.args[2] = reduce_var
 
-                    return [reduce_var_init; node; size_expr; allreduceCall; res_copy]
-                # first input is sequential but output is parallel if the second input is partitioned but not transposed
-                # e.g. w*points
-                elseif state.arrs_dist_info[arr1].isSequential && !state.arrs_dist_info[arr2].isSequential && !t2 && !state.arrs_dist_info[lhs].isSequential
-                    @dprintln(3,"DistPass arr info gemm first input is sequential: ", arr1)
-                    #rhs.args[1] = :__hpat_gemm_broadcast
-                    @dprintln(3,"DistPass translating gemm broadcast: ", node)
-                # otherwise, no known pattern found
-                end
+            return [reduce_var_init; node; size_expr; allreduceCall; res_copy]
+        # first input is sequential but output is parallel if the second input is partitioned but not transposed
+        # e.g. w*points
+        elseif state.arrs_dist_info[arr1].isSequential && !state.arrs_dist_info[arr2].isSequential && !t2 && !state.arrs_dist_info[lhs].isSequential
+            @dprintln(3,"DistPass arr info gemm first input is sequential: ", arr1)
+            #rhs.args[1] = :__hpat_gemm_broadcast
+            @dprintln(3,"DistPass translating gemm broadcast: ", node)
+        # otherwise, no known pattern found
+        end
+    elseif isa(rhs,Expr) && rhs.head==:call && isBaseFunc(rhs.args[1],:gemv!)
+
+        arr1 = toLHSVar(rhs.args[4])
+        t1 = (rhs.args[3]=='T')
+        arr2 = toLHSVar(rhs.args[5])
+        
+        # result is sequential but with reduction if both inputs are partitioned and matrix is not transposed (X*y)
+        # result is sequential but with reduction if matrix partitioned (X'*y)
+        if !state.arrs_dist_info[arr1].isSequential && state.arrs_dist_info[lhs].isSequential 
+            #&& !state.arrs_dist_info[arr2].isSequential && !t1 &&
+            @dprintln(3,"DistPass translating gemv reduce: ", node)
+            # rhs.args[1] = :__hpat_gemm_reduce
+            # allocate temporary array for local gemm values
+            alloc_args = Array(Any,2)
+            out_typ = CompilerTools.LambdaHandling.getType(lhs, state.LambdaVarInfo)
+            alloc_args[1] = eltype(out_typ)
+            out_dim_sizes = state.arrs_dist_info[lhs].dim_sizes
+            alloc_args[2] = out_dim_sizes
+            alloc_call = ParallelIR.from_alloc(alloc_args)
+            reduce_num = getDistNewID(state)
+            reduce_var = symbol("__hpat_gemv_reduce_"*string(reduce_num))
+            CompilerTools.LambdaHandling.addLocalVariable(reduce_var, out_typ, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+            reduce_var_init = Expr(:(=), reduce_var, Expr(:call,alloc_call...))
+            # TODO: deallocate temporary array
+            # reduce_var_dealloc = Expr(:call, TopNode(:ccall), QuoteNode(:jl_dealloc_array), reduce_var)
+
+            # get reduction size
+            reduce_size_var = symbol("__hpat_gemv_reduce_size_"*string(reduce_num))
+            CompilerTools.LambdaHandling.addLocalVariable(reduce_size_var, Int, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+            size_expr = Expr(:(=), reduce_size_var, mk_mult_int_expr(out_dim_sizes))
+
+            # add allreduce call
+            allreduceCall = Expr(:call, GlobalRef(HPAT.API,:hpat_dist_allreduce), reduce_var, GlobalRef(Base,:add_float), rhs.args[2], reduce_size_var)
+            res_copy = Expr(:(=), lhs, rhs.args[2])
+            # replace gemm output with local var
+            #node.args[1] = reduce_var
+            rhs.args[2] = reduce_var
+
+            return [reduce_var_init; node; size_expr; allreduceCall; res_copy]
+        # result and vector are sequential if matrix is parallel and transposed 
+        end
     else
         node.args[2] = from_expr(rhs,state)[1]
     end
