@@ -95,7 +95,8 @@ dist_ir_funcs = Set([   :unsafe_arrayref,
                         :LinearRegression,
                         :NaiveBayes,
                         :arraylen, :arraysize, :reshape, :tuple, 
-                        :gemm_wrapper!])
+                        :gemm_wrapper!,
+                        :gemv!])
 
 # ENTRY to distributedIR
 function from_root(function_name, ast::Tuple)

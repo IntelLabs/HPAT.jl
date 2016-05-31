@@ -28,7 +28,7 @@ using HPAT
             customer_demo_clicks[:clicks_in_6],
             customer_demo_clicks[:clicks_in_7])
         
-    model = HPAT.LogisticRegression(data, customer_demo_clicks[:clicks_in_category])
+    model = HPAT.API.LogisticRegression(data, customer_demo_clicks[:clicks_in_category])
     return model
 end
 
