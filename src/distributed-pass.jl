@@ -381,8 +381,8 @@ function from_assignment(node::Expr, state::DistPassState)
         
         # result is sequential but with reduction if both inputs are partitioned and matrix is not transposed (X*y)
         # result is sequential but with reduction if matrix partitioned (X'*y)
-        if !state.arrs_dist_info[arr1].isSequential && state.arrs_dist_info[lhs].isSequential 
-            #&& !state.arrs_dist_info[arr2].isSequential && !t1 &&
+        if !state.arrs_dist_info[arr1].isSequential && state.arrs_dist_info[lhs].isSequential && 
+                !state.arrs_dist_info[arr2].isSequential && !t1
             @dprintln(3,"DistPass translating gemv reduce: ", node)
             # rhs.args[1] = :__hpat_gemm_reduce
             # allocate temporary array for local gemm values
