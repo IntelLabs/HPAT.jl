@@ -133,7 +133,7 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
         end
         return CompilerTools.AstWalker.ASTWALK_RECURSE
     # functions dist_ir_funcs are either handled here or do not make arrays sequential  
-    elseif head==:call && in(node.args[1].name, dist_ir_funcs)
+    elseif head==:call && (isa(node.args[1],GlobalRef) || isa(node.args[1],TopNode)) && in(node.args[1].name, dist_ir_funcs)
         func = node.args[1].name
         if func==:__hpat_data_source_HDF5_read || func==:__hpat_data_source_TXT_read
             @dprintln(2,"DistPass arr info walk data source read ", node)
@@ -235,7 +235,7 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
             state.arrs_dist_info[lhs].isSequential = state.arrs_dist_info[rhs].isSequential = seq
             @dprintln(3,"DistPass arr info dim_sizes update: ", state.arrs_dist_info[lhs].dim_sizes)
         end
-    elseif isa(rhs,Expr) && rhs.head==:call && in(rhs.args[1].name, dist_ir_funcs)
+    elseif isa(rhs,Expr) && rhs.head==:call && (isa(rhs.args[1],GlobalRef) || isa(rhs.args[1],TopNode)) && in(rhs.args[1].name, dist_ir_funcs)
         func = rhs.args[1]
         if isBaseFunc(func,:reshape)
             # only reshape() with constant tuples handled
