@@ -311,10 +311,10 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
             # result is sequential but with reduction if both inputs are partitioned and matrix is not transposed (X*y)
             elseif !state.arrs_dist_info[arr1].isSequential && !state.arrs_dist_info[arr2].isSequential && !t1
                 seq = true
-            # result and vector are sequential but with reduction if matrix is parallel and transposed (X'*y)
+            # result is parallel if matrix is parallel and transposed (X'*x)
             elseif !state.arrs_dist_info[arr1].isSequential && t1
                 state.arrs_dist_info[arr2].isSequential = true
-                seq = true
+                #seq = true
             # otherwise, no known pattern found, every array is sequential
             else
                 @dprintln(3,"DistPass arr info gemv all sequential: ", arr1," ", arr2)
