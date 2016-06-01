@@ -87,6 +87,7 @@ function process_assignment(node, state, lhs::Symbol, rhs::Expr)
 end
 
 function process_assignment(node, state, lhs::ANY, rhs::ANY)
+   CompilerTools.AstWalker.ASTWALK_RECURSE
 end
 
 function replace_col_with_array(node::QuoteNode, table::Tuple{Symbol,Vector{Symbol}}, top_level_number, is_top_level, read)
