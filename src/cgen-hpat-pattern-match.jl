@@ -794,7 +794,7 @@ function from_assignment_match_dist(lhs::RHSVar, rhs::Expr, linfo)
     @dprintln(3, "assignment pattern match dist2: ",lhs," = ",rhs)
     s = ""
     local num::AbstractString
-    if rhs.head==:call && rhs.args[1].name==:__hpat_data_source_HDF5_size
+    if rhs.head==:call && (isa(rhs.args[1],GlobalRef) || isa(rhs.args[1],TopNode)) && rhs.args[1].name==:__hpat_data_source_HDF5_size
         num = ParallelAccelerator.CGen.from_expr(rhs.args[2], linfo)
         s = "hid_t space_id_$num = H5Dget_space(dataset_id_$num);\n"    
         s *= "assert(space_id_$num != -1);\n"    
@@ -820,7 +820,7 @@ function from_assignment_match_dist(lhs::RHSVar, rhs::Expr, linfo)
                 return assignment_call_internal(c_lhs, expr.args[3].value, linfo)
             end
         end
-    elseif rhs.head==:call && rhs.args[1].name==:__hpat_data_source_TXT_size
+    elseif rhs.head==:call && (isa(rhs.args[1],GlobalRef) || isa(rhs.args[1],TopNode)) && rhs.args[1].name==:__hpat_data_source_TXT_size
         num = ParallelAccelerator.CGen.from_expr(rhs.args[2], linfo)
         c_lhs = ParallelAccelerator.CGen.from_expr(lhs, linfo)
         s = """
