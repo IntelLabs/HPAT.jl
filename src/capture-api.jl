@@ -16,6 +16,14 @@ function process_node(node::Expr, state, top_level_number, is_top_level, read)
     @dprintln(3,"translating expr, head: ",node.head," node: ",node)
     if node.head == :(=) 
         return process_assignment(node, state, node.args[1], node.args[2])
+    elseif node.head==:ref # table column ref like: t1[:c1]
+        t1 = node.args[1]
+        if haskey(state,t1)
+            c1 = node.args[2]
+            @assert isa(c1,QuoteNode) || (isa(c1,Expr) && c1.head==:quote) "invalid table ref"
+             return getColName(t1, getQuoteValue(c1))
+        end
+        CompilerTools.AstWalker.ASTWALK_RECURSE 
     end
     CompilerTools.AstWalker.ASTWALK_RECURSE
 end
