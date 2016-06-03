@@ -5,12 +5,15 @@ using CompilerTools.AstWalker
 import ..API
 import HPAT
 
+import CompilerTools.DebugMsg
+DebugMsg.init()
 
 """
 At macro level, translate DataSource into function calls so that type inference
 and ParallelAccelerator compilation works with knowledge of calls and allocations for arrays. 
 """
 function process_node(node::Expr, state, top_level_number, is_top_level, read)
+    @dprintln(3,"translating expr, head: ",node.head," node: ",node)
     if node.head == :(=) 
         return process_assignment(node, state, node.args[1], node.args[2])
     end
@@ -22,7 +25,9 @@ function process_node(node::Any, state, top_level_number, is_top_level, read)
 end
 
 function process_assignment(node, state, lhs::Symbol, rhs::Expr)
+    @dprintln(3,"assignment: ", lhs)
     if rhs.head ==:call && rhs.args[1]==:DataSource
+        @dprintln(3,"datasource: ", lhs)
         arr_var_expr = rhs.args[2]
         @assert arr_var_expr.head==:curly "curly syntax expected for DataSource"
         if arr_var_expr.args[1]==:DataTable
@@ -31,6 +36,8 @@ function process_assignment(node, state, lhs::Symbol, rhs::Expr)
             return translate_data_source(lhs, state, arr_var_expr, rhs.args[3], rhs.args[4:end])
         end
    elseif rhs.head==:call && rhs.args[1]==:join
+        @dprintln(3,"join: ", lhs)
+        # 1st and 2nd args are tables to join
         t1 = rhs.args[2]
         t2 = rhs.args[3]
         @assert rhs.args[4].head==:comparison "invalid join key"
@@ -112,11 +119,23 @@ function translate_data_source(lhs, state, arr_var_expr, source_typ, other_args)
     return Expr(:(=), lhs, rhs)
 end
 
+"""
+Data tables are broken down to individual column arrays, table meta data is saved
+table_name = DataSource(DataTable{:column1=<typeof_column1>, :column2=<typeof_column2>, ...}, HDF5, file_name)
+                ->  table_name_column1 = DataSource(...)
+                    table_name_column2 = DataSource(...)
+                    assertEqShape([table_name_column1, table_name_column2])
+                    newTableMeta(:table_name, [:column1,:column2])
+
+Example table to translate: 
+        t1 = DataSource(DataTable{:userid = Int64,:val2 = Float64},HDF5,file_name)
+"""
 function translate_data_table(lhs, state, arr_var_expr, source_typ, other_args)
     @assert arr_var_expr.args[1]==:DataTable "expected :DataTable"
     out = []
     col_names = Symbol[]
     for column in arr_var_expr.args[2:end]
+        @dprintln(3,"table column: ", column)
         @assert column.head==:(=)
         col_name = column.args[1].value
         push!(col_names, col_name)
@@ -125,8 +144,11 @@ function translate_data_table(lhs, state, arr_var_expr, source_typ, other_args)
         col_source = translate_data_source(col_lhs, state, :(Vector{$(col_type)}), source_typ, ["/"*string(col_name);other_args])
         push!(out, col_source)
     end
+    # save table info in state
     state[lhs] = col_names
-    return quote $(out...) end
+    ret = quote $(out...) end
+    @dprintln(3, "data table returns: ",ret)
+    return ret
 end
 
 function getColName(t::Symbol, c::Symbol)
