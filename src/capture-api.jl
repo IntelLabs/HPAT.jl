@@ -43,11 +43,11 @@ function process_assignment(node, state, lhs::Symbol, rhs::Expr)
         @assert rhs.args[4].head==:comparison "invalid join key"
         @assert rhs.args[4].args[2]==:(==) "invalid join key"
         
-        key1 = rhs.args[4].args[1].value
+        key1 = getQuoteValue(rhs.args[4].args[1])
         key1_arr = getColName(t1, key1)
-        key2 = rhs.args[4].args[3].value
+        key2 = getQuoteValue(rhs.args[4].args[3])
         key2_arr = getColName(t2, key2)
-        new_key = rhs.args[5].value
+        new_key = getQuoteValue(rhs.args[5])
         new_key_arr = getColName(lhs, new_key)
         
         rest_cols1 = filter(x->x!=key1, state[t1])
@@ -60,7 +60,7 @@ function process_assignment(node, state, lhs::Symbol, rhs::Expr)
         
    elseif rhs.head==:call && rhs.args[1]==:aggregate
         t1 = rhs.args[2]
-        c1 = rhs.args[3].value
+        c1 = getQuoteValue(rhs.args[3])
         c1_arr = getColName(t1, c1)
         c1_out_arr = getColName(lhs, c1)
         out_e = []
@@ -70,7 +70,7 @@ function process_assignment(node, state, lhs::Symbol, rhs::Expr)
         for col_expr in rhs.args[4:end]
             @assert col_expr.head==:kw "expected assignment for new aggregate column"
             # output column name
-            out_col = col_expr.args[1].value
+            out_col = getQuoteValue(col_expr.args[1])
             out_col_arr = getColName(lhs, out_col)
             push!(out_cols, out_col)
             push!(out_arrs, out_col_arr)
@@ -97,12 +97,28 @@ function process_assignment(node, state, lhs::ANY, rhs::ANY)
    CompilerTools.AstWalker.ASTWALK_RECURSE
 end
 
+"""
+Replace column symbols with translated array names in aggregate expressions 
+"""
 function replace_col_with_array(node::QuoteNode, table::Tuple{Symbol,Vector{Symbol}}, top_level_number, is_top_level, read)
-    if node.value in table[2]
-        return getColName(table[1], node.value)
+    col_sym = getQuoteValue(node)
+    if col_sym in table[2]
+        return getColName(table[1], col_sym)
     end
     return CompilerTools.AstWalker.ASTWALK_RECURSE
 end
+
+function replace_col_with_array(node::Expr, table::Tuple{Symbol,Vector{Symbol}}, top_level_number, is_top_level, read)
+    if node.head!=:quote
+        return CompilerTools.AstWalker.ASTWALK_RECURSE
+    end
+    col_sym = getQuoteValue(node)
+    if col_sym in table[2]
+        return getColName(table[1], col_sym)
+    end
+    return CompilerTools.AstWalker.ASTWALK_RECURSE
+end
+
 function replace_col_with_array(node::ANY, table::Tuple{Symbol,Vector{Symbol}}, top_level_number, is_top_level, read)
     return CompilerTools.AstWalker.ASTWALK_RECURSE
 end
@@ -132,12 +148,14 @@ Example table to translate:
 """
 function translate_data_table(lhs, state, arr_var_expr, source_typ, other_args)
     @assert arr_var_expr.args[1]==:DataTable "expected :DataTable"
+    # arr_var_expr has the form: :(DataTable{:userid = Int64,:val2 = Float64})
+    @dprintln(3,"translating data table: ",arr_var_expr)
     out = []
     col_names = Symbol[]
     for column in arr_var_expr.args[2:end]
         @dprintln(3,"table column: ", column)
         @assert column.head==:(=)
-        col_name = column.args[1].value
+        col_name = getQuoteValue(column.args[1])
         push!(col_names, col_name)
         col_type = column.args[2]
         col_lhs = getColName(lhs,col_name)
@@ -149,6 +167,21 @@ function translate_data_table(lhs, state, arr_var_expr, source_typ, other_args)
     ret = quote $(out...) end
     @dprintln(3, "data table returns: ",ret)
     return ret
+end
+
+"""
+Julia sometimes returns a QuoteNode for :column1
+"""
+function getQuoteValue(exp::QuoteNode)
+    return exp.value
+end
+
+"""
+Julia sometimes returns an Expr for :column1
+"""
+function getQuoteValue(exp::Expr)
+    @assert exp.head==:quote "expected :quote expression"
+    return exp.args[1]
 end
 
 function getColName(t::Symbol, c::Symbol)
