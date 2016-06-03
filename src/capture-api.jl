@@ -114,6 +114,8 @@ function translate_aggregate(lhs, rhs, state)
         func = col_expr.args[2].args[1]
         # aggregation expression
         e = col_expr.args[2].args[2]
+        # convert math operations to element-wise versions to work with arrays
+        e = AstWalk(e, convert_oprs_to_elementwise,  (t1, state[t1]))
         # replace column name with actual array in expression
         e = AstWalk(e, replace_col_with_array,  (t1, state[t1]))
         out_e_arr = symbol("_$(lhs)_$(out_col)_e")
@@ -128,6 +130,46 @@ function translate_aggregate(lhs, rhs, state)
     return ret
 end
 
+agg_oprs_map = Dict{Symbol, Symbol}(
+    # comparison operators
+    :(>) => :(.>),
+    :(<) => :(.<),
+    :(<=) => :(.<=),
+    :(>=) => :(.>=),
+    :(==) => :(.==),
+    
+    # binary operators
+    :(+) => :(.+),
+    :(-) => :(.-),
+    :(*) => :(.*),
+    :(/) => :(./),
+    :(%) => :(.%),
+    :(^) => :(.^),
+    :(<<) => :(.<<),
+    :(>>) => :(.>>)
+)
+
+
+"""
+Convert math operations to element-wise versions to work with arrays
+
+example: user can write 't4 = aggregate(t3, :userid, :sumo2 = sum(:val2==1.1), :size_val3 = size(:val3))'
+the aggregate expression ':val2==1.1' should be translated to '_t4_val2.==1.1' to be valid for arrays.
+
+For simplicity, we assume we can convert all operations with element-wise versions.
+This is wrong for rare use cases such as comparison of two arrays([1,2]==[1,3] is not the same as [1,2].==[1,3]),
+TODO: make it fully general. 
+"""
+function convert_oprs_to_elementwise(node::Symbol, table::Tuple{Symbol,Vector{Symbol}}, top_level_number, is_top_level, read)
+    if haskey(agg_oprs_map,node)
+        return agg_oprs_map[node]
+    end
+    return CompilerTools.AstWalker.ASTWALK_RECURSE
+end
+
+function convert_oprs_to_elementwise(node::ANY, table::Tuple{Symbol,Vector{Symbol}}, top_level_number, is_top_level, read)
+    return CompilerTools.AstWalker.ASTWALK_RECURSE
+end
 
 """
 Replace column symbols with translated array names in aggregate expressions 
