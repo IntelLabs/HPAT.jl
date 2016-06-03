@@ -36,59 +36,9 @@ function process_assignment(node, state, lhs::Symbol, rhs::Expr)
             return translate_data_source(lhs, state, arr_var_expr, rhs.args[3], rhs.args[4:end])
         end
    elseif rhs.head==:call && rhs.args[1]==:join
-        @dprintln(3,"join: ", lhs)
-        # 1st and 2nd args are tables to join
-        t1 = rhs.args[2]
-        t2 = rhs.args[3]
-        @assert rhs.args[4].head==:comparison "invalid join key"
-        @assert rhs.args[4].args[2]==:(==) "invalid join key"
-        
-        key1 = getQuoteValue(rhs.args[4].args[1])
-        key1_arr = getColName(t1, key1)
-        key2 = getQuoteValue(rhs.args[4].args[3])
-        key2_arr = getColName(t2, key2)
-        new_key = getQuoteValue(rhs.args[5])
-        new_key_arr = getColName(lhs, new_key)
-        
-        rest_cols1 = filter(x->x!=key1, state[t1])
-        rest_cols2 = filter(x->x!=key2, state[t2])
-        rest_cols1_arrs = map(x->getColName(t1,x),rest_cols1)
-        rest_cols2_arrs = map(x->getColName(t2,x),rest_cols2)
-        rest_cols3_arrs = map(x->getColName(lhs,x),[rest_cols1;rest_cols2])
-        state[lhs] = [new_key;rest_cols1;rest_cols2]
-        return :( ($new_key_arr,$(rest_cols3_arrs...)) = join([$key1_arr;$(rest_cols1_arrs...)], [$key2_arr;$(rest_cols2_arrs...)]) )
-        
+        return translate_join(lhs, rhs, state)
    elseif rhs.head==:call && rhs.args[1]==:aggregate
-        t1 = rhs.args[2]
-        c1 = getQuoteValue(rhs.args[3])
-        c1_arr = getColName(t1, c1)
-        c1_out_arr = getColName(lhs, c1)
-        out_e = []
-        out_aggs = []
-        out_arrs = [c1_out_arr]
-        out_cols = [c1]
-        for col_expr in rhs.args[4:end]
-            @assert col_expr.head==:kw "expected assignment for new aggregate column"
-            # output column name
-            out_col = getQuoteValue(col_expr.args[1])
-            out_col_arr = getColName(lhs, out_col)
-            push!(out_cols, out_col)
-            push!(out_arrs, out_col_arr)
-            @assert col_expr.args[2].head==:call "expected aggregation function"
-            # aggregation function
-            func = col_expr.args[2].args[1]
-            # aggregation expression
-            e = col_expr.args[2].args[2]
-            # replace column name with actual array in expression
-            e = AstWalk(e, replace_col_with_array,  (t1, state[t1]))
-            out_e_arr = symbol("_$(lhs)_$(out_col)_e")
-            push!(out_aggs, :(($out_e_arr, $func)))
-            push!(out_e,:($out_e_arr=$e))
-        end
-        out_call = Expr(:(=), Expr(:tuple, out_arrs...), :(aggregate($c1_arr,[$(out_aggs...)])) )
-        push!(out_e, out_call)
-        state[lhs] = out_cols
-        return quote $(out_e...) end
+        return translate_aggregate(lhs,rhs,state)
    end
    CompilerTools.AstWalker.ASTWALK_RECURSE
 end
@@ -96,6 +46,88 @@ end
 function process_assignment(node, state, lhs::ANY, rhs::ANY)
    CompilerTools.AstWalker.ASTWALK_RECURSE
 end
+
+"""
+Basic join will match first column of each column array
+  t3 = join(t1, t2, :c1==:c1, :c2)
+                ->  t3_c1, t3_c2,... = join([t1_c1,t1_c2,...], [t2_c1,t2_c2,...])
+                    assertEqShape(t3_c1, t3_c2,...)
+                    newTableMeta(:t3, [:c1,:c2,...])
+"""
+function translate_join(lhs, rhs, state)
+    @dprintln(3,"join: ", lhs)
+    # 1st and 2nd args are tables to join
+    t1 = rhs.args[2]
+    t2 = rhs.args[3]
+    @assert rhs.args[4].head==:comparison "invalid join key"
+    @assert rhs.args[4].args[2]==:(==) "invalid join key"
+    
+    key1 = getQuoteValue(rhs.args[4].args[1])
+    key1_arr = getColName(t1, key1)
+    key2 = getQuoteValue(rhs.args[4].args[3])
+    key2_arr = getColName(t2, key2)
+    new_key = getQuoteValue(rhs.args[5])
+    new_key_arr = getColName(lhs, new_key)
+    
+    rest_cols1 = filter(x->x!=key1, state[t1])
+    rest_cols2 = filter(x->x!=key2, state[t2])
+    rest_cols1_arrs = map(x->getColName(t1,x),rest_cols1)
+    rest_cols2_arrs = map(x->getColName(t2,x),rest_cols2)
+    rest_cols3_arrs = map(x->getColName(lhs,x),[rest_cols1;rest_cols2])
+    state[lhs] = [new_key;rest_cols1;rest_cols2]
+    ret = :( ($new_key_arr,$(rest_cols3_arrs...)) = join([$key1_arr;$(rest_cols1_arrs...)], [$key2_arr;$(rest_cols2_arrs...)]) )
+    @dprintln(3,"join returns: ",ret)
+    return ret
+end
+
+"""
+example: t4 = aggregate(t3, :userid, :sumo2 = sum(:val2==1.1), :size_val3 = size(:val3))
+
+f is a reduction function on grouped data, e is closure for filtering column elements
+ t2 = aggregate(t1, :c1, :c3=f(e(:c2,...)),...)
+                ->  t2_c3_e = e(t1_c2,...)
+                    ...
+                    t2_c1, t2_c3,... = aggregate(t1_c1, (t2_c3_e,f),...)
+                    assertEqShape(t3_c1, t3_c3,...)
+                    newTableMeta(:t3, [:c1,:c3,...])
+
+"""
+function translate_aggregate(lhs, rhs, state)
+    @dprintln(3,"aggregate: ", lhs)
+    t1 = rhs.args[2]
+    c1 = getQuoteValue(rhs.args[3])
+    c1_arr = getColName(t1, c1)
+    c1_out_arr = getColName(lhs, c1)
+    out_e = []
+    out_aggs = []
+    out_arrs = [c1_out_arr]
+    out_cols = [c1]
+    for col_expr in rhs.args[4:end]
+        @assert col_expr.head==:kw "expected assignment for new aggregate column"
+        # output column name
+        out_col = getQuoteValue(col_expr.args[1])
+        out_col_arr = getColName(lhs, out_col)
+        push!(out_cols, out_col)
+        push!(out_arrs, out_col_arr)
+        @assert col_expr.args[2].head==:call "expected aggregation function"
+        # aggregation function
+        func = col_expr.args[2].args[1]
+        # aggregation expression
+        e = col_expr.args[2].args[2]
+        # replace column name with actual array in expression
+        e = AstWalk(e, replace_col_with_array,  (t1, state[t1]))
+        out_e_arr = symbol("_$(lhs)_$(out_col)_e")
+        push!(out_aggs, :(($out_e_arr, $func)))
+        push!(out_e,:($out_e_arr=$e))
+    end
+    out_call = Expr(:(=), Expr(:tuple, out_arrs...), :(aggregate($c1_arr,[$(out_aggs...)])) )
+    push!(out_e, out_call)
+    state[lhs] = out_cols
+    ret = quote $(out_e...) end
+    @dprintln(3,"aggregate returns: ",ret)
+    return ret
+end
+
 
 """
 Replace column symbols with translated array names in aggregate expressions 
