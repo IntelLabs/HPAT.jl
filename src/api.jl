@@ -51,4 +51,94 @@ end
     return rand(T, size(points,1),2)
 end
 
+@noinline function join(t1::Vector{Vector},t2::Vector{Vector})
+    t1_cols = length(t1)
+    t2_cols = length(t2)
+    # 1 key column for output
+    out_size = t1_cols+t2_cols-1;
+    out = [ [] for i in 1:out_size]
+    # for each key in table 1
+    for i in 1:length(t1[1])
+        # for each key in table 2
+        for j in 1:length(t2[1])
+            if t1[1][i]==t2[1][j]
+                # save key to output
+                push!(out[1],t1[1][i])
+                # save table 1 values
+                for ii in 2:length(t1)
+                    push!(out[ii], t1[ii][i])
+                end
+                # save table 1 values
+                for jj in 2:length(t2)
+                    push!(out[t1_cols+jj-1], t2[jj][j])
+                end
+            end
+        end
+    end
+    return out
 end
+
+#=
+@doc """
+function join{T1,T12,T22}(t1c1::Vector{T1}, t1c2::Vector{T12}, t2c1::Vector{T1}, t2c2::Vector{T22})
+       out1 = t1c1 .+ t2c1
+       out2 = t1c2 
+       return out1,out2
+end
+
+"""
+# join up to 50 column tables
+const MAX_COLUMNS = 50
+
+for k in 1:MAX_COLUMNS
+    for l in 1:MAX_COLUMNS
+        # create type symbol names
+        # T11 T12 ... T21 T22...
+        typ_names1 = Symbol[Symbol("T1$j") for j in 1:k]
+        typ_names2 = Symbol[Symbol("T2$j") for j in 1:l]
+        typ_names = [typ_names1;typ_names2]
+        # join{T1,T11,T12...T21,T22...}
+        fexpr = Expr(:curly,:join,:T1,typ_names...)
+        # t1c1::Vector{T11}, t1c2::Vector{T12} ....
+        arrs1 = Expr[ Expr(:(::),Symbol("t1c$j"), Expr(:curly,:Vector,typ_names1[j])) for j in 1:k]
+        arrs2 = Expr[ Expr(:(::),Symbol("t2c$j"), Expr(:curly,:Vector,typ_names2[j])) for j in 1:l]
+        # key array: t1k::Vector{T1}
+        arrk1 = Expr(:(::),Symbol("t1k"), Expr(:curly,:Vector,:T1))
+        arrk2 = Expr(:(::),Symbol("t2k"), Expr(:curly,:Vector,:T1))
+        arrs = [arrk1; arrs1;arrk2; arrs2]
+        # fcall = Expr(:call, fexpr,arrs...)
+        # out1=T1[], out2=T2[]
+        out_decls1 = Expr[ Expr(:(=),Symbol("out1$j"), Expr(:ref,Symbol("T1$j"))) for j in 1:k]
+        out_decls2 = Expr[ Expr(:(=),Symbol("out2$j"), Expr(:ref,Symbol("T2$j"))) for j in 1:l]
+        outk_decl = Expr(:(=),:outk, Expr(:ref,:T1))
+        out_decls = [outk_decl; out_decls1; out_decls2]
+        out_block = Expr(:block, out_decls...)
+        # list of output symbols: outk out11 out12... out21 out22...
+        outs1 = Symbol[Symbol("out1$j") for j in 1:k]
+        outs2 = Symbol[Symbol("out1$j") for j in 1:k]
+        outs = [:outk;outs1;outs2]
+        # push!(out11,t1c1[i])
+        push_calls1 = [ Expr(:call,:push!,Symbol("out1$j"),Symbol("t1c$j[i]"))  for j in 1:k]
+        # push!(out21,t2c1[j])
+        push_calls2 = [ Expr(:call,:push!,Symbol("out2$j"),Symbol("t2c$j[j]"))  for j in 1:l]
+        push_calls = Expr(:block, push_calls1..., push_calls2...)
+        @eval begin
+            @noinline function ($fexpr)($(arrs...))
+                $out_block
+                for i in 1:length(t1k)
+                    for j in length(t2k)
+                        if t1k[i]==t2k[j]
+                            push!(outk,t1k[i])
+                            $push_calls                            
+                        end
+                    end
+                end
+                return $(Expr(:tuple,outs...))
+            end
+        end
+
+    end # for k
+end # for l 
+=#
+
+end # module
