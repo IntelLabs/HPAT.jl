@@ -70,6 +70,7 @@ function translate_join(lhs, rhs, state)
     @assert rhs.args[4].head==:comparison "invalid join key"
     @assert rhs.args[4].args[2]==:(==) "invalid join key"
     
+    # get key columns
     key1 = getQuoteValue(rhs.args[4].args[1])
     key1_arr = getColName(t1, key1)
     key2 = getQuoteValue(rhs.args[4].args[3])
@@ -77,13 +78,30 @@ function translate_join(lhs, rhs, state)
     new_key = getQuoteValue(rhs.args[5])
     new_key_arr = getColName(lhs, new_key)
     
+    # get rest of the columns
     rest_cols1 = filter(x->x!=key1, state[t1])
     rest_cols2 = filter(x->x!=key2, state[t2])
     rest_cols1_arrs = map(x->getColName(t1,x),rest_cols1)
     rest_cols2_arrs = map(x->getColName(t2,x),rest_cols2)
     rest_cols3_arrs = map(x->getColName(lhs,x),[rest_cols1;rest_cols2])
+    # save new table
     state[lhs] = [new_key;rest_cols1;rest_cols2]
-    ret = :( ($new_key_arr,$(rest_cols3_arrs...)) = join([$key1_arr;$(rest_cols1_arrs...)], [$key2_arr;$(rest_cols2_arrs...)]) )
+    
+    # pass tables as array of columns since [t1_c1,t1_c2...] flattens to single array instead of array of arrays
+    # eg. t1 = Array(Vector,n)
+    t1_num_cols = length(state[t1])
+    t1_col_arr = :(_join_t1 = Array(Vector,$(t1_num_cols)))
+    t2_num_cols = length(state[t2])
+    t2_col_arr = :(_join_t2 = Array(Vector,$(t2_num_cols)))
+    # assign column arrays
+    # e.g. t1[1] = _t1_c1
+    assign1 = [ Expr(:(=),:(_join_t1[$i]),getColName(t1,state[t1][i])) for i in 1:length(state[t1]) ]
+    assign2 = [ Expr(:(=),:(_join_t2[$i]),getColName(t2,state[t2][i])) for i in 1:length(state[t2]) ]
+    #out = [t1_col_arr;t2_col_arr]
+    # TODO: assign types
+    #ret = :( ($new_key_arr,$(rest_cols3_arrs...)) = HPAT.API.join([$key1_arr;$(rest_cols1_arrs...)], [$key2_arr;$(rest_cols2_arrs...)]) )
+    ret = :( ($new_key_arr,$(rest_cols3_arrs...)) = HPAT.API.join(_join_t1, _join_t2) )
+    ret = Expr(:block,t1_col_arr,assign1...,t2_col_arr,assign2...,ret)
     @dprintln(3,"join returns: ",ret)
     return ret
 end
