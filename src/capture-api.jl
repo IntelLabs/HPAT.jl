@@ -148,7 +148,7 @@ function translate_aggregate(lhs, rhs, state)
         push!(out_aggs, :(($out_e_arr, $func)))
         push!(out_e,:($out_e_arr=$e))
     end
-    out_call = Expr(:(=), Expr(:tuple, out_arrs...), :(aggregate($c1_arr,[$(out_aggs...)])) )
+    out_call = Expr(:(=), Expr(:tuple, out_arrs...), :(HPAT.API.aggregate($c1_arr,[$(out_aggs...)])) )
     push!(out_e, out_call)
     state[lhs] = out_cols
     ret = quote $(out_e...) end

@@ -78,6 +78,44 @@ end
     return out
 end
 
+@noinline function aggregate{T}(t1k::Vector{T}, new_cols::Vector{ANY})
+    new_cols_len = length(new_cols)
+    # group values for each key into a separate array
+    # key => [ [...] , [...] ...]
+    groups = Dict{T,Vector{Vector}}()
+    # for each key
+    for i in 1:length(t1k)
+        # initialize key if seen for first time
+        if !haskey(groups,t1k[i])
+            # one array for each output
+            groups[t1k[i]] = Array(Vector,new_cols_len)
+            for j in 1:new_cols_len
+                groups[t1k[i]][j] = []
+            end
+        end
+        # save group values
+        for j in 1:new_cols_len
+            push!(groups[t1k[i]][j], new_cols[j][1][i])
+        end
+    end
+    #dprintln(groups)
+    # output is array of column vectors
+    out = Array(Vector,new_cols_len+1)
+    # first array is keys
+    out[1] = collect(keys(groups))
+    for j in 1:new_cols_len
+        out[j+1] = []
+    end
+    for j in 1:new_cols_len
+        func = new_cols[j][2]
+        #println(func)
+        for key in out[1]
+            push!(out[j+1], func(groups[key][j]))
+        end
+    end
+    return out
+end
+
 #=
 @doc """
 function join{T1,T12,T22}(t1c1::Vector{T1}, t1c2::Vector{T12}, t2c1::Vector{T1}, t2c2::Vector{T22})
