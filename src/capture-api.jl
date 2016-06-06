@@ -100,7 +100,7 @@ function translate_join(lhs, rhs, state)
     #out = [t1_col_arr;t2_col_arr]
     # TODO: assign types
     #ret = :( ($new_key_arr,$(rest_cols3_arrs...)) = HPAT.API.join([$key1_arr;$(rest_cols1_arrs...)], [$key2_arr;$(rest_cols2_arrs...)]) )
-    join_call = :( ($new_key_arr,$(rest_cols3_arrs...)) = HPAT.API.join(_join_t1, _join_t2) )
+    join_call = :( _j_out = HPAT.API.join(_join_t1, _join_t2) )
     
     col_types = [ state.tableTypes[t1][1] ]
     col_types1 = [ state.tableTypes[t1][i+1] for i in 1:length(rest_cols1)]
@@ -109,8 +109,8 @@ function translate_join(lhs, rhs, state)
     # save new table types
     state.tableTypes[lhs] = col_types
     
-    typ_assigns = [ :($new_key_arr::Vector{$(col_types[1])} = $new_key_arr) ]
-    typ_assigns1 = [ :($(rest_cols3_arrs[i])::Vector{$(col_types[i+1])} = $(rest_cols3_arrs[i])) for i in 1:length(rest_cols3_arrs)]
+    typ_assigns = [ :($new_key_arr::Vector{$(col_types[1])} = _j_out[1]) ]
+    typ_assigns1 = [ :($(rest_cols3_arrs[i])::Vector{$(col_types[i+1])} = _j_out[$(i+1)]) for i in 1:length(rest_cols3_arrs)]
     typ_assigns = [typ_assigns;typ_assigns1]
     
     ret = Expr(:block,t1_col_arr,assign1...,t2_col_arr,assign2...,join_call,typ_assigns...)
