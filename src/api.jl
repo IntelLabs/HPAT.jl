@@ -2,7 +2,7 @@ module API
 using HDF5
 import HPAT
 
- 
+
 operators = [:data_source_HDF5,:data_source_TXT,:Kmeans,:LinearRegression,:NaiveBayes]
 
 for op in operators
@@ -29,7 +29,7 @@ end
         dist = [ T[sqrt(sum((points[:,i].-centroids[:,j]).^2)) for j in 1:numCenter] for i in 1:N]
         labels = Int[indmin(dist[i]) for i in 1:N]
         centroids = T[ sum(points[j,labels.==i])/sum(labels.==i) for j in 1:D, i in 1:numCenter]
-    end 
+    end
     return centroids
 end
 
@@ -68,7 +68,7 @@ end
                 for ii in 2:length(t1)
                     push!(out[ii], t1[ii][i])
                 end
-                # save table 1 values
+                # save table 2 values
                 for jj in 2:length(t2)
                     push!(out[t1_cols+jj-1], t2[jj][j])
                 end
@@ -120,7 +120,7 @@ end
 @doc """
 function join{T1,T12,T22}(t1c1::Vector{T1}, t1c2::Vector{T12}, t2c1::Vector{T1}, t2c2::Vector{T22})
        out1 = t1c1 .+ t2c1
-       out2 = t1c2 
+       out2 = t1c2
        return out1,out2
 end
 
@@ -167,7 +167,7 @@ for k in 1:MAX_COLUMNS
                     for j in length(t2k)
                         if t1k[i]==t2k[j]
                             push!(outk,t1k[i])
-                            $push_calls                            
+                            $push_calls
                         end
                     end
                 end
@@ -176,7 +176,7 @@ for k in 1:MAX_COLUMNS
         end
 
     end # for k
-end # for l 
+end # for l
 =#
 
 end # module
