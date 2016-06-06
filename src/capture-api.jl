@@ -18,7 +18,7 @@ function process_node(node::Expr, state, top_level_number, is_top_level, read)
         return process_assignment(node, state, node.args[1], node.args[2])
     elseif node.head==:ref # table column ref like: t1[:c1]
         t1 = node.args[1]
-        if haskey(state,t1)
+        if haskey(state.tableCols,t1)
             c1 = node.args[2]
             @assert isa(c1,QuoteNode) || (isa(c1,Expr) && c1.head==:quote) "invalid table ref"
              return getColName(t1, getQuoteValue(c1))
@@ -79,29 +79,41 @@ function translate_join(lhs, rhs, state)
     new_key_arr = getColName(lhs, new_key)
     
     # get rest of the columns
-    rest_cols1 = filter(x->x!=key1, state[t1])
-    rest_cols2 = filter(x->x!=key2, state[t2])
+    rest_cols1 = filter(x->x!=key1, state.tableCols[t1])
+    rest_cols2 = filter(x->x!=key2, state.tableCols[t2])
     rest_cols1_arrs = map(x->getColName(t1,x),rest_cols1)
     rest_cols2_arrs = map(x->getColName(t2,x),rest_cols2)
     rest_cols3_arrs = map(x->getColName(lhs,x),[rest_cols1;rest_cols2])
     # save new table
-    state[lhs] = [new_key;rest_cols1;rest_cols2]
+    state.tableCols[lhs] = [new_key;rest_cols1;rest_cols2]
     
     # pass tables as array of columns since [t1_c1,t1_c2...] flattens to single array instead of array of arrays
     # eg. t1 = Array(Vector,n)
-    t1_num_cols = length(state[t1])
+    t1_num_cols = length(state.tableCols[t1])
     t1_col_arr = :(_join_t1 = Array(Vector,$(t1_num_cols)))
-    t2_num_cols = length(state[t2])
+    t2_num_cols = length(state.tableCols[t2])
     t2_col_arr = :(_join_t2 = Array(Vector,$(t2_num_cols)))
     # assign column arrays
     # e.g. t1[1] = _t1_c1
-    assign1 = [ Expr(:(=),:(_join_t1[$i]),getColName(t1,state[t1][i])) for i in 1:length(state[t1]) ]
-    assign2 = [ Expr(:(=),:(_join_t2[$i]),getColName(t2,state[t2][i])) for i in 1:length(state[t2]) ]
+    assign1 = [ Expr(:(=),:(_join_t1[$i]),getColName(t1,state.tableCols[t1][i])) for i in 1:length(state.tableCols[t1]) ]
+    assign2 = [ Expr(:(=),:(_join_t2[$i]),getColName(t2,state.tableCols[t2][i])) for i in 1:length(state.tableCols[t2]) ]
     #out = [t1_col_arr;t2_col_arr]
     # TODO: assign types
     #ret = :( ($new_key_arr,$(rest_cols3_arrs...)) = HPAT.API.join([$key1_arr;$(rest_cols1_arrs...)], [$key2_arr;$(rest_cols2_arrs...)]) )
-    ret = :( ($new_key_arr,$(rest_cols3_arrs...)) = HPAT.API.join(_join_t1, _join_t2) )
-    ret = Expr(:block,t1_col_arr,assign1...,t2_col_arr,assign2...,ret)
+    join_call = :( ($new_key_arr,$(rest_cols3_arrs...)) = HPAT.API.join(_join_t1, _join_t2) )
+    
+    col_types = [ state.tableTypes[t1][1] ]
+    col_types1 = [ state.tableTypes[t1][i+1] for i in 1:length(rest_cols1)]
+    col_types2 = [ state.tableTypes[t2][i+1] for i in 1:length(rest_cols2)]
+    col_types = [col_types;col_types1;col_types2]
+    # save new table types
+    state.tableTypes[lhs] = col_types
+    
+    typ_assigns = [ :($new_key_arr::Vector{$(col_types[1])} = $new_key_arr) ]
+    typ_assigns1 = [ :($(rest_cols3_arrs[i])::Vector{$(col_types[i+1])} = $(rest_cols3_arrs[i])) for i in 1:length(rest_cols3_arrs)]
+    typ_assigns = [typ_assigns;typ_assigns1]
+    
+    ret = Expr(:block,t1_col_arr,assign1...,t2_col_arr,assign2...,join_call,typ_assigns...)
     @dprintln(3,"join returns: ",ret)
     return ret
 end
@@ -141,16 +153,17 @@ function translate_aggregate(lhs, rhs, state)
         # aggregation expression
         e = col_expr.args[2].args[2]
         # convert math operations to element-wise versions to work with arrays
-        e = AstWalk(e, convert_oprs_to_elementwise,  (t1, state[t1]))
+        e = AstWalk(e, convert_oprs_to_elementwise,  (t1, state.tableCols[t1]))
         # replace column name with actual array in expression
-        e = AstWalk(e, replace_col_with_array,  (t1, state[t1]))
+        e = AstWalk(e, replace_col_with_array,  (t1, state.tableCols[t1]))
         out_e_arr = symbol("_$(lhs)_$(out_col)_e")
         push!(out_aggs, :(($out_e_arr, $func)))
         push!(out_e,:($out_e_arr=$e))
     end
     out_call = Expr(:(=), Expr(:tuple, out_arrs...), :(HPAT.API.aggregate($c1_arr,[$(out_aggs...)])) )
     push!(out_e, out_call)
-    state[lhs] = out_cols
+    state.tableCols[lhs] = out_cols
+    # TODO: save new table types
     ret = quote $(out_e...) end
     @dprintln(3,"aggregate returns: ",ret)
     return ret
@@ -252,18 +265,21 @@ function translate_data_table(lhs, state, arr_var_expr, source_typ, other_args)
     @dprintln(3,"translating data table: ",arr_var_expr)
     out = []
     col_names = Symbol[]
+    col_types = Symbol[]
     for column in arr_var_expr.args[2:end]
         @dprintln(3,"table column: ", column)
         @assert column.head==:(=)
         col_name = getQuoteValue(column.args[1])
         push!(col_names, col_name)
         col_type = column.args[2]
+        push!(col_types,col_type)
         col_lhs = getColName(lhs,col_name)
         col_source = translate_data_source(col_lhs, state, :(Vector{$(col_type)}), source_typ, ["/"*string(col_name);other_args])
         push!(out, col_source)
     end
     # save table info in state
-    state[lhs] = col_names
+    state.tableCols[lhs] = col_names
+    state.tableTypes[lhs] = col_types
     ret = quote $(out...) end
     @dprintln(3, "data table returns: ",ret)
     return ret

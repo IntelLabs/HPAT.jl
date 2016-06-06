@@ -123,11 +123,22 @@ function addCheckpointingRestart(func :: GlobalRef, ast, signature :: Tuple)
   return code
 end
 
+type MacroState
+    # columns of each table
+    tableCols::Dict{Symbol,Vector{Symbol}}
+    # Types of each table column
+    tableTypes::Dict{Symbol,Vector{Symbol}}
+    function MacroState()
+        new(Dict{Symbol,Vector{Symbol}}(),Dict{Symbol,Vector{Symbol}}())
+    end
+end
+
 """
 A macro pass that translates extensions such as DataSource()
 """
 function captureHPAT(func, ast, sig)
-  AstWalk(ast, CaptureAPI.process_node, Dict{Symbol,Vector{Symbol}}())
+  AstWalk(ast, CaptureAPI.process_node, MacroState())
+  #println(ast)
   return ast
 end
 
