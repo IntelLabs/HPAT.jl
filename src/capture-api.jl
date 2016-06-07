@@ -100,7 +100,9 @@ function translate_join(lhs, rhs, state)
     #out = [t1_col_arr;t2_col_arr]
     # TODO: assign types
     #ret = :( ($new_key_arr,$(rest_cols3_arrs...)) = HPAT.API.join([$key1_arr;$(rest_cols1_arrs...)], [$key2_arr;$(rest_cols2_arrs...)]) )
-    join_call = :( _j_out = HPAT.API.join(_join_t1, _join_t2) )
+    # GlobalRef since Julia doesn't resolve the module! why does GlobalRef work in surface AST??
+    g_call = GlobalRef(HPAT.API,:join)
+    join_call = :( _j_out = $(g_call)(_join_t1, _join_t2) )
     
     col_types = [ state.tableTypes[t1][1] ]
     col_types1 = [ state.tableTypes[t1][i+1] for i in 1:length(rest_cols1)]
@@ -172,7 +174,9 @@ function translate_aggregate(lhs, rhs, state)
         # typ_assigns = [ :($new_key_arr::Vector{$(col_types[1])} = _j_out[1]) ]
         push!(out_type_assigns,:($out_col_arr::Vector{$typ_name} = $out_col_arr))
     end
-    out_call = Expr(:(=), Expr(:tuple, out_arrs...), :(HPAT.API.aggregate($c1_arr,[$(out_aggs...)])) )
+    # GlobalRef since Julia doesn't resolve the module! why does GlobalRef work in surface AST??
+    agg_call = GlobalRef(HPAT.API,:aggregate)
+    out_call = Expr(:(=), Expr(:tuple, out_arrs...), :($(agg_call)($c1_arr,[$(out_aggs...)])) )
     push!(out_e, out_call)
     push!(out_e, out_type_assigns...)
     state.tableCols[lhs] = out_cols
