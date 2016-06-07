@@ -8,7 +8,7 @@ using HPAT
 
     sale_items = sale_items[:i_category==category]
 
-    customer_i_class = aggregate(sale_items, :ss_customer_sk, :ss_item_count = size(:ss_item_sk),
+    customer_i_class = aggregate(sale_items, :ss_customer_sk, :ss_item_count = length(:ss_item_sk),
                                                               :id1 = sum(:i_class_id==1),
                                                               :id2 = sum(:i_class_id==2),
                                                               :id3 = sum(:i_class_id==3),
