@@ -40,7 +40,7 @@ using ParallelAccelerator.CGen
 using CompilerTools.AstWalker
 import MPI
 
-export hpat, hpat_checkpoint, @acc, @noacc
+export hpat, hpat_checkpoint, hpat_debug, @acc, @noacc
 
 # disable OMP if not set by user since it is slower than pure MPI
 if !haskey(ENV, "CGEN_NO_OMP")
@@ -154,6 +154,8 @@ function createCheckpointFunc(func, ast, sig)
   @dprintln(1, "createCheckpointFunc new_func = ", new_func.args[1].args[1])
   return CompilerTools.OptFramework.MoreWork(ast, CompilerTools.OptFramework.WorkItem[CompilerTools.OptFramework.WorkItem(hpat_checkpoint_internal, hpat_checkpoint_internal, Any[], new_func)])   
 end
+
+const hpat_debug = [ OptPass(captureHPAT, PASS_MACRO) ]
 
 # initialize set of compiler passes HPAT runs
 const hpat = [ OptPass(captureHPAT, PASS_MACRO),
