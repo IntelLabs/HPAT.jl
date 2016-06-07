@@ -140,6 +140,7 @@ function translate_aggregate(lhs, rhs, state)
     out_aggs = []
     out_arrs = [c1_out_arr]
     out_cols = [c1]
+    out_type_assigns = [ :($c1_out_arr::Vector{$(state.tableTypes[t1][1])} = $c1_out_arr) ]
     for col_expr in rhs.args[4:end]
         @assert col_expr.head==:kw "expected assignment for new aggregate column"
         # output column name
@@ -159,12 +160,25 @@ function translate_aggregate(lhs, rhs, state)
         out_e_arr = symbol("_$(lhs)_$(out_col)_e")
         push!(out_aggs, :(($out_e_arr, $func)))
         push!(out_e,:($out_e_arr=$e))
+        # to add types to aggregate output
+        # make a dummy call to get the type with user's function
+        # then use it in type assertion. Julia type inference can infer the type and use it for common functions
+        # example: t2_c1, t2_c2 = aggregate(t1_c1, (t1_c2_e,sum))
+        #          _T_c2 = typeof(sum(t1_c2_e))
+        #          t2_c2::_T_c2 = t2_c2
+        typ_name = Symbol("_T_$(out_col)")
+        dummy_reduce = :( $typ_name = typeof($(func)($out_e_arr)) )
+        push!(out_e, dummy_reduce)
+        # typ_assigns = [ :($new_key_arr::Vector{$(col_types[1])} = _j_out[1]) ]
+        push!(out_type_assigns,:($out_col_arr::Vector{$typ_name} = $out_col_arr))
     end
     out_call = Expr(:(=), Expr(:tuple, out_arrs...), :(HPAT.API.aggregate($c1_arr,[$(out_aggs...)])) )
     push!(out_e, out_call)
+    push!(out_e, out_type_assigns...)
     state.tableCols[lhs] = out_cols
     # TODO: save new table types
-    ret = quote $(out_e...) end
+    #ret = quote $(out_e...) end
+    ret = Expr(:block, out_e...)
     @dprintln(3,"aggregate returns: ",ret)
     return ret
 end
