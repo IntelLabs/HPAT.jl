@@ -53,6 +53,8 @@ function enableOMP()
     end
 end
 
+OptFramework.setSaveOriginalFunction(false)
+
 include("api.jl")
 using HPAT.API
 export data_source_HDF5, data_source_TXT
