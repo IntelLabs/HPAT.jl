@@ -172,11 +172,19 @@ function translate_aggregate(lhs, rhs, state)
         dummy_reduce = :( $typ_name = typeof($(func)($out_e_arr)) )
         push!(out_e, dummy_reduce)
         # typ_assigns = [ :($new_key_arr::Vector{$(col_types[1])} = _j_out[1]) ]
-        push!(out_type_assigns,:($out_col_arr::Vector{$typ_name} = $out_col_arr))
+        
     end
+    
+    out_var = Symbol("_agg_out_$lhs")
+    println(out_var)
+    out_type_assigns = [ :($c1_out_arr::Vector{$(state.tableTypes[t1][1])} = $(out_var)[1]) ]
+    out_typs = [ Symbol("_T_$(out_cols[i])") for i in 1:length(out_cols) ]
+    out_type_assigns1 = [ :($(out_arrs[i])::Vector{$(out_typs[i])} = $(out_var)[$i])  for i in 2:length(out_arrs) ]
+    out_type_assigns = [out_type_assigns;out_type_assigns1]
+    
     # GlobalRef since Julia doesn't resolve the module! why does GlobalRef work in surface AST??
     agg_call = GlobalRef(HPAT.API,:aggregate)
-    out_call = Expr(:(=), Expr(:tuple, out_arrs...), :($(agg_call)($c1_arr,[$(out_aggs...)])) )
+    out_call = Expr(:(=), out_var, :($(agg_call)($c1_arr,[$(out_aggs...)])) )
     push!(out_e, out_call)
     push!(out_e, out_type_assigns...)
     state.tableCols[lhs] = out_cols
