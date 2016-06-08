@@ -1,0 +1,36 @@
+List of optimizations needs be done on query plan(AST?)
+--> Constant Folding:
+    	     Simplify all the exrpessions in the query to constant
+    	     values. For example table[ 1 == 1] should always be true.
+
+--> Pushing Filter down to datasource:
+    	    Filters should pushed as near to datasource in query plan
+    	    as possible. This will help us to load less data before
+    	    data processing.
+
+--> Project Collapsing:
+    	    Remove unnecessary projects from our query plan. For
+	    example if we need only first project for our result then
+	    get rid of second projection given that our relation only
+	    contains two projections.
+
+--> Booleexpression simplification:
+    	    Simplify boolean expressions whose result can be computed
+    	    without evaluating both sides
+	    e.g. true || 23 => 23
+	    	 a || a => a
+		 not(true)  =>  false
+		 if (true) a else b  =>  a
+
+--> Combine Filters:
+    	    Merge two adjacent Filters into one.
+	    e.g. table[age> 25] table[age < 40] => table[25< age && 40> age]
+	    
+--> Simplify Filters:
+    	     Remove filters where filters always evaluate to true or
+    	     add empty relation when filters always evaluate to false
+
+--> Combine Limits:
+    	    Combine adjacent limit operations into one by merging expressions
+
+
