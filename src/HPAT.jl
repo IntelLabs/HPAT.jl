@@ -39,6 +39,7 @@ using ParallelAccelerator.Driver
 using ParallelAccelerator.CGen
 using CompilerTools.AstWalker
 import MPI
+using Base.pushmeta!
 
 export hpat, hpat_checkpoint, hpat_debug, @acc, @noacc
 
@@ -139,7 +140,9 @@ end
 A macro pass that translates extensions such as DataSource()
 """
 function captureHPAT(func, ast, sig)
-  AstWalk(ast, CaptureAPI.process_node, MacroState())
+  macro_state = MacroState()
+  AstWalk(ast, CaptureAPI.process_node, macro_state)
+  pushmeta!(ast,:hpat_tables, macro_state.tableCols, macro_state.tableTypes)
   #println(ast)
   return ast
 end
