@@ -16,11 +16,13 @@ function process_node(node::Expr, state, top_level_number, is_top_level, read)
     @dprintln(3,"translating expr, head: ",node.head," node: ",node)
     if node.head == :(=) 
         return process_assignment(node, state, node.args[1], node.args[2])
-    elseif node.head==:ref # table column ref like: t1[:c1]
+    elseif node.head==:ref
         t1 = node.args[1]
+         # table column ref like: t1[:c1]
+         # TODO: column assignment like t1[:c2] =... should be processed in assignment
         if haskey(state.tableCols,t1)
             c1 = node.args[2]
-            @assert isa(c1,QuoteNode) || (isa(c1,Expr) && c1.head==:quote) "invalid table ref"
+            @assert isQuote(c1) "invalid table ref"
              return getColName(t1, getQuoteValue(c1))
         end
         CompilerTools.AstWalker.ASTWALK_RECURSE 
@@ -47,6 +49,13 @@ function process_assignment(node, state, lhs::Symbol, rhs::Expr)
         return translate_join(lhs, rhs, state)
    elseif rhs.head==:call && rhs.args[1]==:aggregate
         return translate_aggregate(lhs,rhs,state)
+   elseif rhs.head==:ref
+        t1 = rhs.args[1]
+         # table filter like t1 = t1[:c1>=2]
+         # only table filters assigned to same table supported
+        if haskey(state.tableCols,t1) && haskey(state.tableCols,lhs)
+            return translate_filter(lhs, rhs.args[2], state)
+        end
    end
    CompilerTools.AstWalker.ASTWALK_RECURSE
 end
@@ -54,6 +63,47 @@ end
 function process_assignment(node, state, lhs::ANY, rhs::ANY)
    CompilerTools.AstWalker.ASTWALK_RECURSE
 end
+
+"""
+Translate filter t1 = t1[cond]
+
+We create an array of arrays to pass the columns to table_filter since
+arrays are passed by value with tuples.
+            _t1_cond_e = cond
+            _filter_t1 = Array(Vector,n)
+            _filter_t1[1] = _t1_c1
+            ...
+            (HPAT.API.table_filter!)(_t1_e,_filter_t1)
+            _t1_c1 = _filter_t1[1]
+            ... 
+"""
+function translate_filter(t1::Symbol, cond::Expr, state)
+    @dprintln(3, "translating filter: ",t1," ",cond)
+    # convert math operations to element-wise versions to work with arrays
+    cond = AstWalk(cond, convert_oprs_to_elementwise,  (t1, state.tableCols[t1]))
+    # replace column name with actual array in expression
+    cond = AstWalk(cond, replace_col_with_array,  (t1, state.tableCols[t1]))
+    # evaluate the condition into a BitArray 
+    cond_arr = Symbol("_$(t1)_cond_e")
+    cond_assign = :( $cond_arr = $cond )
+    
+    t1_num_cols = length(state.tableCols[t1])
+    t1_col_arr = :(_filter_t1 = Array(Vector,$(t1_num_cols)))
+    # assign column arrays
+    # e.g. t1[1] = _t1_c1
+    
+    col_arrs = map(x->getColName(t1,x), state.tableCols[t1])
+    assigns = [ Expr(:(=),:(_filter_t1[$i]),:($(col_arrs[i]))) for i in 1:length(state.tableCols[t1]) ]
+    #out_assigns = [ Expr(:(=), :($(col_arrs[i])::Vector{$(state.tableTypes[t1][i])}) ,:(_filter_t1[$i])) for i in 1:length(state.tableCols[t1]) ]
+    out_assigns = [ Expr(:(=), :($(col_arrs[i])) ,:(_filter_t1[$i])) for i in 1:length(state.tableCols[t1]) ]
+    
+    mod_call = GlobalRef(HPAT.API, :table_filter!)
+    filter_call = :( ($mod_call)($cond_arr,(_filter_t1)) )
+    ret = Expr(:block, cond_assign, t1_col_arr, assigns..., filter_call, out_assigns...)
+    @dprintln(3,"filter returns: ", ret)
+    return ret
+end
+
 
 """
 Basic join will match first column of each column array
@@ -86,6 +136,7 @@ function translate_join(lhs, rhs, state)
     rest_cols3_arrs = map(x->getColName(lhs,x),[rest_cols1;rest_cols2])
     # save new table
     state.tableCols[lhs] = [new_key;rest_cols1;rest_cols2]
+    @dprintln(3, "new table join output: ",lhs," ", state.tableCols[lhs])
     
     # pass tables as array of columns since [t1_c1,t1_c2...] flattens to single array instead of array of arrays
     # eg. t1 = Array(Vector,n)
@@ -97,6 +148,7 @@ function translate_join(lhs, rhs, state)
     # e.g. t1[1] = _t1_c1
     assign1 = [ Expr(:(=),:(_join_t1[$i]),getColName(t1,state.tableCols[t1][i])) for i in 1:length(state.tableCols[t1]) ]
     assign2 = [ Expr(:(=),:(_join_t2[$i]),getColName(t2,state.tableCols[t2][i])) for i in 1:length(state.tableCols[t2]) ]
+
     #out = [t1_col_arr;t2_col_arr]
     # TODO: assign types
     #ret = :( ($new_key_arr,$(rest_cols3_arrs...)) = HPAT.API.join([$key1_arr;$(rest_cols1_arrs...)], [$key2_arr;$(rest_cols2_arrs...)]) )
@@ -176,9 +228,13 @@ function translate_aggregate(lhs, rhs, state)
     end
     
     out_var = Symbol("_agg_out_$lhs")
-    println(out_var)
+
+    # assign types of output columns
+    # we know the type of key column already
     out_type_assigns = [ :($c1_out_arr::Vector{$(state.tableTypes[t1][1])} = $(out_var)[1]) ]
+    # create type variables for other types
     out_typs = [ Symbol("_T_$(out_cols[i])") for i in 1:length(out_cols) ]
+    out_typs[1] = state.tableTypes[t1][1]
     out_type_assigns1 = [ :($(out_arrs[i])::Vector{$(out_typs[i])} = $(out_var)[$i])  for i in 2:length(out_arrs) ]
     out_type_assigns = [out_type_assigns;out_type_assigns1]
     
@@ -188,6 +244,7 @@ function translate_aggregate(lhs, rhs, state)
     push!(out_e, out_call)
     push!(out_e, out_type_assigns...)
     state.tableCols[lhs] = out_cols
+    state.tableTypes[lhs] = out_typs
     # TODO: save new table types
     #ret = quote $(out_e...) end
     ret = Expr(:block, out_e...)
@@ -309,6 +366,18 @@ function translate_data_table(lhs, state, arr_var_expr, source_typ, other_args)
     ret = quote $(out...) end
     @dprintln(3, "data table returns: ",ret)
     return ret
+end
+
+function isQuote(e::Expr)
+    return e.head==:quote
+end
+
+function isQuote(e::QuoteNode)
+    return true
+end
+
+function isQuote(e::ANY)
+    return false
 end
 
 """

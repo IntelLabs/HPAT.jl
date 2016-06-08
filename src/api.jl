@@ -116,6 +116,12 @@ end
     return out
 end
 
+@noinline function table_filter!(cond::BitArray{1}, columns::Vector{Vector})
+    for i in 1:length(columns)
+        columns[i] = columns[i][cond]
+    end
+end
+
 #=
 @doc """
 function join{T1,T12,T22}(t1c1::Vector{T1}, t1c2::Vector{T12}, t2c1::Vector{T1}, t2c2::Vector{T22})
