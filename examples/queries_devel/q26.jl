@@ -2,7 +2,7 @@ using HPAT
 
 @acc hpat function q26(category, item_count, num_centroids, file_name)
     store_sales = DataSource(DataTable{:ss_item_sk=Int64,:ss_customer_sk=Int64}, HDF5, file_name)
-    item = DataSource(DataTable{:item_sk=Int64,:i_category=ASCIIString,:i_class_id=Int64}, HDF5, file_name)
+    item = DataSource(DataTable{:i_item_sk=Int64,:i_category=ASCIIString,:i_class_id=Int64}, HDF5, file_name)
 
     sale_items = join(store_sales, item, :ss_item_sk==:i_item_sk, :ss_item_sk)
 
