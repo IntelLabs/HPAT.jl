@@ -132,8 +132,13 @@ function translate_table_oprs(nodes::Array{Any,1}, state::DomainState)
         if isa(nodes[i],Expr) && nodes[i].head==:(=) && isCall(nodes[i].args[2])
             func_call = nodes[i].args[2].args[1]
             if func_call==GlobalRef(HPAT.API, :join)
-                ast = translate_join(nodes,i,state)
-                append!(out,ast)
+                remove_before,remove_after,ast = translate_join(nodes[i],state)
+                skip += remove_after
+                s_start = (length(new_nodes)-remove_before)+1
+                s_end = length(new_nodes)
+                # replace ast nodes with new node
+                splice!(new_nodes, s_start:s_end, ast)
+                continue
             elseif func_call==GlobalRef(HPAT.API, :aggregate)
                 ast = translate_aggregate(nodes,i,state)
                 append!(out,ast)
@@ -165,7 +170,7 @@ function translate_table_oprs(nodes::Array{Any,1}, state::DomainState)
 end
 
 """
-Translate table_filter to Expr(:filter, cond_arr, col_arrs...) and remove array of array garbage
+Translate table_filter to Expr(:filter, cond_arr, t1 ,col_arrs...) and remove array of array garbage
 
     returns: number of junk nodes to remove before the filter call 
              number of junk nodes to remove after the filter call
@@ -173,25 +178,26 @@ Translate table_filter to Expr(:filter, cond_arr, col_arrs...) and remove array 
 
     example:
         _sale_items_cond_e = _sale_items_i_category::Array{Int64,1} .== category::Int64::BitArray{1}
-        _filter_t1 = (top(ccall))(:jl_alloc_array_1d,(top(apply_type))(Base.Array,Array{T,1},1)::Type{Array{Array{T,1},1}},(top(svec))(Base.Any,Base.Int)::SimpleVector,Array{Array{T,1},1},0,4,0)::Array{Array{T,1},1}
+        _filter_sale_items = (top(ccall))(:jl_alloc_array_1d,(top(apply_type))(Base.Array,Array{T,1},1)::Type{Array{Array{T,1},1}},(top(svec))(Base.Any,Base.Int)::SimpleVector,Array{Array{T,1},1},0,4,0)::Array{Array{T,1},1}
         ##7580 = _sale_items_ss_item_sk::Array{Int64,1}
-        (ParallelAccelerator.API.setindex!)(_filter_t1::Array{Array{T,1},1},##7580::Array{Int64,1},1)::Array{Array{T,1},1}
+        (ParallelAccelerator.API.setindex!)(_filter_sale_items::Array{Array{T,1},1},##7580::Array{Int64,1},1)::Array{Array{T,1},1}
         ##7581 = _sale_items_ss_customer_sk::Array{Int64,1}
-        (ParallelAccelerator.API.setindex!)(_filter_t1::Array{Array{T,1},1},##7581::Array{Int64,1},2)::Array{Array{T,1},1}
+        (ParallelAccelerator.API.setindex!)(_filter_sale_items::Array{Array{T,1},1},##7581::Array{Int64,1},2)::Array{Array{T,1},1}
         ##7582 = _sale_items_i_category::Array{Int64,1}
-        (ParallelAccelerator.API.setindex!)(_filter_t1::Array{Array{T,1},1},##7582::Array{Int64,1},3)::Array{Array{T,1},1}
+        (ParallelAccelerator.API.setindex!)(_filter_sale_items::Array{Array{T,1},1},##7582::Array{Int64,1},3)::Array{Array{T,1},1}
         ##7583 = _sale_items_i_class_id::Array{Int64,1}
-        (ParallelAccelerator.API.setindex!)(_filter_t1::Array{Array{T,1},1},##7583::Array{Int64,1},4)::Array{Array{T,1},1}
-        (HPAT.API.table_filter!)(_sale_items_cond_e::BitArray{1},_filter_t1::Array{Array{T,1},1})::Void
-        _sale_items_ss_item_sk = (top(convert))(Array{Int64,1},(ParallelAccelerator.API.getindex)(_filter_t1::Array{Array{T,1},1},1)::Array{T,1})::Array{Int64,1}
-        _sale_items_ss_customer_sk = (top(convert))(Array{Int64,1},(ParallelAccelerator.API.getindex)(_filter_t1::Array{Array{T,1},1},2)::Array{T,1})::Array{Int64,1}
-        _sale_items_i_category = (top(convert))(Array{Int64,1},(ParallelAccelerator.API.getindex)(_filter_t1::Array{Array{T,1},1},3)::Array{T,1})::Array{Int64,1}
-        _sale_items_i_class_id = (top(convert))(Array{Int64,1},(ParallelAccelerator.API.getindex)(_filter_t1::Array{Array{T,1},1},4)::Array{T,1})::Array{Int64,1} # /Users/etotoni/.julia/v0.4/HPAT/examples/queries_devel/tests/test_q26.jl, line 15:
+        (ParallelAccelerator.API.setindex!)(_filter_sale_items::Array{Array{T,1},1},##7583::Array{Int64,1},4)::Array{Array{T,1},1}
+        (HPAT.API.table_filter!)(_sale_items_cond_e::BitArray{1},_filter_sale_items::Array{Array{T,1},1})::Void
+        _sale_items_ss_item_sk = (top(convert))(Array{Int64,1},(ParallelAccelerator.API.getindex)(_filter_sale_items::Array{Array{T,1},1},1)::Array{T,1})::Array{Int64,1}
+        _sale_items_ss_customer_sk = (top(convert))(Array{Int64,1},(ParallelAccelerator.API.getindex)(_filter_sale_items::Array{Array{T,1},1},2)::Array{T,1})::Array{Int64,1}
+        _sale_items_i_category = (top(convert))(Array{Int64,1},(ParallelAccelerator.API.getindex)(_filter_sale_items::Array{Array{T,1},1},3)::Array{T,1})::Array{Int64,1}
+        _sale_items_i_class_id = (top(convert))(Array{Int64,1},(ParallelAccelerator.API.getindex)(_filter_sale_items::Array{Array{T,1},1},4)::Array{T,1})::Array{Int64,1} # /Users/etotoni/.julia/v0.4/HPAT/examples/queries_devel/tests/test_q26.jl, line 15:
 """
 function translate_filter(filter_node::Expr,state)
     @dprintln(3,"translating filter: ",filter_node)
     cond_arr = toLHSVar(filter_node.args[2])
     arr_of_arrs = toLHSVar(filter_node.args[3])
+    # TODO: remove arr_of_arrs from Lambda
     # convert _filter_t1 to t1
     table_name = Symbol(string(arr_of_arrs)[9:end])
     cols = state.tableCols[table_name]
@@ -207,10 +213,67 @@ function translate_filter(filter_node::Expr,state)
 end
 
 """
-TODO
+Translate join to Expr(:join, t3,t1,t2,out_cols, in1_cols, in2_cols) and remove array of array garbage
+
+    returns: number of junk nodes to remove before the filter call 
+             number of junk nodes to remove after the filter call
+             new ast :filter node
+             
+    example:
+        _join_store_sales = (top(ccall))(:jl_alloc_array_1d,(top(apply_type))(Base.Array,Array{T,1},1)::Type{Array{Array{T,1},1}},(top(svec))(Base.Any,Base.Int)::SimpleVector,Array{Array{T,1},1},0,2,0)::Array{Array{T,1},1}
+        ##7583 = _store_sales_ss_item_sk::Array{Int64,1}
+        (ParallelAccelerator.API.setindex!)(_join_store_sales::Array{Array{T,1},1},##7583::Array{Int64,1},1)::Array{Array{T,1},1}
+        ##7584 = _store_sales_ss_customer_sk::Array{Int64,1}
+        (ParallelAccelerator.API.setindex!)(_join_store_sales::Array{Array{T,1},1},##7584::Array{Int64,1},2)::Array{Array{T,1},1}
+        _join_item = (top(ccall))(:jl_alloc_array_1d,(top(apply_type))(Base.Array,Array{T,1},1)::Type{Array{Array{T,1},1}},(top(svec))(Base.Any,Base.Int)::SimpleVector,Array{Array{T,1},1},0,3,0)::Array{Array{T,1},1}
+        ##7585 = _item_i_item_sk::Array{Int64,1}
+        (ParallelAccelerator.API.setindex!)(_join_item::Array{Array{T,1},1},##7585::Array{Int64,1},1)::Array{Array{T,1},1}
+        ##7586 = _item_i_category::Array{Int64,1}
+        (ParallelAccelerator.API.setindex!)(_join_item::Array{Array{T,1},1},##7586::Array{Int64,1},2)::Array{Array{T,1},1}
+        ##7587 = _item_i_class_id::Array{Int64,1}
+        (ParallelAccelerator.API.setindex!)(_join_item::Array{Array{T,1},1},##7587::Array{Int64,1},3)::Array{Array{T,1},1}
+        _join_out_sale_items = (HPAT.API.join)(_join_store_sales::Array{Array{T,1},1},_join_item::Array{Array{T,1},1})::Array{Array{Any,1},1}
+        GenSym(2) = (ParallelAccelerator.API.getindex)(_join_out_sale_items::Array{Array{Any,1},1},1)::Array{Any,1}
+        GenSym(3) = (Base.arraysize)(GenSym(2),1)::Int64
+        GenSym(5) = (top(ccall))(:jl_alloc_array_1d,(top(apply_type))(Base.Array,Int64,1)::Type{Array{Int64,1}},(top(svec))(Base.Any,Base.Int)::SimpleVector,Array{Int64,1},0,GenSym(3),0)::Array{Int64,1}
+        _sale_items_ss_item_sk = (Base.copy!)($(Expr(:new, :((top(getfield))(Base,:LinearFast)::Type{Base.LinearFast}))),GenSym(5),$(Expr(:new, :((top(getfield))(Base,:LinearFast)::Type{Base.LinearFast}))),GenSym(2))::Array{Int64,1}
+        GenSym(6) = (ParallelAccelerator.API.getindex)(_join_out_sale_items::Array{Array{Any,1},1},2)::Array{Any,1}
+        GenSym(7) = (Base.arraysize)(GenSym(6),1)::Int64
+        GenSym(9) = (top(ccall))(:jl_alloc_array_1d,(top(apply_type))(Base.Array,Int64,1)::Type{Array{Int64,1}},(top(svec))(Base.Any,Base.Int)::SimpleVector,Array{Int64,1},0,GenSym(7),0)::Array{Int64,1}
+        _sale_items_ss_customer_sk = (Base.copy!)($(Expr(:new, :((top(getfield))(Base,:LinearFast)::Type{Base.LinearFast}))),GenSym(9),$(Expr(:new, :((top(getfield))(Base,:LinearFast)::Type{Base.LinearFast}))),GenSym(6))::Array{Int64,1}
+        GenSym(10) = (ParallelAccelerator.API.getindex)(_join_out_sale_items::Array{Array{Any,1},1},3)::Array{Any,1}
+        GenSym(11) = (Base.arraysize)(GenSym(10),1)::Int64
+        GenSym(13) = (top(ccall))(:jl_alloc_array_1d,(top(apply_type))(Base.Array,Int64,1)::Type{Array{Int64,1}},(top(svec))(Base.Any,Base.Int)::SimpleVector,Array{Int64,1},0,GenSym(11),0)::Array{Int64,1}
+        _sale_items_i_category = (Base.copy!)($(Expr(:new, :((top(getfield))(Base,:LinearFast)::Type{Base.LinearFast}))),GenSym(13),$(Expr(:new, :((top(getfield))(Base,:LinearFast)::Type{Base.LinearFast}))),GenSym(10))::Array{Int64,1}
+        GenSym(14) = (ParallelAccelerator.API.getindex)(_join_out_sale_items::Array{Array{Any,1},1},4)::Array{Any,1}
+        GenSym(15) = (Base.arraysize)(GenSym(14),1)::Int64
+        GenSym(17) = (top(ccall))(:jl_alloc_array_1d,(top(apply_type))(Base.Array,Int64,1)::Type{Array{Int64,1}},(top(svec))(Base.Any,Base.Int)::SimpleVector,Array{Int64,1},0,GenSym(15),0)::Array{Int64,1}
+        _sale_items_i_class_id = (Base.copy!)($(Expr(:new, :((top(getfield))(Base,:LinearFast)::Type{Base.LinearFast}))),GenSym(17),$(Expr(:new, :((top(getfield))(Base,:LinearFast)::Type{Base.LinearFast}))),GenSym(14))::Array{Int64,1} # /home/etotoni/.julia/v0.4/HPAT/examples/queries_devel/tests/test_q26.jl, line 14:
+
 """
-function translate_join(nodes,i,state)
-    return []
+function translate_join(join_node,state)
+    @dprintln(3,"translating join: ",join_node)
+    out_arr = toLHSVar(join_node.args[1])
+    in1_arr = toLHSVar(join_node.args[2].args[2])
+    in2_arr = toLHSVar(join_node.args[2].args[3])
+    
+    # convert _join_out_t3 to t3
+    t3 = Symbol(string(out_arr)[11:end])
+    # convert _join_t1 to t1
+    t1 = Symbol(string(in1_arr)[7:end])
+    t2 = Symbol(string(in2_arr)[7:end])
+    
+    t3_cols = state.tableCols[t3]
+    t1_cols = state.tableCols[t1]
+    t2_cols = state.tableCols[t2]
+    t3_num_cols = length(t3_cols)
+    t1_num_cols = length(t1_cols)
+    t2_num_cols = length(t2_cols)
+    
+    remove_before = 2*t1_num_cols+1+2*t2_num_cols+1
+    remove_after =  4*t3_num_cols
+    new_join_node = Expr(:join, t3, t1, t2, t3_cols, t1_cols, t2_cols)
+    return remove_before, remove_after, [new_join_node]
 end
 
 """
