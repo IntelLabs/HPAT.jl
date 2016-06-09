@@ -118,9 +118,17 @@ end
 
 
 function translate_table_oprs(nodes::Array{Any,1}, state::DomainState)
+    # array of new nodes after translation
     new_nodes = []
+    # number of nodes to skip in the loop
+    # translating operations requires skipping some nodes after current node
+    skip = 0
     for i in 1:length(nodes)
         out = []
+        if skip!=0 
+            skip-=1
+            continue
+        end
         if isa(nodes[i],Expr) && nodes[i].head==:(=) && isCall(nodes[i].args[2])
             func_call = nodes[i].args[2].args[1]
             if func_call==GlobalRef(HPAT.API, :join)
@@ -135,8 +143,16 @@ function translate_table_oprs(nodes::Array{Any,1}, state::DomainState)
         elseif isCall(nodes[i])
             func_call = nodes[i].args[1]
             if func_call==GlobalRef(HPAT.API, :table_filter!)
-                ast = translate_filter(nodes,i,state)
-                append!(out,ast)
+                # returns: new ast :filter node
+                # number of junk nodes to remove AFTER the filter call
+                # number of junk nodes to remove BEFORE the filter call
+                remove_before,remove_after,ast = translate_filter(nodes[i],state)
+                skip += remove_after
+                s_start = (length(new_nodes)-remove_before)+1
+                s_end = length(new_nodes)
+                # replace ast nodes with new node
+                splice!(new_nodes, s_start:s_end, ast)
+                continue
             end
         end
         if length(out)==0
@@ -150,6 +166,11 @@ end
 
 """
 Translate table_filter to Expr(:filter, cond_arr, col_arrs...) and remove array of array garbage
+
+    returns: number of junk nodes to remove before the filter call 
+             number of junk nodes to remove after the filter call
+             new ast :filter node
+
     example:
         _sale_items_cond_e = _sale_items_i_category::Array{Int64,1} .== category::Int64::BitArray{1}
         _filter_t1 = (top(ccall))(:jl_alloc_array_1d,(top(apply_type))(Base.Array,Array{T,1},1)::Type{Array{Array{T,1},1}},(top(svec))(Base.Any,Base.Int)::SimpleVector,Array{Array{T,1},1},0,4,0)::Array{Array{T,1},1}
@@ -167,13 +188,22 @@ Translate table_filter to Expr(:filter, cond_arr, col_arrs...) and remove array 
         _sale_items_i_category = (top(convert))(Array{Int64,1},(ParallelAccelerator.API.getindex)(_filter_t1::Array{Array{T,1},1},3)::Array{T,1})::Array{Int64,1}
         _sale_items_i_class_id = (top(convert))(Array{Int64,1},(ParallelAccelerator.API.getindex)(_filter_t1::Array{Array{T,1},1},4)::Array{T,1})::Array{Int64,1} # /Users/etotoni/.julia/v0.4/HPAT/examples/queries_devel/tests/test_q26.jl, line 15:
 """
-function translate_filter(nodes,i,state)
-    
-    cond_arr = toLHSVar(nodes[i].args[2])
-    arr_of_arrs = toLHSVar(nodes[i].args[3])
+function translate_filter(filter_node::Expr,state)
+    @dprintln(3,"translating filter: ",filter_node)
+    cond_arr = toLHSVar(filter_node.args[2])
+    arr_of_arrs = toLHSVar(filter_node.args[3])
     # convert _filter_t1 to t1
-    table_name = string(arr_of_arrs)[9:end]
-    return []
+    table_name = Symbol(string(arr_of_arrs)[9:end])
+    cols = state.tableCols[table_name]
+    num_cols = length(cols)
+    
+    # remove temp array assignment and setindex!() for each column, remove array of array allocation
+    remove_before = 2*num_cols+1;
+    # remove type convert calls after filter() 
+    remove_after = num_cols
+    new_filter_node = Expr(:filter, cond_arr, table_name, cols)
+    @dprintln(3,"filter remove_before: ",remove_before," remove_after: ",remove_after," filter_node: ",filter_node)
+    return remove_before, remove_after, [new_filter_node]
 end
 
 """
