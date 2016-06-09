@@ -196,6 +196,7 @@ function translate_aggregate(lhs, rhs, state)
     c1_arr = getColName(t1, c1)
     c1_out_arr = getColName(lhs, c1)
     out_e = []
+    out_dummies = []
     out_aggs = []
     out_arrs = [c1_out_arr]
     out_cols = [c1]
@@ -227,10 +228,11 @@ function translate_aggregate(lhs, rhs, state)
         #          t2_c2::_T_c2 = t2_c2
         typ_name = Symbol("_T_$(out_col)")
         dummy_reduce = :( $typ_name = typeof($(func)($out_e_arr)) )
-        push!(out_e, dummy_reduce)
+        push!(out_dummies, dummy_reduce)
         # typ_assigns = [ :($new_key_arr::Vector{$(col_types[1])} = _j_out[1]) ]
         
     end
+    append!(out_e,out_dummies)
     
     out_var = Symbol("_agg_out_$lhs")
 
