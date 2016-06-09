@@ -88,17 +88,18 @@ function translate_filter(t1::Symbol, cond::Expr, state)
     cond_assign = :( $cond_arr = $cond )
     
     t1_num_cols = length(state.tableCols[t1])
-    t1_col_arr = :(_filter_t1 = Array(Vector,$(t1_num_cols)))
+    arg_arr = Symbol("_filter_$t1")
+    t1_col_arr = :($arg_arr = Array(Vector,$(t1_num_cols)))
     # assign column arrays
     # e.g. t1[1] = _t1_c1
     
     col_arrs = map(x->getColName(t1,x), state.tableCols[t1])
-    assigns = [ Expr(:(=),:(_filter_t1[$i]),:($(col_arrs[i]))) for i in 1:length(state.tableCols[t1]) ]
-    #out_assigns = [ Expr(:(=), :($(col_arrs[i])::Vector{$(state.tableTypes[t1][i])}) ,:(_filter_t1[$i])) for i in 1:length(state.tableCols[t1]) ]
-    out_assigns = [ Expr(:(=), :($(col_arrs[i])) ,:(_filter_t1[$i])) for i in 1:length(state.tableCols[t1]) ]
+    assigns = [ Expr(:(=),:($arg_arr[$i]),:($(col_arrs[i]))) for i in 1:length(state.tableCols[t1]) ]
+    #out_assigns = [ Expr(:(=), :($(col_arrs[i])::Vector{$(state.tableTypes[t1][i])}) ,:($arg_arr[$i])) for i in 1:length(state.tableCols[t1]) ]
+    out_assigns = [ Expr(:(=), :($(col_arrs[i])) ,:($arg_arr[$i])) for i in 1:length(state.tableCols[t1]) ]
     
     mod_call = GlobalRef(HPAT.API, :table_filter!)
-    filter_call = :( ($mod_call)($cond_arr,(_filter_t1)) )
+    filter_call = :( ($mod_call)($cond_arr,($arg_arr)) )
     ret = Expr(:block, cond_assign, t1_col_arr, assigns..., filter_call, out_assigns...)
     @dprintln(3,"filter returns: ", ret)
     return ret
