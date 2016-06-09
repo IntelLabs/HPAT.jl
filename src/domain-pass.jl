@@ -140,8 +140,13 @@ function translate_table_oprs(nodes::Array{Any,1}, state::DomainState)
                 splice!(new_nodes, s_start:s_end, ast)
                 continue
             elseif func_call==GlobalRef(HPAT.API, :aggregate)
-                ast = translate_aggregate(nodes,i,state)
-                append!(out,ast)
+                remove_before,remove_after,ast = translate_aggregate(nodes[i],state)
+                skip += remove_after
+                s_start = (length(new_nodes)-remove_before)+1
+                s_end = length(new_nodes)
+                # replace ast nodes with new node
+                splice!(new_nodes, s_start:s_end, ast)
+                continue
             end
         # TODO: any recursive case?
         # elseif isa(nodes[i],Expr) && nodes[i].head==:block
@@ -277,10 +282,39 @@ function translate_join(join_node,state)
 end
 
 """
-TODO
+    Example:
+        _T_ss_item_count = (Main.typeof)((Base.arraylen)(_customer_i_class_ss_item_count_e::Array{Int64,1})::Int64)::Type{Int64}
+        _T_id1 = (Main.typeof)((ParallelAccelerator.API.sum)(1 .* _customer_i_class_id1_e::BitArray{1}::Array{Int64,1})::Int64)::Type{Int64}
+        ...
+        _T_id15 = (Main.typeof)((ParallelAccelerator.API.sum)(1 .* _customer_i_class_id15_e::BitArray{1}::Array{Int64,1})::Int64)::Type{Int64}
+        _agg_out_customer_i_class = (HPAT.API.aggregate)(_sale_items_ss_customer_sk::Array{Int64,1},(top(vect))((top(tuple))(_customer_i_class_ss_item_count_e::Array{Int64,1},Main.length)::Tuple{Array{Int64,1},Function},(top(tuple))(_customer_i_class_id1_e::BitArray{1},Main.sum)::Tuple{BitArray{1},Function},(top(tuple))(_customer_i_class_id2_e::BitArray{1},Main.sum)::Tuple{BitArray{1},Function},(top(tuple))(_customer_i_class_id3_e::BitArray{1},Main.sum)::Tuple{BitArray{1},Function},(top(tuple))(_customer_i_class_id4_e::BitArray{1},Main.sum)::Tuple{BitArray{1},Function},(top(tuple))(_customer_i_class_id5_e::BitArray{1},Main.sum)::Tuple{BitArray{1},Function},(top(tuple))(_customer_i_class_id6_e::BitArray{1},Main.sum)::Tuple{BitArray{1},Function},(top(tuple))(_customer_i_class_id7_e::BitArray{1},Main.sum)::Tuple{BitArray{1},Function},(top(tuple))(_customer_i_class_id8_e::BitArray{1},Main.sum)::Tuple{BitArray{1},Function},(top(tuple))(_customer_i_class_id9_e::BitArray{1},Main.sum)::Tuple{BitArray{1},Function},(top(tuple))(_customer_i_class_id10_e::BitArray{1},Main.sum)::Tuple{BitArray{1},Function},(top(tuple))(_customer_i_class_id11_e::BitArray{1},Main.sum)::Tuple{BitArray{1},Function},(top(tuple))(_customer_i_class_id12_e::BitArray{1},Main.sum)::Tuple{BitArray{1},Function},(top(tuple))(_customer_i_class_id13_e::BitArray{1},Main.sum)::Tuple{BitArray{1},Function},(top(tuple))(_customer_i_class_id14_e::BitArray{1},Main.sum)::Tuple{BitArray{1},Function},(top(tuple))(_customer_i_class_id15_e::BitArray{1},Main.sum)::Tuple{BitArray{1},Function}))::Array{Array{T,1},1}
+        _customer_i_class_ss_customer_sk = (top(convert))(Array{Int64,1},(ParallelAccelerator.API.getindex)(_agg_out_customer_i_class::Array{Array{T,1},1},1)::Array{T,1})::Array{Int64,1}
+        _customer_i_class_ss_item_count = (top(convert))(Array{Int64,1},(ParallelAccelerator.API.getindex)(_agg_out_customer_i_class::Array{Array{T,1},1},2)::Array{T,1})::Array{Int64,1}
+        _customer_i_class_id1 = (top(convert))(Array{Int64,1},(ParallelAccelerator.API.getindex)(_agg_out_customer_i_class::Array{Array{T,1},1},3)::Array{T,1})::Array{Int64,1}
+        ...
+        _customer_i_class_id15 = (top(convert))(Array{Int64,1},(ParallelAccelerator.API.getindex)(_agg_out_customer_i_class::Array{Array{T,1},1},17)::Array{T,1})::Array{Int64,1} # /home/etotoni/.julia/v0.4/HPAT/examples/queries_devel/tests/test_q26.jl, line 33:
 """
-function translate_aggregate(nodes,i,state)
-    return []
+function translate_aggregate(aggregate_node,state)
+    @dprintln(3,"translating aggregate: ",aggregate_node)
+    out_arr = toLHSVar(aggregate_node.args[1])
+    # convert _agg_out_t2_in_t1 to t2, t1
+    out_names = string(out_arr)[10:end]
+    in_c = search(out_names,"in").start
+    t1 = Symbol(out_names[in_c+3:end])
+    t2 = Symbol(out_names[1:in_c-2])
+    
+    t1_cols = state.tableCols[t1]
+    t2_cols = state.tableCols[t2]
+    t1_num_cols = length(t1_cols)
+    t2_num_cols = length(t2_cols)
+    
+    # one typeof() call for each output column except key
+    remove_before = t2_num_cols-1
+    # extra assignments
+    remove_after =  t2_num_cols
+    # TODO: simplify args
+    new_aggregate_node = Expr(:aggregate, t2, t1, aggregate_node.args[2].args[2:3])
+    return remove_before, remove_after, [new_aggregate_node]
 end
 
 # :(=) assignment (:(=), lhs, rhs)

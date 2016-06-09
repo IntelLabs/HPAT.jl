@@ -234,7 +234,7 @@ function translate_aggregate(lhs, rhs, state)
     end
     append!(out_e,out_dummies)
     
-    out_var = Symbol("_agg_out_$lhs")
+    out_var = Symbol("_agg_out_$(lhs)_in_$(t1)")
 
     # assign types of output columns
     # we know the type of key column already
@@ -247,6 +247,7 @@ function translate_aggregate(lhs, rhs, state)
     
     # GlobalRef since Julia doesn't resolve the module! why does GlobalRef work in surface AST??
     agg_call = GlobalRef(HPAT.API,:aggregate)
+    
     out_call = Expr(:(=), out_var, :($(agg_call)($c1_arr,[$(out_aggs...)])) )
     push!(out_e, out_call)
     push!(out_e, out_type_assigns...)
