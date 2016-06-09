@@ -1,6 +1,7 @@
 using HPAT
 
 HPAT.CaptureAPI.set_debug_level(3)
+HPAT.DomainPass.set_debug_level(3)
 using CompilerTools
 CompilerTools.OptFramework.set_debug_level(3)
 

@@ -56,7 +56,9 @@ function from_root(function_name, ast)
     @dprintln(1,"Starting main DomainPass.from_root.  function = ", function_name, " ast = ", ast)
 
     linfo, body = CompilerTools.LambdaHandling.lambdaToLambdaVarInfo(ast)
-    state::DomainState = DomainState(linfo, 0)
+    tableCols, tableTypes = get_table_meta(body)
+    @dprintln(3,"HPAT tables: ", tableCols,tableTypes)
+    state::DomainState = DomainState(linfo, 0, tableCols, tableTypes)
     
     # transform body
     body.args = from_toplevel_body(body.args, state)
@@ -68,13 +70,30 @@ end
 # information about AST gathered and used in DomainPass
 type DomainState
     linfo  :: LambdaVarInfo
-    data_source_counter::Int64 # a unique counter for data sources in program 
+    data_source_counter::Int64 # a unique counter for data sources in program
+    tableCols::Dict{Symbol,Vector{Symbol}}
+    tableTypes::Dict{Symbol,Vector{Symbol}}
 end
 
+function get_table_meta(body)
+    first_arg = body.args[1]
+    if isa(first_arg, Expr) && first_arg.head==:meta
+        for meta in first_arg.args
+            if meta.head==:hpat_tables
+                @dprintln(3, "hpat tables found: ", meta)
+                return meta.args[1],meta.args[2]
+            end
+        end
+    end
+    return Dict{Symbol,Vector{Symbol}}(),Dict{Symbol,Vector{Symbol}}()
+end
 
 # nodes are :body of AST
 function from_toplevel_body(nodes::Array{Any,1}, state::DomainState)
     res::Array{Any,1} = []
+    nodes = translate_table_oprs(nodes,state)
+    @dprintln(3,"body after table translation: ", nodes)
+    
     for node in nodes
         new_exprs = from_expr(node, state)
         append!(res, new_exprs)
@@ -95,6 +114,80 @@ end
 
 function from_expr(node::Any, state::DomainState)
     return [node]
+end
+
+
+function translate_table_oprs(nodes::Array{Any,1}, state::DomainState)
+    new_nodes = []
+    for i in 1:length(nodes)
+        out = []
+        if isa(nodes[i],Expr) && nodes[i].head==:(=) && isCall(nodes[i].args[2])
+            func_call = nodes[i].args[2].args[1]
+            if func_call==GlobalRef(HPAT.API, :join)
+                ast = translate_join(nodes,i,state)
+                append!(out,ast)
+            elseif func_call==GlobalRef(HPAT.API, :aggregate)
+                ast = translate_aggregate(nodes,i,state)
+                append!(out,ast)
+            end
+        # TODO: any recursive case?
+        # elseif isa(nodes[i],Expr) && nodes[i].head==:block
+        elseif isCall(nodes[i])
+            func_call = nodes[i].args[1]
+            if func_call==GlobalRef(HPAT.API, :table_filter!)
+                ast = translate_filter(nodes,i,state)
+                append!(out,ast)
+            end
+        end
+        if length(out)==0
+            push!(new_nodes, nodes[i])
+        else
+            append!(new_nodes,out)
+        end
+    end
+    return new_nodes
+end
+
+"""
+Translate table_filter to Expr(:filter, cond_arr, col_arrs...) and remove array of array garbage
+    example:
+        _sale_items_cond_e = _sale_items_i_category::Array{Int64,1} .== category::Int64::BitArray{1}
+        _filter_t1 = (top(ccall))(:jl_alloc_array_1d,(top(apply_type))(Base.Array,Array{T,1},1)::Type{Array{Array{T,1},1}},(top(svec))(Base.Any,Base.Int)::SimpleVector,Array{Array{T,1},1},0,4,0)::Array{Array{T,1},1}
+        ##7580 = _sale_items_ss_item_sk::Array{Int64,1}
+        (ParallelAccelerator.API.setindex!)(_filter_t1::Array{Array{T,1},1},##7580::Array{Int64,1},1)::Array{Array{T,1},1}
+        ##7581 = _sale_items_ss_customer_sk::Array{Int64,1}
+        (ParallelAccelerator.API.setindex!)(_filter_t1::Array{Array{T,1},1},##7581::Array{Int64,1},2)::Array{Array{T,1},1}
+        ##7582 = _sale_items_i_category::Array{Int64,1}
+        (ParallelAccelerator.API.setindex!)(_filter_t1::Array{Array{T,1},1},##7582::Array{Int64,1},3)::Array{Array{T,1},1}
+        ##7583 = _sale_items_i_class_id::Array{Int64,1}
+        (ParallelAccelerator.API.setindex!)(_filter_t1::Array{Array{T,1},1},##7583::Array{Int64,1},4)::Array{Array{T,1},1}
+        (HPAT.API.table_filter!)(_sale_items_cond_e::BitArray{1},_filter_t1::Array{Array{T,1},1})::Void
+        _sale_items_ss_item_sk = (top(convert))(Array{Int64,1},(ParallelAccelerator.API.getindex)(_filter_t1::Array{Array{T,1},1},1)::Array{T,1})::Array{Int64,1}
+        _sale_items_ss_customer_sk = (top(convert))(Array{Int64,1},(ParallelAccelerator.API.getindex)(_filter_t1::Array{Array{T,1},1},2)::Array{T,1})::Array{Int64,1}
+        _sale_items_i_category = (top(convert))(Array{Int64,1},(ParallelAccelerator.API.getindex)(_filter_t1::Array{Array{T,1},1},3)::Array{T,1})::Array{Int64,1}
+        _sale_items_i_class_id = (top(convert))(Array{Int64,1},(ParallelAccelerator.API.getindex)(_filter_t1::Array{Array{T,1},1},4)::Array{T,1})::Array{Int64,1} # /Users/etotoni/.julia/v0.4/HPAT/examples/queries_devel/tests/test_q26.jl, line 15:
+"""
+function translate_filter(nodes,i,state)
+    
+    cond_arr = toLHSVar(nodes[i].args[2])
+    arr_of_arrs = toLHSVar(nodes[i].args[3])
+    # convert _filter_t1 to t1
+    table_name = string(arr_of_arrs)[9:end]
+    return []
+end
+
+"""
+TODO
+"""
+function translate_join(nodes,i,state)
+    return []
+end
+
+"""
+TODO
+"""
+function translate_aggregate(nodes,i,state)
+    return []
 end
 
 # :(=) assignment (:(=), lhs, rhs)
