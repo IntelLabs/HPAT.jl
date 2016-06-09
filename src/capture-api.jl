@@ -141,21 +141,25 @@ function translate_join(lhs, rhs, state)
     
     # pass tables as array of columns since [t1_c1,t1_c2...] flattens to single array instead of array of arrays
     # eg. t1 = Array(Vector,n)
+    # HACK: the table names are extracted from these variable names in DomainPass
+    _join_t1 = Symbol("_join_$t1")
+    _join_t2 = Symbol("_join_$t2")
     t1_num_cols = length(state.tableCols[t1])
-    t1_col_arr = :(_join_t1 = Array(Vector,$(t1_num_cols)))
+    t1_col_arr = :($_join_t1 = Array(Vector,$(t1_num_cols)))
     t2_num_cols = length(state.tableCols[t2])
-    t2_col_arr = :(_join_t2 = Array(Vector,$(t2_num_cols)))
+    t2_col_arr = :($_join_t2 = Array(Vector,$(t2_num_cols)))
     # assign column arrays
     # e.g. t1[1] = _t1_c1
-    assign1 = [ Expr(:(=),:(_join_t1[$i]),getColName(t1,state.tableCols[t1][i])) for i in 1:length(state.tableCols[t1]) ]
-    assign2 = [ Expr(:(=),:(_join_t2[$i]),getColName(t2,state.tableCols[t2][i])) for i in 1:length(state.tableCols[t2]) ]
+    assign1 = [ Expr(:(=),:($_join_t1[$i]),getColName(t1,state.tableCols[t1][i])) for i in 1:length(state.tableCols[t1]) ]
+    assign2 = [ Expr(:(=),:($_join_t2[$i]),getColName(t2,state.tableCols[t2][i])) for i in 1:length(state.tableCols[t2]) ]
 
     #out = [t1_col_arr;t2_col_arr]
     # TODO: assign types
     #ret = :( ($new_key_arr,$(rest_cols3_arrs...)) = HPAT.API.join([$key1_arr;$(rest_cols1_arrs...)], [$key2_arr;$(rest_cols2_arrs...)]) )
     # GlobalRef since Julia doesn't resolve the module! why does GlobalRef work in surface AST??
     g_call = GlobalRef(HPAT.API,:join)
-    join_call = :( _j_out = $(g_call)(_join_t1, _join_t2) )
+    _j_out = Symbol("_join_out_$lhs")
+    join_call = :( $_j_out = $(g_call)($_join_t1, $_join_t2) )
     
     col_types = [ state.tableTypes[t1][1] ]
     col_types1 = [ state.tableTypes[t1][i+1] for i in 1:length(rest_cols1)]
@@ -164,8 +168,8 @@ function translate_join(lhs, rhs, state)
     # save new table types
     state.tableTypes[lhs] = col_types
     
-    typ_assigns = [ :($new_key_arr::Vector{$(col_types[1])} = _j_out[1]) ]
-    typ_assigns1 = [ :($(rest_cols3_arrs[i])::Vector{$(col_types[i+1])} = _j_out[$(i+1)]) for i in 1:length(rest_cols3_arrs)]
+    typ_assigns = [ :($new_key_arr::Vector{$(col_types[1])} = $_j_out[1]) ]
+    typ_assigns1 = [ :($(rest_cols3_arrs[i])::Vector{$(col_types[i+1])} = $_j_out[$(i+1)]) for i in 1:length(rest_cols3_arrs)]
     typ_assigns = [typ_assigns;typ_assigns1]
     
     ret = Expr(:block,t1_col_arr,assign1...,t2_col_arr,assign2...,join_call,typ_assigns...)
