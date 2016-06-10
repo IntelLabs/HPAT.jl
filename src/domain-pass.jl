@@ -51,6 +51,12 @@ const generatedFuncs = [:__hpat_data_source_HDF5_open,
                         :__hpat_data_source_TXT_read,
                         :__hpat_data_source_TXT_close]
 
+
+const generatedExprHeads = [:alloc,
+                            :filter,
+                            :join,
+                            :aggregate]
+
 # ENTRY to DomainPass
 function from_root(function_name, ast)
     @dprintln(1,"Starting main DomainPass.from_root.  function = ", function_name, " ast = ", ast)

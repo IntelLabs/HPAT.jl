@@ -197,6 +197,7 @@ const hpat_checkpoint_internal =
                OptPass(toCGen, PASS_TYPED) ]
 
 append!(ParallelAccelerator.DomainIR.funcIgnoreList, [DomainPass.generatedFuncs; API.operators])
+append!(ParallelAccelerator.DomainIR.exprHeadIgnoreList, DomainPass.generatedExprHeads)
 
 
 HPAT_default_datapath = "input_data/"
