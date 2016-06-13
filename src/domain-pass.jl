@@ -324,8 +324,20 @@ function translate_aggregate(aggregate_node,state)
     remove_before = t2_num_cols-1
     # extra assignments
     remove_after =  t2_num_cols
-    # TODO: simplify args
-    new_aggregate_node = Expr(:aggregate, t2, t1, aggregate_node.args[2].args[2:3])
+    
+    # t1's key to aggregate on
+    key_arr = toLHSVar(aggregate_node.args[2].args[2])
+    
+    # list of (func,arr) tuples
+    @assert aggregate_node.args[2].args[3].args[1]==TopNode(:vect) "expect top(vect) in aggregate"
+    agg_list = aggregate_node.args[2].args[3].args[2:end] # args[1] is top(vect)
+    # example element args: Any[:(top(tuple)),:(_customer_i_class_id15_e::BitArray{1}),:(Main.sum)]
+    in_e_arr_list = map(x->toLHSVar(x.args[2]), agg_list)
+    in_func_list = map(x->x.args[3], agg_list)
+    out_col_arrs = map(x->getColName(t2, x), t2_cols)
+    
+    new_aggregate_node = Expr(:aggregate, t2, t1, key_arr, in_e_arr_list, in_func_list, out_col_arrs)
+
     return remove_before, remove_after, [new_aggregate_node]
 end
 
@@ -542,7 +554,13 @@ function live_cb(node::Expr)
         return exprs_to_process
     elseif node.head==:aggregate
         @dprintln(3,"DomainPass aggregate live CB on: ",node)
-        #return exprs_to_process
+        key_arr = node.args[3]
+        in_e_arrs = node.args[4]
+        out_col_arrs = node.args[6]
+        assign_exprs = map(x->Expr(:(=),x,1), out_col_arrs)
+        exprs_to_process = [key_arr;in_e_arrs;assign_exprs]
+        @dprintln(3,"DomainPass aggregate live CB returns: ", exprs_to_process)
+        return exprs_to_process
     end
     return nothing
 end
