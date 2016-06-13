@@ -288,7 +288,8 @@ function translate_join(join_node,state)
     
     remove_before = 2*t1_num_cols+1+2*t2_num_cols+1
     remove_after =  4*t3_num_cols
-    new_join_node = Expr(:join, t3, t1, t2, t3_cols, t1_cols, t2_cols)
+    new_join_node = Expr(:join, t3, t1, t2, t3_cols, t1_cols, t2_cols, 
+                     map(x->getColName(t3, x), t3_cols), map(x->getColName(t1, x), t1_cols), map(x->getColName(t2, x), t2_cols))
     return remove_before, remove_after, [new_join_node]
 end
 
@@ -517,14 +518,31 @@ end
 function live_cb(node::Expr)
 
     if node.head==:filter
+        @dprintln(3,"DomainPass filter live CB on: ",node)
+        # read condition array and column arrays
+        # write all column arrays
         cond_arr = node.args[1]
         t = node.args[2]
         cols = node.args[3]
         col_arrs = node.args[4]
-        @println(3,"DomainPass filter CB ",node)
-        return [cond_arr;col_arrs]
+        # artificial assignments to signify write to LivenessAnalysis
+        assign_exprs = map(x->Expr(:(=),x,1), col_arrs)
+        exprs_to_process = Any[cond_arr;col_arrs;assign_exprs]
+        @dprintln(3,"DomainPass filter live CB returns: ", exprs_to_process)
+        return exprs_to_process
     elseif node.head==:join
+        @dprintln(3,"DomainPass join live CB on: ",node)
+        t3_arrs = node.args[7]
+        t1_arrs = node.args[8]
+        t2_arrs = node.args[9]
+        # only t3 is written
+        assign_exprs = map(x->Expr(:(=),x,1), t3_arrs)
+        exprs_to_process = Any[t1_arrs;t2_arrs;assign_exprs]
+        @dprintln(3,"DomainPass join live CB returns: ", exprs_to_process)
+        return exprs_to_process
     elseif node.head==:aggregate
+        @dprintln(3,"DomainPass aggregate live CB on: ",node)
+        #return exprs_to_process
     end
     return nothing
 end
