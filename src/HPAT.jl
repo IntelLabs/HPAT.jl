@@ -62,6 +62,7 @@ export data_source_HDF5, data_source_TXT
 include("checkpoint.jl")
 include("capture-api.jl")
 include("domain-pass.jl")
+include("datatable-pass.jl")
 include("distributed-pass.jl")
 include("cgen-hpat-pattern-match.jl")
 
@@ -96,6 +97,15 @@ function runDistributedPass(func :: GlobalRef, ast, signature :: Tuple)
   dir_time = time_ns() - dir_start
   @dprintln(2, "Distributed code = ", code)
   @dprintln(1, "accelerate: DistributedPass conversion time = ", ns_to_sec(dir_time))
+  return code
+end
+
+function runDataTablePass(func :: GlobalRef, ast, signature :: Tuple)
+  dir_start = time_ns()
+  code = DataTablePass.from_root(string(func.name), ast)
+  dir_time = time_ns() - dir_start
+  @dprintln(2, "DataTable code = ", code)
+  @dprintln(1, "accelerate: DataTablePass conversion time = ", ns_to_sec(dir_time))
   return code
 end
 
@@ -167,6 +177,7 @@ const hpat = [ OptPass(captureHPAT, PASS_MACRO),
                OptPass(runDomainPass, PASS_TYPED),
                OptPass(toDomainIR, PASS_TYPED),
                OptPass(toParallelIR, PASS_TYPED),
+               OptPass(runDataTablePass, PASS_TYPED),
                OptPass(runDistributedPass, PASS_TYPED),
                OptPass(toFlatParfors, PASS_TYPED),
                OptPass(toCGen, PASS_TYPED) ]
@@ -180,6 +191,7 @@ const hpat_checkpoint =
                OptPass(addCheckpointing, PASS_TYPED),
                OptPass(toDomainIR, PASS_TYPED),
                OptPass(toParallelIR, PASS_TYPED),
+               OptPass(runDataTablePass, PASS_TYPED),
                OptPass(runDistributedPass, PASS_TYPED),
                OptPass(toFlatParfors, PASS_TYPED),
                OptPass(toCGen, PASS_TYPED) ]
@@ -192,6 +204,7 @@ const hpat_checkpoint_internal =
                OptPass(addCheckpointingRestart, PASS_TYPED),
                OptPass(toDomainIR, PASS_TYPED),
                OptPass(toParallelIR, PASS_TYPED),
+               OptPass(runDataTablePass, PASS_TYPED),
                OptPass(runDistributedPass, PASS_TYPED),
                OptPass(toFlatParfors, PASS_TYPED),
                OptPass(toCGen, PASS_TYPED) ]
