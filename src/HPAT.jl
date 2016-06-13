@@ -200,6 +200,7 @@ append!(ParallelAccelerator.DomainIR.funcIgnoreList, [DomainPass.generatedFuncs;
 append!(ParallelAccelerator.DomainIR.exprHeadIgnoreList, DomainPass.generatedExprHeads)
 ParallelAccelerator.DomainIR.setExternalCallback(DomainPass.AstWalkCallback)
 ParallelAccelerator.DomainIR.setExternalLiveCB(DomainPass.live_cb)
+ParallelAccelerator.DomainIR.setExternalAliasCB(DomainPass.alias_cb)
 
 
 HPAT_default_datapath = "input_data/"

@@ -42,6 +42,7 @@ import HPAT.CaptureAPI.getColName
 import HPAT.CaptureAPI.revColName
 
 import CompilerTools.AstWalker
+import CompilerTools.AliasAnalysis
 
 mk_alloc(typ, s) = Expr(:alloc, typ, s)
 mk_call(fun,args) = Expr(:call, fun, args...)
@@ -600,6 +601,12 @@ function live_cb(node::Expr)
     return nothing
 end
 
+function alias_cb(node::Expr)
+    if node.head==:filter || node.head==:join || node.head==:aggregate
+        return CompilerTools.AliasAnalysis.NotArray
+    end
+    return nothing
+end
 
 end # module
 
