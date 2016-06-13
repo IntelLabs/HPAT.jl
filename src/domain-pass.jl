@@ -27,6 +27,7 @@ THE POSSIBILITY OF SUCH DAMAGE.
 module DomainPass
 
 import ParallelAccelerator
+import ParallelAccelerator.DomainIR
 
 using CompilerTools
 import CompilerTools.DebugMsg
@@ -36,6 +37,9 @@ using CompilerTools.LambdaHandling
 using CompilerTools.Helper
 
 import HPAT
+import HPAT.CaptureAPI
+import HPAT.CaptureAPI.getColName
+import HPAT.CaptureAPI.revColName
 
 mk_alloc(typ, s) = Expr(:alloc, typ, s)
 mk_call(fun,args) = Expr(:call, fun, args...)
@@ -212,13 +216,14 @@ function translate_filter(filter_node::Expr,state)
     # convert _filter_t1 to t1
     table_name = Symbol(string(arr_of_arrs)[9:end])
     cols = state.tableCols[table_name]
+    col_arrs = map(x->getColName(table_name, x), cols)
     num_cols = length(cols)
     
     # remove temp array assignment and setindex!() for each column, remove array of array allocation
     remove_before = 2*num_cols+1;
     # remove type convert calls after filter() 
     remove_after = num_cols
-    new_filter_node = Expr(:filter, cond_arr, table_name, cols)
+    new_filter_node = Expr(:filter, cond_arr, table_name, cols, col_arrs)
     @dprintln(3,"filter remove_before: ",remove_before," remove_after: ",remove_after," filter_node: ",filter_node)
     return remove_before, remove_after, [new_filter_node]
 end
@@ -488,6 +493,42 @@ function pattern_match_hpat_dist_calls(lhs::Any, rhs::Any, state)
     return Any[]
 end
 =#
+
+function AstWalkCallback(node::Expr,dw)
+
+    if node.head==:filter
+        cond_arr = node.args[1]
+        node.args[1] = AstWalker.AstWalk(cond_arr, ParallelAccelerator.DomainIR.AstWalkCallback, dw)
+        t = node.args[2]
+        cols = node.args[3]
+        col_arrs = node.args[4]
+        for i in 1:length(col_arrs[i])
+            old_arr = col_arrs[i]
+            col_arrs[i] = AstWalker.AstWalk(col_arrs[i], ParallelAccelerator.DomainIR.AstWalkCallback, dw)
+            @assert col_arrs[i]==old_arr "Table column name shouldn't change for now"
+        end
+        return node
+    elseif node.head==:join
+    elseif node.head==:aggregate
+    end
+    return CompilerTools.AstWalker.ASTWALK_RECURSE
+end
+
+function live_cb(node::Expr)
+
+    if node.head==:filter
+        cond_arr = node.args[1]
+        t = node.args[2]
+        cols = node.args[3]
+        col_arrs = node.args[4]
+        @println(3,"DomainPass filter CB ",node)
+        return [cond_arr;col_arrs]
+    elseif node.head==:join
+    elseif node.head==:aggregate
+    end
+    return nothing
+end
+
 
 end # module
 

@@ -403,8 +403,23 @@ function getQuoteValue(exp::Expr)
     return exp.args[1]
 end
 
+
+"""
+Convert a table column to an array name
+"""
 function getColName(t::Symbol, c::Symbol)
     return symbol("_$(t)_$(c)")
+end
+
+"""
+reverse of getColName()
+get column name from array name
+"""
+function revColName(t::Symbol, c_arr::Symbol)
+    t_str = string(t)
+    c_arr_str = string(c_arr)
+    before_col_len = 2+length(t_str) # two underscores + length of table name
+    return c_arr_str[before_col_len+1:end]
 end
 
 end # module

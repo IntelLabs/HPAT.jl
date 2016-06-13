@@ -60,9 +60,9 @@ include("api.jl")
 using HPAT.API
 export data_source_HDF5, data_source_TXT
 include("checkpoint.jl")
-include("distributed-pass.jl")
-include("domain-pass.jl")
 include("capture-api.jl")
+include("domain-pass.jl")
+include("distributed-pass.jl")
 include("cgen-hpat-pattern-match.jl")
 
 # overwrite print so only rank 0 prints
@@ -198,6 +198,8 @@ const hpat_checkpoint_internal =
 
 append!(ParallelAccelerator.DomainIR.funcIgnoreList, [DomainPass.generatedFuncs; API.operators])
 append!(ParallelAccelerator.DomainIR.exprHeadIgnoreList, DomainPass.generatedExprHeads)
+ParallelAccelerator.DomainIR.setExternalCallback(DomainPass.AstWalkCallback)
+ParallelAccelerator.DomainIR.setExternalLiveCB(DomainPass.live_cb)
 
 
 HPAT_default_datapath = "input_data/"
