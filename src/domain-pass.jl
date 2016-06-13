@@ -41,6 +41,8 @@ import HPAT.CaptureAPI
 import HPAT.CaptureAPI.getColName
 import HPAT.CaptureAPI.revColName
 
+import CompilerTools.AstWalker
+
 mk_alloc(typ, s) = Expr(:alloc, typ, s)
 mk_call(fun,args) = Expr(:call, fun, args...)
 
@@ -515,14 +517,47 @@ function AstWalkCallback(node::Expr,dw)
         t = node.args[2]
         cols = node.args[3]
         col_arrs = node.args[4]
-        for i in 1:length(col_arrs[i])
+        for i in 1:length(col_arrs)
             old_arr = col_arrs[i]
             col_arrs[i] = AstWalker.AstWalk(col_arrs[i], ParallelAccelerator.DomainIR.AstWalkCallback, dw)
             @assert col_arrs[i]==old_arr "Table column name shouldn't change for now"
         end
         return node
     elseif node.head==:join
+        t3_arrs = node.args[7]
+        t1_arrs = node.args[8]
+        t2_arrs = node.args[9]
+        for i in 1:length(t3_arrs)
+            old_arr = t3_arrs[i]
+            t3_arrs[i] = AstWalker.AstWalk(t3_arrs[i], ParallelAccelerator.DomainIR.AstWalkCallback, dw)
+            @assert t3_arrs[i]==old_arr "Table column name shouldn't change for now"
+        end
+        for i in 1:length(t1_arrs)
+            old_arr = t1_arrs[i]
+            t1_arrs[i] = AstWalker.AstWalk(t1_arrs[i], ParallelAccelerator.DomainIR.AstWalkCallback, dw)
+            @assert t1_arrs[i]==old_arr "Table column name shouldn't change for now"
+        end
+        for i in 1:length(t2_arrs)
+            old_arr = t2_arrs[i]
+            t2_arrs[i] = AstWalker.AstWalk(t2_arrs[i], ParallelAccelerator.DomainIR.AstWalkCallback, dw)
+            @assert t2_arrs[i]==old_arr "Table column name shouldn't change for now"
+        end
+        return node
     elseif node.head==:aggregate
+        key_arr = node.args[3]
+        in_e_arrs = node.args[4]
+        out_col_arrs = node.args[6]
+        
+        node.args[3] = AstWalker.AstWalk(key_arr, ParallelAccelerator.DomainIR.AstWalkCallback, dw)
+        for i in 1:length(in_e_arrs)
+            in_e_arrs[i] = AstWalker.AstWalk(in_e_arrs[i], ParallelAccelerator.DomainIR.AstWalkCallback, dw)
+        end
+        for i in 1:length(out_col_arrs)
+            old_arr = out_col_arrs[i]
+            out_col_arrs[i] = AstWalker.AstWalk(out_col_arrs[i], ParallelAccelerator.DomainIR.AstWalkCallback, dw)
+            @assert out_col_arrs[i]==old_arr "Table column name shouldn't change for now"
+        end
+        return node
     end
     return CompilerTools.AstWalker.ASTWALK_RECURSE
 end
