@@ -2,26 +2,26 @@
 Copyright (c) 2016, Intel Corporation
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without 
+Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
-- Redistributions of source code must retain the above copyright notice, 
+- Redistributions of source code must retain the above copyright notice,
   this list of conditions and the following disclaimer.
-- Redistributions in binary form must reproduce the above copyright notice, 
-  this list of conditions and the following disclaimer in the documentation 
+- Redistributions in binary form must reproduce the above copyright notice,
+  this list of conditions and the following disclaimer in the documentation
   and/or other materials provided with the distribution.
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
 AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE 
-LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS 
+ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
 INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF 
+CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
 THE POSSIBILITY OF SUCH DAMAGE.
-=# 
+=#
 
 
 module HPAT
@@ -165,7 +165,7 @@ function createCheckpointFunc(func, ast, sig)
   new_func = deepcopy(ast)
   new_func.args[1].args[1] = symbol(string(new_func.args[1].args[1],"_restart"))
   @dprintln(1, "createCheckpointFunc new_func = ", new_func.args[1].args[1])
-  return CompilerTools.OptFramework.MoreWork(ast, CompilerTools.OptFramework.WorkItem[CompilerTools.OptFramework.WorkItem(hpat_checkpoint_internal, hpat_checkpoint_internal, Any[], new_func)])   
+  return CompilerTools.OptFramework.MoreWork(ast, CompilerTools.OptFramework.WorkItem[CompilerTools.OptFramework.WorkItem(hpat_checkpoint_internal, hpat_checkpoint_internal, Any[], new_func)])
 end
 
 const hpat_debug = [ OptPass(captureHPAT, PASS_MACRO) ]
@@ -182,7 +182,7 @@ const hpat = [ OptPass(captureHPAT, PASS_MACRO),
                OptPass(toFlatParfors, PASS_TYPED),
                OptPass(toCGen, PASS_TYPED) ]
 
-const hpat_checkpoint = 
+const hpat_checkpoint =
              [ OptPass(createCheckpointFunc, PASS_MACRO),
                OptPass(captureHPAT, PASS_MACRO),
                OptPass(captureOperators, PASS_MACRO),
@@ -196,7 +196,7 @@ const hpat_checkpoint =
                OptPass(toFlatParfors, PASS_TYPED),
                OptPass(toCGen, PASS_TYPED) ]
 
-const hpat_checkpoint_internal = 
+const hpat_checkpoint_internal =
              [ OptPass(captureHPAT, PASS_MACRO),
                OptPass(captureOperators, PASS_MACRO),
                OptPass(toCartesianArray, PASS_MACRO),
@@ -246,7 +246,7 @@ end
 atexit(HPAT_finalize)
 
 function restart(func, args...)
-  @dprintln(1, "HPAT restart func = ", func, " type = ", typeof(func), " args = ", args...) 
+  @dprintln(1, "HPAT restart func = ", func, " type = ", typeof(func), " args = ", args...)
   arg_type_tuple_expr = Expr(:tuple)
   arg_type_tuple_expr.args = map(x -> typeof(x), [args...])
   arg_type_tuple = eval(arg_type_tuple_expr)
@@ -257,11 +257,11 @@ function restart(func, args...)
     res = CompilerTools.OptFramework.gOptFrameworkDict[gr]
     @dprintln(2, "CompilerTools.OptFramework internally mapped ", gr, " to ", res)
     assert(typeof(res) == GlobalRef)
-    new_gr = GlobalRef(res.mod, symbol(string(res.name,"_restart"))) 
+    new_gr = GlobalRef(res.mod, symbol(string(res.name,"_restart")))
     @dprintln(2, "Preparing to call the restart version of the function with name = ", new_gr)
     eval(new_gr)(args...)
   else
-    throw(string("HPAT restart function could not find function to restart."))                                                                               
+    throw(string("HPAT restart function could not find function to restart."))
   end
 end
 

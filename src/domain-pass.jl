@@ -2,26 +2,26 @@
 Copyright (c) 2016, Intel Corporation
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without 
+Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
-- Redistributions of source code must retain the above copyright notice, 
+- Redistributions of source code must retain the above copyright notice,
   this list of conditions and the following disclaimer.
-- Redistributions in binary form must reproduce the above copyright notice, 
-  this list of conditions and the following disclaimer in the documentation 
+- Redistributions in binary form must reproduce the above copyright notice,
+  this list of conditions and the following disclaimer in the documentation
   and/or other materials provided with the distribution.
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
 AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE 
-LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS 
+ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
 INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF 
+CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
 THE POSSIBILITY OF SUCH DAMAGE.
-=# 
+=#
 
 
 module DomainPass
@@ -47,11 +47,11 @@ import CompilerTools.AliasAnalysis
 mk_alloc(typ, s) = Expr(:alloc, typ, s)
 mk_call(fun,args) = Expr(:call, fun, args...)
 
-const generatedFuncs = [:__hpat_data_source_HDF5_open, 
-                        :__hpat_data_source_HDF5_size, 
-                        :__hpat_get_H5_dim_size, 
-                        :__hpat_data_source_HDF5_read, 
-                        :__hpat_data_source_HDF5_close, 
+const generatedFuncs = [:__hpat_data_source_HDF5_open,
+                        :__hpat_data_source_HDF5_size,
+                        :__hpat_get_H5_dim_size,
+                        :__hpat_data_source_HDF5_read,
+                        :__hpat_data_source_HDF5_close,
                         :__hpat_data_source_TXT_open,
                         :__hpat_data_source_TXT_size,
                         :__hpat_get_TXT_dim_size,
@@ -72,7 +72,7 @@ function from_root(function_name, ast)
     tableCols, tableTypes = get_table_meta(body)
     @dprintln(3,"HPAT tables: ", tableCols,tableTypes)
     state::DomainState = DomainState(linfo, 0, tableCols, tableTypes)
-    
+
     # transform body
     body.args = from_toplevel_body(body.args, state)
     @dprintln(1,"DomainPass.from_root returns function = ", function_name, " body = ", body)
@@ -106,7 +106,7 @@ function from_toplevel_body(nodes::Array{Any,1}, state::DomainState)
     res::Array{Any,1} = []
     nodes = translate_table_oprs(nodes,state)
     @dprintln(3,"body after table translation: ", nodes)
-    
+
     for node in nodes
         new_exprs = from_expr(node, state)
         append!(res, new_exprs)
@@ -138,7 +138,7 @@ function translate_table_oprs(nodes::Array{Any,1}, state::DomainState)
     skip = 0
     for i in 1:length(nodes)
         out = []
-        if skip!=0 
+        if skip!=0
             skip-=1
             continue
         end
@@ -190,7 +190,7 @@ end
 """
 Translate table_filter to Expr(:filter, cond_arr, t1 ,col_arrs...) and remove array of array garbage
 
-    returns: number of junk nodes to remove before the filter call 
+    returns: number of junk nodes to remove before the filter call
              number of junk nodes to remove after the filter call
              new ast :filter node
 
@@ -221,10 +221,10 @@ function translate_filter(filter_node::Expr,state)
     cols = state.tableCols[table_name]
     col_arrs = map(x->getColName(table_name, x), cols)
     num_cols = length(cols)
-    
+
     # remove temp array assignment and setindex!() for each column, remove array of array allocation
     remove_before = 2*num_cols+1;
-    # remove type convert calls after filter() 
+    # remove type convert calls after filter()
     remove_after = num_cols
     new_filter_node = Expr(:filter, cond_arr, table_name, cols, col_arrs)
     @dprintln(3,"filter remove_before: ",remove_before," remove_after: ",remove_after," filter_node: ",filter_node)
@@ -234,10 +234,10 @@ end
 """
 Translate join to Expr(:join, t3,t1,t2,out_cols, in1_cols, in2_cols) and remove array of array garbage
 
-    returns: number of junk nodes to remove before the filter call 
-             number of junk nodes to remove after the filter call
+    returns: number of junk nodes to remove before the join call
+             number of junk nodes to remove after the join call
              new ast :filter node
-             
+
     example:
         _join_store_sales = (top(ccall))(:jl_alloc_array_1d,(top(apply_type))(Base.Array,Array{T,1},1)::Type{Array{Array{T,1},1}},(top(svec))(Base.Any,Base.Int)::SimpleVector,Array{Array{T,1},1},0,2,0)::Array{Array{T,1},1}
         ##7583 = _store_sales_ss_item_sk::Array{Int64,1}
@@ -275,23 +275,23 @@ function translate_join(join_node,state)
     out_arr = toLHSVar(join_node.args[1])
     in1_arr = toLHSVar(join_node.args[2].args[2])
     in2_arr = toLHSVar(join_node.args[2].args[3])
-    
+
     # convert _join_out_t3 to t3
     t3 = Symbol(string(out_arr)[11:end])
     # convert _join_t1 to t1
     t1 = Symbol(string(in1_arr)[7:end])
     t2 = Symbol(string(in2_arr)[7:end])
-    
+
     t3_cols = state.tableCols[t3]
     t1_cols = state.tableCols[t1]
     t2_cols = state.tableCols[t2]
     t3_num_cols = length(t3_cols)
     t1_num_cols = length(t1_cols)
     t2_num_cols = length(t2_cols)
-    
+
     remove_before = 2*t1_num_cols+1+2*t2_num_cols+1
     remove_after =  4*t3_num_cols
-    new_join_node = Expr(:join, t3, t1, t2, t3_cols, t1_cols, t2_cols, 
+    new_join_node = Expr(:join, t3, t1, t2, t3_cols, t1_cols, t2_cols,
                      map(x->getColName(t3, x), t3_cols), map(x->getColName(t1, x), t1_cols), map(x->getColName(t2, x), t2_cols))
     return remove_before, remove_after, [new_join_node]
 end
@@ -317,20 +317,20 @@ function translate_aggregate(aggregate_node,state)
     in_c = search(out_names,"in").start
     t1 = Symbol(out_names[in_c+3:end])
     t2 = Symbol(out_names[1:in_c-2])
-    
+
     t1_cols = state.tableCols[t1]
     t2_cols = state.tableCols[t2]
     t1_num_cols = length(t1_cols)
     t2_num_cols = length(t2_cols)
-    
+
     # one typeof() call for each output column except key
     remove_before = t2_num_cols-1
     # extra assignments
     remove_after =  t2_num_cols
-    
+
     # t1's key to aggregate on
     key_arr = toLHSVar(aggregate_node.args[2].args[2])
-    
+
     # list of (func,arr) tuples
     @assert aggregate_node.args[2].args[3].args[1]==TopNode(:vect) "expect top(vect) in aggregate"
     agg_list = aggregate_node.args[2].args[3].args[2:end] # args[1] is top(vect)
@@ -338,7 +338,7 @@ function translate_aggregate(aggregate_node,state)
     in_e_arr_list = map(x->toLHSVar(x.args[2]), agg_list)
     in_func_list = map(x->x.args[3], agg_list)
     out_col_arrs = map(x->getColName(t2, x), t2_cols)
-    
+
     new_aggregate_node = Expr(:aggregate, t2, t1, key_arr, in_e_arr_list, in_func_list, out_col_arrs)
 
     return remove_before, remove_after, [new_aggregate_node]
@@ -346,7 +346,7 @@ end
 
 # :(=) assignment (:(=), lhs, rhs)
 function from_assignment(node::Expr, state)
-    
+
     # pattern match distributed calls that need domain translation
     hpat_call::Symbol = getHPATcall(node.args[2])
     if hpat_call==:null
@@ -481,7 +481,7 @@ function translate_data_source_TXT(lhs::LHSVar, rhs::Expr, state)
     push!(res, close_call)
     return res
 end
-                
+
             #=
             elseif isa(inner_call.args[1],GlobalRef) && inner_call.args[1].name==:__hpat_Kmeans
                 dprintln(3,"kmeans found ", inner_call)
@@ -492,7 +492,7 @@ end
                 dprintln(3,"LinearRegression found ", inner_call)
                 HPAT.enableOMP()
                 lib_call = mk_call(:__hpat_LinearRegression, [lhs,inner_call.args[2], inner_call.args[3]])
-                return [lib_call] 
+                return [lib_call]
             elseif isa(inner_call.args[1],GlobalRef) && inner_call.args[1].name==:__hpat_NaiveBayes
                 dprintln(3,"NaiveBayes found ", inner_call)
                 HPAT.enableOMP()
@@ -501,7 +501,7 @@ end
             end
         end
     end
-    
+
     return Any[]
 end
 
@@ -548,7 +548,7 @@ function AstWalkCallback(node::Expr,dw)
         key_arr = node.args[3]
         in_e_arrs = node.args[4]
         out_col_arrs = node.args[6]
-        
+
         node.args[3] = AstWalker.AstWalk(key_arr, ParallelAccelerator.DomainIR.AstWalkCallback, dw)
         for i in 1:length(in_e_arrs)
             in_e_arrs[i] = AstWalker.AstWalk(in_e_arrs[i], ParallelAccelerator.DomainIR.AstWalkCallback, dw)
@@ -609,4 +609,3 @@ function alias_cb(node::Expr)
 end
 
 end # module
-

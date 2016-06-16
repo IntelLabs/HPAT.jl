@@ -10,11 +10,11 @@ DebugMsg.init()
 
 """
 At macro level, translate DataSource into function calls so that type inference
-and ParallelAccelerator compilation works with knowledge of calls and allocations for arrays. 
+and ParallelAccelerator compilation works with knowledge of calls and allocations for arrays.
 """
 function process_node(node::Expr, state, top_level_number, is_top_level, read)
     @dprintln(3,"translating expr, head: ",node.head," node: ",node)
-    if node.head == :(=) 
+    if node.head == :(=)
         return process_assignment(node, state, node.args[1], node.args[2])
     elseif node.head==:ref
         t1 = node.args[1]
@@ -25,7 +25,7 @@ function process_node(node::Expr, state, top_level_number, is_top_level, read)
             @assert isQuote(c1) "invalid table ref"
              return getColName(t1, getQuoteValue(c1))
         end
-        CompilerTools.AstWalker.ASTWALK_RECURSE 
+        CompilerTools.AstWalker.ASTWALK_RECURSE
     end
     CompilerTools.AstWalker.ASTWALK_RECURSE
 end
@@ -75,7 +75,7 @@ arrays are passed by value with tuples.
             ...
             (HPAT.API.table_filter!)(_t1_e,_filter_t1)
             _t1_c1 = _filter_t1[1]
-            ... 
+            ...
 """
 function translate_filter(t1::Symbol, cond::Expr, state)
     @dprintln(3, "translating filter: ",t1," ",cond)
@@ -83,21 +83,21 @@ function translate_filter(t1::Symbol, cond::Expr, state)
     cond = AstWalk(cond, convert_oprs_to_elementwise,  (t1, state.tableCols[t1]))
     # replace column name with actual array in expression
     cond = AstWalk(cond, replace_col_with_array,  (t1, state.tableCols[t1]))
-    # evaluate the condition into a BitArray 
+    # evaluate the condition into a BitArray
     cond_arr = Symbol("_$(t1)_cond_e")
     cond_assign = :( $cond_arr = $cond )
-    
+
     t1_num_cols = length(state.tableCols[t1])
     arg_arr = Symbol("_filter_$t1")
     t1_col_arr = :($arg_arr = Array(Vector,$(t1_num_cols)))
     # assign column arrays
     # e.g. t1[1] = _t1_c1
-    
+
     col_arrs = map(x->getColName(t1,x), state.tableCols[t1])
     assigns = [ Expr(:(=),:($arg_arr[$i]),:($(col_arrs[i]))) for i in 1:length(state.tableCols[t1]) ]
     #out_assigns = [ Expr(:(=), :($(col_arrs[i])::Vector{$(state.tableTypes[t1][i])}) ,:($arg_arr[$i])) for i in 1:length(state.tableCols[t1]) ]
     out_assigns = [ Expr(:(=), :($(col_arrs[i])) ,:($arg_arr[$i])) for i in 1:length(state.tableCols[t1]) ]
-    
+
     mod_call = GlobalRef(HPAT.API, :table_filter!)
     filter_call = :( ($mod_call)($cond_arr,($arg_arr)) )
     ret = Expr(:block, cond_assign, t1_col_arr, assigns..., filter_call, out_assigns...)
@@ -120,7 +120,7 @@ function translate_join(lhs, rhs, state)
     t2 = rhs.args[3]
     @assert rhs.args[4].head==:comparison "invalid join key"
     @assert rhs.args[4].args[2]==:(==) "invalid join key"
-    
+
     # get key columns
     key1 = getQuoteValue(rhs.args[4].args[1])
     key1_arr = getColName(t1, key1)
@@ -128,7 +128,7 @@ function translate_join(lhs, rhs, state)
     key2_arr = getColName(t2, key2)
     new_key = getQuoteValue(rhs.args[5])
     new_key_arr = getColName(lhs, new_key)
-    
+
     # get rest of the columns
     rest_cols1 = filter(x->x!=key1, state.tableCols[t1])
     rest_cols2 = filter(x->x!=key2, state.tableCols[t2])
@@ -138,7 +138,7 @@ function translate_join(lhs, rhs, state)
     # save new table
     state.tableCols[lhs] = [new_key;rest_cols1;rest_cols2]
     @dprintln(3, "new table join output: ",lhs," ", state.tableCols[lhs])
-    
+
     # pass tables as array of columns since [t1_c1,t1_c2...] flattens to single array instead of array of arrays
     # eg. t1 = Array(Vector,n)
     # HACK: the table names are extracted from these variable names in DomainPass
@@ -160,18 +160,18 @@ function translate_join(lhs, rhs, state)
     g_call = GlobalRef(HPAT.API,:join)
     _j_out = Symbol("_join_out_$lhs")
     join_call = :( $_j_out = $(g_call)($_join_t1, $_join_t2) )
-    
+
     col_types = [ state.tableTypes[t1][1] ]
     col_types1 = [ state.tableTypes[t1][i+1] for i in 1:length(rest_cols1)]
     col_types2 = [ state.tableTypes[t2][i+1] for i in 1:length(rest_cols2)]
     col_types = [col_types;col_types1;col_types2]
     # save new table types
     state.tableTypes[lhs] = col_types
-    
+
     typ_assigns = [ :($new_key_arr::Vector{$(col_types[1])} = $_j_out[1]) ]
     typ_assigns1 = [ :($(rest_cols3_arrs[i])::Vector{$(col_types[i+1])} = $_j_out[$(i+1)]) for i in 1:length(rest_cols3_arrs)]
     typ_assigns = [typ_assigns;typ_assigns1]
-    
+
     ret = Expr(:block,t1_col_arr,assign1...,t2_col_arr,assign2...,join_call,typ_assigns...)
     @dprintln(3,"join returns: ",ret)
     return ret
@@ -230,10 +230,10 @@ function translate_aggregate(lhs, rhs, state)
         dummy_reduce = :( $typ_name = typeof($(func)($out_e_arr)) )
         push!(out_dummies, dummy_reduce)
         # typ_assigns = [ :($new_key_arr::Vector{$(col_types[1])} = _j_out[1]) ]
-        
+
     end
     append!(out_e,out_dummies)
-    
+
     out_var = Symbol("_agg_out_$(lhs)_in_$(t1)")
 
     # assign types of output columns
@@ -244,10 +244,10 @@ function translate_aggregate(lhs, rhs, state)
     out_typs[1] = state.tableTypes[t1][1]
     out_type_assigns1 = [ :($(out_arrs[i])::Vector{$(out_typs[i])} = $(out_var)[$i])  for i in 2:length(out_arrs) ]
     out_type_assigns = [out_type_assigns;out_type_assigns1]
-    
+
     # GlobalRef since Julia doesn't resolve the module! why does GlobalRef work in surface AST??
     agg_call = GlobalRef(HPAT.API,:aggregate)
-    
+
     out_call = Expr(:(=), out_var, :($(agg_call)($c1_arr,[$(out_aggs...)])) )
     push!(out_e, out_call)
     push!(out_e, out_type_assigns...)
@@ -267,7 +267,7 @@ agg_oprs_map = Dict{Symbol, Symbol}(
     :(<=) => :(.<=),
     :(>=) => :(.>=),
     :(==) => :(.==),
-    
+
     # binary operators
     :(+) => :(.+),
     :(-) => :(.-),
@@ -288,7 +288,7 @@ the aggregate expression ':val2==1.1' should be translated to '_t4_val2.==1.1' t
 
 For simplicity, we assume we can convert all operations with element-wise versions.
 This is wrong for rare use cases such as comparison of two arrays([1,2]==[1,3] is not the same as [1,2].==[1,3]),
-TODO: make it fully general. 
+TODO: make it fully general.
 """
 function convert_oprs_to_elementwise(node::Symbol, table::Tuple{Symbol,Vector{Symbol}}, top_level_number, is_top_level, read)
     if haskey(agg_oprs_map,node)
@@ -302,7 +302,7 @@ function convert_oprs_to_elementwise(node::ANY, table::Tuple{Symbol,Vector{Symbo
 end
 
 """
-Replace column symbols with translated array names in aggregate expressions 
+Replace column symbols with translated array names in aggregate expressions
 """
 function replace_col_with_array(node::QuoteNode, table::Tuple{Symbol,Vector{Symbol}}, top_level_number, is_top_level, read)
     col_sym = getQuoteValue(node)
@@ -347,7 +347,7 @@ table_name = DataSource(DataTable{:column1=<typeof_column1>, :column2=<typeof_co
                     assertEqShape([table_name_column1, table_name_column2])
                     newTableMeta(:table_name, [:column1,:column2])
 
-Example table to translate: 
+Example table to translate:
         t1 = DataSource(DataTable{:userid = Int64,:val2 = Float64},HDF5,file_name)
 """
 function translate_data_table(lhs, state, arr_var_expr, source_typ, other_args)

@@ -2,24 +2,24 @@
 Copyright (c) 2016, Intel Corporation
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without 
+Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
-- Redistributions of source code must retain the above copyright notice, 
+- Redistributions of source code must retain the above copyright notice,
   this list of conditions and the following disclaimer.
-- Redistributions in binary form must reproduce the above copyright notice, 
-  this list of conditions and the following disclaimer in the documentation 
+- Redistributions in binary form must reproduce the above copyright notice,
+  this list of conditions and the following disclaimer in the documentation
   and/or other materials provided with the distribution.
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
 AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE 
-LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS 
+ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
 INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF 
+CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
 THE POSSIBILITY OF SUCH DAMAGE.
 =#
 
@@ -83,10 +83,10 @@ mk_div_int_expr(a,b) = mk_call(GlobalRef(Base,:box),[Int64, mk_call(GlobalRef(Ba
 
 dist_ir_funcs = Set([   :unsafe_arrayref,
                         :unsafe_arrayset,
-                        :__hpat_data_source_HDF5_open, 
-                        :__hpat_data_source_HDF5_size, 
-                        :__hpat_get_H5_dim_size, 
-                        :__hpat_data_source_HDF5_read, 
+                        :__hpat_data_source_HDF5_open,
+                        :__hpat_data_source_HDF5_size,
+                        :__hpat_get_H5_dim_size,
+                        :__hpat_data_source_HDF5_read,
                         :__hpat_data_source_TXT_open,
                         :__hpat_data_source_TXT_size,
                         :__hpat_get_TXT_dim_size,
@@ -94,7 +94,7 @@ dist_ir_funcs = Set([   :unsafe_arrayref,
                         :Kmeans,
                         :LinearRegression,
                         :NaiveBayes,
-                        :arraylen, :arraysize, :reshape, :tuple, 
+                        :arraylen, :arraysize, :reshape, :tuple,
                         :gemm_wrapper!,
                         :gemv!])
 
@@ -105,10 +105,10 @@ function from_root(function_name, ast::Tuple)
     (linfo, body) = ast
     lives = computeLiveness(body, linfo)
     state::DistPassState = initDistState(linfo,lives)
-    
+
     # find if an array should be partitioned, sequential, or shared
     getArrayDistributionInfo(body, state)
-    
+
     # transform body
     body.args = from_toplevel_body(body.args, state)
     @dprintln(1,"DistributedPass.from_root returns function = ", function_name, " ast = ", body)
@@ -120,7 +120,7 @@ type ArrDistInfo
     dim_sizes::Array{Union{RHSVar,Int,Expr},1}      # sizes of array dimensions
     # assuming only last dimension is partitioned
     arr_id::Int # assign ID to distributed array to access partitioning info later
-    
+
     function ArrDistInfo(num_dims::Int)
         new(false, zeros(Int64,num_dims))
     end
@@ -145,7 +145,7 @@ type DistPassState
     max_label :: Int # holds the max number of all LabelNodes
 
     function DistPassState(linfo, lives)
-        new(Dict{LHSVar, Array{ArrDistInfo,1}}(), Dict{Int, Array{LHSVar,1}}(), linfo, Int[], LHSVar[],0, lives, 
+        new(Dict{LHSVar, Array{ArrDistInfo,1}}(), Dict{Int, Array{LHSVar,1}}(), linfo, Int[], LHSVar[],0, lives,
              Dict{LHSVar,Array{Union{LHSVar,Int},1}}(),0)
     end
 end
@@ -175,7 +175,7 @@ end
 
 function initDistState(linfo::LambdaVarInfo, lives)
     state = DistPassState(linfo, lives)
-    
+
     vars = getLocalVariables(linfo)
     # Populate the symbol table
     for var in vars
@@ -185,7 +185,7 @@ function initDistState(linfo::LambdaVarInfo, lives)
             state.arrs_dist_info[var] = arrInfo
         end
     end
-    
+
     return state
 end
 
@@ -235,7 +235,7 @@ function genDistributedInit(state::DistPassState)
     initCall = Expr(:call, GlobalRef(HPAT.API,:hpat_dist_init))
     numPesCall = Expr(:call, GlobalRef(HPAT.API,:hpat_dist_num_pes))
     nodeIdCall = Expr(:call, GlobalRef(HPAT.API,:hpat_dist_node_id))
-    
+
     CompilerTools.LambdaHandling.addLocalVariable(symbol("__hpat_num_pes"), Int32, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
     CompilerTools.LambdaHandling.addLocalVariable(symbol("__hpat_node_id"), Int32, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
 
@@ -249,7 +249,7 @@ function from_assignment(node::Expr, state::DistPassState)
     @assert node.head==:(=) "DistributedPass invalid assignment head"
     lhs = node.args[1]
     rhs = node.args[2]
-    
+
     if isAllocation(rhs)
         arr = toLHSVar(lhs)
         if in(arr, state.dist_arrays)
@@ -275,9 +275,9 @@ function from_assignment(node::Expr, state::DistPassState)
 
             darr_div_expr = Expr(:(=),darr_div_var, mk_div_int_expr(arr_tot_size,:__hpat_num_pes))
             # zero-based index to match C interface of HDF5
-            darr_start_expr = Expr(:(=), darr_start_var, mk_mult_int_expr([:__hpat_node_id,darr_div_var])) 
+            darr_start_expr = Expr(:(=), darr_start_var, mk_mult_int_expr([:__hpat_node_id,darr_div_var]))
             # darr_count_expr = :($darr_count_var = __hpat_node_id==__hpat_num_pes-1 ? $arr_tot_size-__hpat_node_id*$darr_div_var : $darr_div_var)
-            darr_count_expr = Expr(:(=), darr_count_var, mk_call(GlobalRef(HPAT.API,:__hpat_get_node_portion),[arr_tot_size, darr_div_var, :__hpat_num_pes, :__hpat_node_id])) 
+            darr_count_expr = Expr(:(=), darr_count_var, mk_call(GlobalRef(HPAT.API,:__hpat_get_node_portion),[arr_tot_size, darr_div_var, :__hpat_num_pes, :__hpat_node_id]))
 
             rhs.args[end-1] = darr_count_var
 
@@ -295,24 +295,24 @@ function from_assignment(node::Expr, state::DistPassState)
             # simple 1D partitioning of last dimension, more general partitioning needed
             # match common big data matrix reperesentation
             arr_tot_size = dim_sizes[end]
-    
+
             arr_id = getDistNewID(state)
             state.arrs_dist_info[arr].arr_id = arr_id
             darr_start_var = symbol("__hpat_dist_arr_start_"*string(arr_id))
             darr_div_var = symbol("__hpat_dist_arr_div_"*string(arr_id))
             darr_count_var = symbol("__hpat_dist_arr_count_"*string(arr_id))
-    
+
             CompilerTools.LambdaHandling.addLocalVariable(darr_start_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
             CompilerTools.LambdaHandling.addLocalVariable(darr_div_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
             CompilerTools.LambdaHandling.addLocalVariable(darr_count_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-    
-    
+
+
             darr_div_expr = Expr(:(=), darr_div_var, mk_div_int_expr(arr_tot_size,:__hpat_num_pes))
             # zero-based index to match C interface of HDF5
             darr_start_expr = Expr(:(=),darr_start_var, mk_mult_int_expr([:__hpat_node_id, darr_div_var]))
             #darr_count_expr = :($darr_count_var = __hpat_node_id==__hpat_num_pes-1 ? $arr_tot_size-__hpat_node_id*$darr_div_var : $darr_div_var)
-            darr_count_expr = Expr(:(=), darr_count_var, mk_call(GlobalRef(HPAT.API,:__hpat_get_node_portion),[arr_tot_size, darr_div_var, :__hpat_num_pes, :__hpat_node_id])) 
-    
+            darr_count_expr = Expr(:(=), darr_count_var, mk_call(GlobalRef(HPAT.API,:__hpat_get_node_portion),[arr_tot_size, darr_div_var, :__hpat_num_pes, :__hpat_node_id]))
+
             # create a new tuple for reshape
             tup_call = Expr(:call, TopNode(:tuple), dim_sizes[1:end-1]... , darr_count_var)
             reshape_tup_var = symbol("__hpat_dist_tup_var_"*string(arr_id))
@@ -331,7 +331,7 @@ function from_assignment(node::Expr, state::DistPassState)
         t1 = (rhs.args[3]=='T')
         arr2 = toLHSVar(rhs.args[6])
         t2 = (rhs.args[4]=='T')
-        
+
         # result is sequential but with reduction if both inputs are partitioned and second one is transposed
         # e.g. labels*points'
         if !state.arrs_dist_info[arr1].isSequential && !state.arrs_dist_info[arr2].isSequential && t2 && !t1 &&
@@ -378,10 +378,10 @@ function from_assignment(node::Expr, state::DistPassState)
         arr1 = toLHSVar(rhs.args[4])
         t1 = (rhs.args[3]=='T')
         arr2 = toLHSVar(rhs.args[5])
-        
+
         # result is sequential but with reduction if both inputs are partitioned and matrix is not transposed (X*y)
         # result is sequential but with reduction if matrix partitioned (X'*y)
-        if !state.arrs_dist_info[arr1].isSequential && state.arrs_dist_info[lhs].isSequential && 
+        if !state.arrs_dist_info[arr1].isSequential && state.arrs_dist_info[lhs].isSequential &&
                 !state.arrs_dist_info[arr2].isSequential && !t1
             @dprintln(3,"DistPass translating gemv reduce: ", node)
             # rhs.args[1] = :__hpat_gemm_reduce
@@ -412,7 +412,7 @@ function from_assignment(node::Expr, state::DistPassState)
             rhs.args[2] = reduce_var
 
             return [reduce_var_init; node; size_expr; allreduceCall; res_copy]
-        # result and vector are sequential if matrix is parallel and transposed 
+        # result and vector are sequential if matrix is parallel and transposed
         end
     else
         node.args[2] = from_expr(rhs,state)[1]
@@ -426,7 +426,7 @@ function from_parfor(node::Expr, state)
 
     parfor = node.args[1]
     parfor.body = from_nested_body(parfor.body, state)
-    
+
     if !in(parfor.unique_id, state.seq_parfors)
         @dprintln(3,"DistPass translating parfor: ", parfor.unique_id)
         # TODO: assuming 1st loop nest is the last dimension
@@ -442,7 +442,7 @@ function from_parfor(node::Expr, state)
         CompilerTools.LambdaHandling.addLocalVariable(loop_end_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
         CompilerTools.LambdaHandling.addLocalVariable(loop_div_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
 
-        #first_arr = state.parfor_info[parfor.unique_id][1]; 
+        #first_arr = state.parfor_info[parfor.unique_id][1];
         #@dprintln(3,"DistPass parfor first array ", first_arr)
         #global_size = state.arrs_dist_info[first_arr].dim_sizes[1]
 
@@ -522,11 +522,11 @@ function from_call(node::Expr, state)
     if (func==GlobalRef(HPAT.API,:__hpat_data_source_HDF5_read) || func==GlobalRef(HPAT.API,:__hpat_data_source_TXT_read)) && in(toLHSVar(node.args[3]), state.dist_arrays)
         arr = toLHSVar(node.args[3])
         @dprintln(3,"DistPass data source for array: ", arr)
-        
-        arr_id = state.arrs_dist_info[arr].arr_id 
-        
-        dsrc_start_var = symbol("__hpat_dist_arr_start_"*string(arr_id)) 
-        dsrc_count_var = symbol("__hpat_dist_arr_count_"*string(arr_id)) 
+
+        arr_id = state.arrs_dist_info[arr].arr_id
+
+        dsrc_start_var = symbol("__hpat_dist_arr_start_"*string(arr_id))
+        dsrc_count_var = symbol("__hpat_dist_arr_count_"*string(arr_id))
 
         push!(node.args, dsrc_start_var, dsrc_count_var)
         return [node]
@@ -534,12 +534,12 @@ function from_call(node::Expr, state)
         arr = toLHSVar(node.args[3])
         @dprintln(3,"DistPass kmeans call for array: ", arr)
         node.args[1].name = :Kmeans_dist
-        arr_id = state.arrs_dist_info[arr].arr_id 
-        
-        dsrc_start_var = symbol("__hpat_dist_arr_start_"*string(arr_id))
-        dsrc_count_var = symbol("__hpat_dist_arr_count_"*string(arr_id)) 
+        arr_id = state.arrs_dist_info[arr].arr_id
 
-        push!(node.args, dsrc_start_var, dsrc_count_var, 
+        dsrc_start_var = symbol("__hpat_dist_arr_start_"*string(arr_id))
+        dsrc_count_var = symbol("__hpat_dist_arr_count_"*string(arr_id))
+
+        push!(node.args, dsrc_start_var, dsrc_count_var,
                 state.arrs_dist_info[arr].dim_sizes[1], state.arrs_dist_info[arr].dim_sizes[end])
         return [node]
     elseif (func==GlobalRef(HPAT.API,:LinearRegression) || func==GlobalRef(HPAT.API,:NaiveBayes)) && in(toLHSVar(node.args[3]), state.dist_arrays) && in(toLHSVar(node.args[4]), state.dist_arrays)
@@ -547,14 +547,14 @@ function from_call(node::Expr, state)
         arr2 = toLHSVar(node.args[4])
         @dprintln(3,"DistPass LinearRegression/NaiveBayes call for arrays: ", arr1," ", arr2)
         node.args[1].name = symbol("$(func)_dist")
-        arr1_id = state.arrs_dist_info[arr1].arr_id 
-        arr2_id = state.arrs_dist_info[arr2].arr_id 
-        
+        arr1_id = state.arrs_dist_info[arr1].arr_id
+        arr2_id = state.arrs_dist_info[arr2].arr_id
+
         dsrc_start_var1 = symbol("__hpat_dist_arr_start_"*string(arr1_id))
-        dsrc_count_var1 = symbol("__hpat_dist_arr_count_"*string(arr1_id)) 
-        
+        dsrc_count_var1 = symbol("__hpat_dist_arr_count_"*string(arr1_id))
+
         dsrc_start_var2 = symbol("__hpat_dist_arr_start_"*string(arr2_id))
-        dsrc_count_var2 = symbol("__hpat_dist_arr_count_"*string(arr2_id)) 
+        dsrc_count_var2 = symbol("__hpat_dist_arr_count_"*string(arr2_id))
 
         push!(node.args, dsrc_start_var1, dsrc_count_var1,
                 state.arrs_dist_info[arr1].dim_sizes[1], state.arrs_dist_info[arr1].dim_sizes[end])
@@ -585,7 +585,7 @@ function getDistNewID(state)
 end
 
 function adjust_arrayrefs(stmt::Expr, loopnest, top_level_number, is_top_level, read)
-    
+
     if isCall(stmt)
         topCall = stmt.args[1]
         #ref_args = stmt.args[2:end]
