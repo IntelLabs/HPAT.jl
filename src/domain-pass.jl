@@ -35,7 +35,7 @@ DebugMsg.init()
 
 using CompilerTools.LambdaHandling
 using CompilerTools.Helper
-using Debug
+#using Debug
 
 import HPAT
 import HPAT.CaptureAPI
