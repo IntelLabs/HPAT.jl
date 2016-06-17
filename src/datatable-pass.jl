@@ -25,7 +25,7 @@ THE POSSIBILITY OF SUCH DAMAGE.
 
 module DataTablePass
 
-#using Debug
+using Debug
 
 import Base.show
 
@@ -61,14 +61,53 @@ import ParallelAccelerator.ParallelIR.PIRReduction
 # ENTRY to datatable-pass
 function from_root(function_name, ast::Tuple)
     @dprintln(1,"Starting main DataTablePass.from_root.  function = ", function_name, " ast = ", ast)
-
     (linfo, body) = ast
     lives = computeLiveness(body, linfo)
-
     # transform body
-    #body.args = from_toplevel_body(body.args, state)
+    body.args = from_toplevel_body(body.args)
     @dprintln(1,"DataTablePass.from_root returns function = ", function_name, " ast = ", body)
     return linfo, body
+end
+
+# nodes are :body of AST
+function from_toplevel_body(nodes::Array{Any,1})
+    res::Array{Any,1} = []
+    nodes = push_filter_up(nodes)
+    @dprintln(3,"body after query optimizations ", nodes)
+    return nodes
+end
+#=
+if there is a join before a filter then move that filter above join
+=#
+@debug function push_filter_up(nodes::Array{Any,1})
+    new_nodes = []
+    hit_join = false
+    pos = 0
+    for i in 1:length(nodes)
+        println(nodes[i])
+        if nodes[i].head==:join
+            hit_join = true
+            pos=i
+        end
+        if nodes[i].head==:filter && hit_join
+            new_filter_node = nodes[i]
+            cond = nodes[i].args[5]
+            # cond_arr = Symbol("_$(t1)_cond_e")
+            # cond_assign = :( $cond_arr = $cond )
+            splice!(new_nodes,pos:1,[nodes[i-1],new_filter_node])
+            hit_join=false
+            @bp
+        end
+        push!(new_nodes, nodes[i])
+    end
+    return new_nodes
+end
+
+#=
+remove extra columns.
+Insert Project(select) above aggregate and join
+=#
+function prune_column(nodes::Array{Any,1})
 end
 
 end # DataTablePass

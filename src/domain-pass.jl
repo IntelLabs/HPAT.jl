@@ -35,6 +35,7 @@ DebugMsg.init()
 
 using CompilerTools.LambdaHandling
 using CompilerTools.Helper
+using Debug
 
 import HPAT
 import HPAT.CaptureAPI
@@ -169,7 +170,7 @@ function translate_table_oprs(nodes::Array{Any,1}, state::DomainState)
                 # returns: new ast :filter node
                 # number of junk nodes to remove AFTER the filter call
                 # number of junk nodes to remove BEFORE the filter call
-                remove_before,remove_after,ast = translate_filter(nodes[i],state)
+                remove_before,remove_after,ast = translate_filter(nodes,i,nodes[i],state)
                 skip += remove_after
                 s_start = (length(new_nodes)-remove_before)+1
                 s_end = length(new_nodes)
@@ -211,7 +212,7 @@ Translate table_filter to Expr(:filter, cond_arr, t1 ,col_arrs...) and remove ar
         _sale_items_i_category = (top(convert))(Array{Int64,1},(ParallelAccelerator.API.getindex)(_filter_sale_items::Array{Array{T,1},1},3)::Array{T,1})::Array{Int64,1}
         _sale_items_i_class_id = (top(convert))(Array{Int64,1},(ParallelAccelerator.API.getindex)(_filter_sale_items::Array{Array{T,1},1},4)::Array{T,1})::Array{Int64,1} # /Users/etotoni/.julia/v0.4/HPAT/examples/queries_devel/tests/test_q26.jl, line 15:
 """
-function translate_filter(filter_node::Expr,state)
+function translate_filter(nodes::Array{Any,1},pos,filter_node::Expr,state)
     @dprintln(3,"translating filter: ",filter_node)
     cond_arr = toLHSVar(filter_node.args[2])
     arr_of_arrs = toLHSVar(filter_node.args[3])
@@ -226,7 +227,7 @@ function translate_filter(filter_node::Expr,state)
     remove_before = 2*num_cols+1;
     # remove type convert calls after filter()
     remove_after = num_cols
-    new_filter_node = Expr(:filter, cond_arr, table_name, cols, col_arrs)
+    new_filter_node = Expr(:filter, cond_arr, table_name, cols, col_arrs,nodes[pos-remove_before-1].args[2])
     @dprintln(3,"filter remove_before: ",remove_before," remove_after: ",remove_after," filter_node: ",filter_node)
     return remove_before, remove_after, [new_filter_node]
 end
