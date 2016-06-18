@@ -79,7 +79,7 @@ end
 #=
 if there is a join before a filter then move that filter above join
 =#
-@debug function push_filter_up(nodes::Array{Any,1})
+function push_filter_up(nodes::Array{Any,1})
     new_nodes = []
     hit_join = false
     pos = 0
@@ -96,7 +96,6 @@ if there is a join before a filter then move that filter above join
             # cond_assign = :( $cond_arr = $cond )
             splice!(new_nodes,pos:1,[nodes[i-1],new_filter_node])
             hit_join=false
-            @bp
         end
         push!(new_nodes, nodes[i])
     end
