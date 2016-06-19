@@ -78,7 +78,7 @@ function from_root(function_name, ast)
     body.args = from_toplevel_body(body.args, state)
     @dprintln(1,"DomainPass.from_root returns function = ", function_name, " body = ", body)
     #println("DomainPass.from_root returns function = ", function_name, " body = ", body)
-    return LambdaVarInfoToLambda(state.linfo, body.args)
+    return (state.linfo, body)
 end
 
 # information about AST gathered and used in DomainPass

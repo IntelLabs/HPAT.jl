@@ -39,6 +39,7 @@ using CompilerTools.LambdaHandling
 using CompilerTools.Helper
 
 import HPAT
+using HPAT.DomainPass.get_table_meta
 
 using ParallelAccelerator
 import ParallelAccelerator.ParallelIR
@@ -63,39 +64,45 @@ function from_root(function_name, ast::Tuple)
     @dprintln(1,"Starting main DataTablePass.from_root.  function = ", function_name, " ast = ", ast)
     (linfo, body) = ast
     lives = computeLiveness(body, linfo)
+    tableCols, tableTypes = get_table_meta(body)
     # transform body
-    body.args = from_toplevel_body(body.args)
+    body.args = from_toplevel_body(body.args,tableCols)
     @dprintln(1,"DataTablePass.from_root returns function = ", function_name, " ast = ", body)
-    return linfo, body
+    return LambdaVarInfoToLambda(linfo, body.args)
 end
 
 # nodes are :body of AST
-function from_toplevel_body(nodes::Array{Any,1})
+function from_toplevel_body(nodes::Array{Any,1},tableCols)
     res::Array{Any,1} = []
-    nodes = push_filter_up(nodes)
+    nodes = push_filter_up(nodes,tableCols)
     @dprintln(3,"body after query optimizations ", nodes)
     return nodes
 end
+
 #=
 if there is a join before a filter then move that filter above join
 =#
-function push_filter_up(nodes::Array{Any,1})
+function push_filter_up(nodes::Array{Any,1},tableCols)
     new_nodes = []
     hit_join = false
     pos = 0
     for i in 1:length(nodes)
         println(nodes[i])
-        if nodes[i].head==:join
+        if isa(nodes[i], Expr) && nodes[i].head==:join
             hit_join = true
             pos=i
         end
-        if nodes[i].head==:filter && hit_join
+        if isa(nodes[i], Expr) && nodes[i].head==:filter && hit_join
+            # TODO change condition in filter expression too
             new_filter_node = nodes[i]
-            cond = nodes[i].args[5]
-            # cond_arr = Symbol("_$(t1)_cond_e")
-            # cond_assign = :( $cond_arr = $cond )
-            splice!(new_nodes,pos:1,[nodes[i-1],new_filter_node])
+            cond = nodes[i-1]
+            table_name = find_table_from_cond(tableCols,cond)
+            new_cond_node =  AstWalk(nodes[i-1], replace_table_in_cond,table_name)
+            # remove condition node above filter node
+            pop!(new_nodes)
+            splice!(new_nodes,pos:1,[new_cond_node,new_filter_node])
             hit_join=false
+            continue
         end
         push!(new_nodes, nodes[i])
     end
@@ -107,6 +114,47 @@ remove extra columns.
 Insert Project(select) above aggregate and join
 =#
 function prune_column(nodes::Array{Any,1})
+end
+
+#=
+Find table name for the given filter condition
+This necessary to replace the table name if you move filter
+above join or aggregates
+TODO make it short
+=#
+function find_table_from_cond(tableCols,cond)
+    # TODO : This hack should be changes.
+    # I am assuming that second element has column name
+    s = string(cond.args[2].args[2].name)
+    arr = split(s,'#')
+    col_name = arr[3]
+    for k in keys(tableCols)
+        arr = tableCols[k]
+        for (index, value) in enumerate(arr)
+            curr_col = string(value)
+            if curr_col == col_name
+                return string(k)
+            end
+        end
+    end
+end
+
+#=
+Replaces table name in the filter condition
+e.g
+ table1#cond_e = table1#col1 > 1 => table2#cond_e = table2#col1 > 1
+=#
+function replace_table_in_cond(node::Symbol, table_name, top_level_number, is_top_level, read)
+    arr = split(string(node),'#')
+    return (length(arr) > 2) ? Symbol(string("#",table_name,"#",arr[3])) : CompilerTools.AstWalker.ASTWALK_RECURSE
+
+end
+function replace_table_in_cond(node::ANY, table_name, top_level_number, is_top_level, read)
+    return CompilerTools.AstWalker.ASTWALK_RECURSE
+end
+function replace_table_in_cond(node::SymbolNode, table_name, top_level_number, is_top_level, read)
+    arr = split(string(node.name),'#')
+    return (length(arr) > 2) ? Symbol(string("#",table_name,"#",arr[3])) : CompilerTools.AstWalker.ASTWALK_RECURSE
 end
 
 end # DataTablePass

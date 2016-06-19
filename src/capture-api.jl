@@ -84,7 +84,7 @@ function translate_filter(t1::Symbol, cond::Expr, state)
     # replace column name with actual array in expression
     cond = AstWalk(cond, replace_col_with_array,  (t1, state.tableCols[t1]))
     # evaluate the condition into a BitArray
-    cond_arr = Symbol("_$(t1)_cond_e")
+    cond_arr = Symbol("#$(t1)#cond_e")
     cond_assign = :( $cond_arr = $cond )
 
     t1_num_cols = length(state.tableCols[t1])
@@ -408,7 +408,7 @@ end
 Convert a table column to an array name
 """
 function getColName(t::Symbol, c::Symbol)
-    return symbol("_$(t)_$(c)")
+    return symbol("#$(t)#$(c)")
 end
 
 """
