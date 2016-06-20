@@ -66,15 +66,15 @@ function from_root(function_name, ast::Tuple)
     lives = computeLiveness(body, linfo)
     tableCols, tableTypes = get_table_meta(body)
     # transform body
-    body.args = from_toplevel_body(body.args,tableCols)
+    body.args = from_toplevel_body(body.args,tableCols,linfo)
     @dprintln(1,"DataTablePass.from_root returns function = ", function_name, " ast = ", body)
     return LambdaVarInfoToLambda(linfo, body.args)
 end
 
 # nodes are :body of AST
-function from_toplevel_body(nodes::Array{Any,1},tableCols)
+function from_toplevel_body(nodes::Array{Any,1},tableCols,linfo)
     res::Array{Any,1} = []
-    nodes = push_filter_up(nodes,tableCols)
+    nodes = push_filter_up(nodes,tableCols,linfo)
     @dprintln(3,"body after query optimizations ", nodes)
     return nodes
 end
@@ -82,7 +82,7 @@ end
 #=
 if there is a join before a filter then move that filter above join
 =#
-function push_filter_up(nodes::Array{Any,1},tableCols)
+function push_filter_up(nodes::Array{Any,1},tableCols,linfo)
     new_nodes = []
     hit_join = false
     pos = 0
@@ -97,6 +97,7 @@ function push_filter_up(nodes::Array{Any,1},tableCols)
             new_filter_node = nodes[i]
             cond = nodes[i-1]
             table_name = find_table_from_cond(tableCols,cond)
+            replace_cond_in_linfo(linfo,cond,table_name)
             new_cond_node =  AstWalk(nodes[i-1], replace_table_in_cond,table_name)
             # remove condition node above filter node
             pop!(new_nodes)
@@ -134,6 +135,22 @@ function find_table_from_cond(tableCols,cond)
             curr_col = string(value)
             if curr_col == col_name
                 return string(k)
+            end
+        end
+    end
+end
+
+#=
+Replaces condition variable in symbol table with correct table
+TODO make it short
+=#
+function replace_cond_in_linfo(linfo,cond,table_name)
+    cond_var = string(cond.args[1])
+    for i = 1:length(linfo.var_defs)
+        if string(linfo.var_defs[i].name) == cond_var
+            arr = split(string(linfo.var_defs[i].name),'#')
+            if length(arr) > 2
+                linfo.var_defs[i].name = string("#",table_name,"#",arr[3])
             end
         end
     end
