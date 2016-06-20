@@ -111,10 +111,38 @@ function push_filter_up(nodes::Array{Any,1},tableCols,linfo)
 end
 
 #=
-remove extra columns.
+Remove extra columns.
 Insert Project(select) above aggregate and join
 =#
 function prune_column(nodes::Array{Any,1})
+end
+
+#=
+Combine two or more filters using AND on condition which are on
+same table without any other inner query operations
+=#
+function combine_filters()
+end
+
+#=
+If select/projection operator only use one of the table columns after join then
+we can safely remove that join.
+TODO check with ParallelAccelerator
+=#
+function remove_unnessary_joins()
+end
+
+#=
+Remove always true and false filters
+=#
+function simplify_filters()
+end
+
+#=
+Simplify expressions whose results can be determined from only one side.
+TODO check with ParallelAccelerator
+=#
+function simplify_booleans()
 end
 
 #=
