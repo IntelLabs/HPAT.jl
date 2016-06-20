@@ -87,7 +87,7 @@ function push_filter_up(nodes::Array{Any,1},tableCols,linfo)
     hit_join = false
     pos = 0
     for i in 1:length(nodes)
-        println(nodes[i])
+        #println(nodes[i])
         if isa(nodes[i], Expr) && nodes[i].head==:join
             hit_join = true
             pos=i
