@@ -49,6 +49,9 @@ function getArrayDistributionInfo(ast, state)
         before_dist_arrays = dist_arrays
     end
     state.dist_arrays = before_dist_arrays
+    if length(state.dist_arrays)==0
+        warn("HPAT failed to parallelize! The program will run sequentially.")
+    end
     @dprintln(3,"DistPass state dist_arrays after array info walk: ",state.dist_arrays)
 end
 
