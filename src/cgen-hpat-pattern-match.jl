@@ -533,7 +533,56 @@ function pattern_match_call_data_src_open(f::Any, rf::Any, o::Any, arr::Any,linf
     return ""
 end
 
+# sequential read for debugging
+function pattern_match_call_data_src_read_seq(f::GlobalRef, id::Int, arr::RHSVar,linfo)
+    s = ""
+    num::AbstractString = string(id)
+    
+    if f.name==:__hpat_data_source_HDF5_read
+        data_typ = eltype(ParallelAccelerator.CGen.getSymType(arr, linfo))
+        h5_typ = ""
+        carr = ParallelAccelerator.CGen.from_expr(toLHSVar(arr), linfo)
+        if data_typ==Float64
+            h5_typ = "H5T_NATIVE_DOUBLE"
+        elseif data_typ==Float32
+            h5_typ = "H5T_NATIVE_FLOAT"
+        elseif data_typ==Int32
+            h5_typ = "H5T_NATIVE_INT"
+        elseif data_typ==Int64
+            h5_typ = "H5T_NATIVE_LLONG"
+        else
+            println("g5 data type ", data_typ)
+            throw("CGen unsupported HDF5 data type")
+        end
+        
+        # assuming 1st dimension is partitined
+        s =  "hsize_t CGen_HDF5_start_$num[data_ndim_$num];\n"
+        s *= "hsize_t CGen_HDF5_count_$num[data_ndim_$num];\n"
+        s *= "CGen_HDF5_start_$num[0] = 0;\n"
+        s *= "CGen_HDF5_count_$num[0] = space_dims_$num[0];\n"
+        s *= "for(int i_CGen_dim=1; i_CGen_dim<data_ndim_$num; i_CGen_dim++) {\n"
+        s *= "CGen_HDF5_start_$num[i_CGen_dim] = 0;\n"
+        s *= "CGen_HDF5_count_$num[i_CGen_dim] = space_dims_$num[i_CGen_dim];\n"
+        s *= "}\n"
+        #s *= "std::cout<<\"read size \"<<CGen_HDF5_start_$num[0]<<\" \"<<CGen_HDF5_count_$num[0]<<\" \"<<CGen_HDF5_start_$num[1]<<\" \"<<CGen_HDF5_count_$num[1]<<std::endl;\n"
+        s *= "ret_$num = H5Sselect_hyperslab(space_id_$num, H5S_SELECT_SET, CGen_HDF5_start_$num, NULL, CGen_HDF5_count_$num, NULL);\n"
+        s *= "assert(ret_$num != -1);\n"
+        s *= "hid_t mem_dataspace_$num = H5Screate_simple (data_ndim_$num, CGen_HDF5_count_$num, NULL);\n"
+        s *= "assert (mem_dataspace_$num != -1);\n"
+        s *= "hid_t xfer_plist_$num = H5Pcreate (H5P_DATASET_XFER);\n"
+        s *= "assert(xfer_plist_$num != -1);\n"
+        s *= "double h5_read_start_$num = MPI_Wtime();\n"
+        s *= "ret_$num = H5Dread(dataset_id_$num, $h5_typ, mem_dataspace_$num, space_id_$num, xfer_plist_$num, $carr.getData());\n"
+        s *= "assert(ret_$num != -1);\n"
+        #s*="if(__hpat_node_id==__hpat_num_pes/2) printf(\"h5 read %lf\\n\", MPI_Wtime()-h5_read_start_$num);\n"
+        s *= ";\n"
+    end
+    return s
+end
 
+function pattern_match_call_data_src_read_seq(f::Any, v::Any, rf::Any, linfo)
+    return ""
+end
 
 function pattern_match_call_data_src_read(f::GlobalRef, id::Int, arr::RHSVar, start::LHSVar, count::LHSVar,linfo)
     s = ""
@@ -768,6 +817,7 @@ function pattern_match_call(ast::Array{Any, 1}, linfo)
         s *= pattern_match_call_value_checkpoint(ast[1], ast[2], ast[3], linfo)
         s *= pattern_match_call_restore_checkpoint_start(ast[1], ast[2], linfo)
         s *= pattern_match_call_restore_checkpoint_value(ast[1], ast[2], ast[3], linfo)
+        s *= pattern_match_call_data_src_read_seq(ast[1],ast[2],ast[3], linfo)
     elseif(length(ast)==4)
         s *= pattern_match_call_dist_reduce(ast[1],ast[2],ast[3], ast[4], linfo)
         # text file read
