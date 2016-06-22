@@ -288,6 +288,53 @@ function pattern_match_call_data_src_close(f::Any, v::Any,linfo)
     return ""
 end
 
+function pattern_match_call_filter_seq(f::GlobalRef,cond, table_name, table_cols, linfo)
+    # TODO Refactor this function to make it more readable
+    s = ""
+    if f.name==:__hpat_filter
+        # assuming that all columns are of same size in a table
+        col_name = "p"* string(table_name) * "p" * string(table_cols[1])
+        s *= "int array_length = " * col_name * ".ARRAYLEN();\n"
+        # Declaring and initializing new arrays for filter
+        for col_name in table_cols
+            arr_col_name = "p"* string(table_name) * "p" * string(col_name)
+            s *= "j2c_array< int64_t >  parallel_ir_new_array_name_" * arr_col_name *";\n"
+            s *= "parallel_ir_new_array_name_"* arr_col_name *" = j2c_array<int64_t>::new_j2c_array_1d(NULL, array_length);\n"
+        end
+        s *= "int new_array_len = 1;\n"
+        # TODO this must be generalized for all kind of conditions
+        c_cond_arr = replace(string(cond.args[2]),'#','p',2)
+        c_cond_sym = string(cond.args[1].name)[2:end]
+        c_cond_input = string(cond.args[3].name)
+        s *= "for (int index = 1 ; index < array_length+1 ; index++) { \n"
+        s *= "if ( "* c_cond_arr * ".ARRAYELEM(index) "* c_cond_sym *" "*c_cond_input *" ){\n"
+        for col_name in table_cols
+            arr_col_name = "p"* string(table_name) * "p" * string(col_name)
+            s *= "parallel_ir_new_array_name_"* arr_col_name *".ARRAYELEM(new_array_len) = " * arr_col_name * ".ARRAYELEM(index); \n"
+        end
+        s *= "new_array_len++;\n"
+        s *= "};\n"
+        s *= "};\n"
+        # Copy back values to orignal arrays/columns
+        for col_name in table_cols
+            # TODO rather than initializing again free the original one
+            arr_col_name = "p"* string(table_name) * "p" * string(col_name)
+            s *= arr_col_name * " = j2c_array<int64_t>::new_j2c_array_1d(NULL, new_array_len);\n"
+        end
+        s *= "for (int index = 1 ; index < new_array_len+1 ; index++) { \n"
+        for col_name in table_cols
+            arr_col_name = "p"* string(table_name) * "p" * string(col_name)
+            s *= arr_col_name * ".ARRAYELEM(index) = parallel_ir_new_array_name_" * arr_col_name *".ARRAYELEM(index); \n"
+        end
+        s *= "};\n"
+    end
+    return s
+end
+
+function pattern_match_call_filter_seq(f::Any, table_name, table_cols,cond, linfo)
+    return ""
+end
+
 """
 Generate code for get checkpoint time.
 """
@@ -802,7 +849,7 @@ function pattern_match_call(ast::Array{Any, 1}, linfo)
         @dprintln(3,"ast1_typ = ", typeof(ast[1]))
         s *= pattern_match_call_dist_init(ast[1], linfo)
         s *= pattern_match_call_get_sec_since_epoch(ast[1], linfo) 
-    elseif length(ast)==2
+    elseif(length(ast)==2)
         @dprintln(3,"ast1_typ = ", typeof(ast[1]), " ast2_typ = ", typeof(ast[2]))
         s *= pattern_match_call_data_src_close(ast[1], ast[2], linfo)
         s *= pattern_match_call_get_checkpoint_time(ast[1], ast[2], linfo)
@@ -822,6 +869,7 @@ function pattern_match_call(ast::Array{Any, 1}, linfo)
         s *= pattern_match_call_dist_reduce(ast[1],ast[2],ast[3], ast[4], linfo)
         # text file read
         s *= pattern_match_call_data_src_open(ast[1],ast[2],ast[3], ast[4], linfo)
+        s *= pattern_match_call_filter_seq(ast[1], ast[2], ast[3], ast[4],linfo)
     elseif(length(ast)==5)
         # HDF5 open
         s *= pattern_match_call_data_src_open(ast[1],ast[2],ast[3], ast[4], ast[5], linfo)

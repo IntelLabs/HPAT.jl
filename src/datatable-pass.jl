@@ -59,6 +59,7 @@ import ParallelAccelerator.ParallelIR.ISASSIGNEDONCE
 import ParallelAccelerator.ParallelIR.ISPRIVATEPARFORLOOP
 import ParallelAccelerator.ParallelIR.PIRReduction
 
+mk_call(fun,args) = Expr(:call, fun, args...)
 # ENTRY to datatable-pass
 function from_root(function_name, ast::Tuple)
     @dprintln(1,"Starting main DataTablePass.from_root.  function = ", function_name, " ast = ", ast)
@@ -76,7 +77,40 @@ function from_toplevel_body(nodes::Array{Any,1},tableCols,linfo)
     res::Array{Any,1} = []
     nodes = push_filter_up(nodes,tableCols,linfo)
     @dprintln(3,"body after query optimizations ", nodes)
-    return nodes
+    for (index, node) in enumerate(nodes)
+        if isa(node, Expr) && node.head==:filter
+            pop!(res)
+            append!(res, translate_hpat_filter(node,nodes[index-1],tableCols,linfo))
+        elseif isa(node, Expr) && node.head==:join
+            append!(res, [node])
+        elseif isa(node, Expr) && node.head==:aggregate
+            append!(res, [node])
+        else
+            append!(res, [node])
+        end
+    end
+    return res
+end
+
+function translate_hpat_join(node,linfo)
+    res = Any[]
+    open_call = mk_call(GlobalRef(HPAT.API,:__hpat_join), [node.args[2],node.args[3]])
+    push!(res, open_call)
+    return res
+end
+
+function translate_hpat_filter(node,cond,tableCols,linfo)
+    res = Any[]
+    table_name= node.args[2]
+    cond = node.args[5]
+    table_col = tableCols[table_name]
+    open_call = Expr(:call, GlobalRef(HPAT.API,:__hpat_filter), cond,table_name,table_col)
+    push!(res, open_call)
+    return res
+end
+
+function translate_hpat_aggregate(node,linfo)
+    return node
 end
 
 #=
@@ -99,6 +133,8 @@ function push_filter_up(nodes::Array{Any,1},tableCols,linfo)
             table_name = find_table_from_cond(tableCols,cond)
             replace_cond_in_linfo(linfo,cond,table_name)
             new_cond_node =  AstWalk(nodes[i-1], replace_table_in_cond,table_name)
+            new_filter_node.args[1]=new_cond_node.args[1]
+            new_filter_node.args[2]=Symbol(table_name)
             # remove condition node above filter node
             pop!(new_nodes)
             splice!(new_nodes,pos:1,[new_cond_node,new_filter_node])
@@ -192,11 +228,12 @@ e.g
 function replace_table_in_cond(node::Symbol, table_name, top_level_number, is_top_level, read)
     arr = split(string(node),'#')
     return (length(arr) > 2) ? Symbol(string("#",table_name,"#",arr[3])) : CompilerTools.AstWalker.ASTWALK_RECURSE
-
 end
+
 function replace_table_in_cond(node::ANY, table_name, top_level_number, is_top_level, read)
     return CompilerTools.AstWalker.ASTWALK_RECURSE
 end
+
 function replace_table_in_cond(node::SymbolNode, table_name, top_level_number, is_top_level, read)
     arr = split(string(node.name),'#')
     return (length(arr) > 2) ? Symbol(string("#",table_name,"#",arr[3])) : CompilerTools.AstWalker.ASTWALK_RECURSE

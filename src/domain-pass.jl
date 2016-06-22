@@ -57,7 +57,9 @@ const generatedFuncs = [:__hpat_data_source_HDF5_open,
                         :__hpat_data_source_TXT_size,
                         :__hpat_get_TXT_dim_size,
                         :__hpat_data_source_TXT_read,
-                        :__hpat_data_source_TXT_close]
+                        :__hpat_data_source_TXT_close,
+                        :__hpat_filter,
+                        ]
 
 
 const generatedExprHeads = [:alloc,
