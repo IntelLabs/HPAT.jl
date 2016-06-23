@@ -82,7 +82,7 @@ function from_toplevel_body(nodes::Array{Any,1},tableCols,linfo)
             pop!(res)
             append!(res, translate_hpat_filter(node,nodes[index-1],tableCols,linfo))
         elseif isa(node, Expr) && node.head==:join
-            append!(res, [node])
+            append!(res, translate_hpat_join(node,linfo))
         elseif isa(node, Expr) && node.head==:aggregate
             append!(res, [node])
         else
@@ -92,9 +92,13 @@ function from_toplevel_body(nodes::Array{Any,1},tableCols,linfo)
     return res
 end
 
+#=
+        $(Expr(:join, :sale_items, :store_sales, :item, [:ss_item_sk,:ss_customer_sk,:i_category,:i_class_id], [:ss_item_sk,:ss_customer_sk], [:i_item_sk,:i_category,:i_class_id], [symbol("#sale_items#ss_item_sk"),symbol("#sale_items#ss_customer_sk"),symbol("#sale_items#i_category"),symbol("#sale_items#i_class_id")], [symbol("#store_sales#ss_item_sk"),symbol("#store_sales#ss_customer_sk")], [symbol("#item#i_item_sk"),symbol("#item#i_category"),symbol("#item#i_class_id")]))
+
+=#
 function translate_hpat_join(node,linfo)
     res = Any[]
-    open_call = mk_call(GlobalRef(HPAT.API,:__hpat_join), [node.args[2],node.args[3]])
+    open_call = Expr(:call, GlobalRef(HPAT.API,:__hpat_join), string(":",node.args[1]), string(":",node.args[2]),string(":",node.args[3]),node.args[4],node.args[5],node.args[6])
     push!(res, open_call)
     return res
 end
@@ -109,6 +113,10 @@ function translate_hpat_filter(node,cond,tableCols,linfo)
     return res
 end
 
+#=
+    $(Expr(:aggregate, :customer_i_class, :sale_items, symbol("#sale_items#ss_customer_sk"), Any[:_customer_i_class_ss_item_count_e,:_customer_i_class_id2_e,:_customer_i_class_id15_e], Any[:(Main.length),:(Main.sum),:(Main.sum)], [symbol("#customer_i_class#ss_customer_sk"),symbol("#customer_i_class#ss_item_count"),symbol("#customer_i_class#id2"),symbol("#customer_i_class#id15")])) # /home/whassan/.julia/v0.4/HPAT/examples/queries_devel/tests/test_q26.jl, line 25:
+
+=#
 function translate_hpat_aggregate(node,linfo)
     return node
 end

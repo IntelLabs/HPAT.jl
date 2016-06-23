@@ -319,19 +319,86 @@ function pattern_match_call_filter_seq(f::GlobalRef,cond, table_name, table_cols
         for col_name in table_cols
             # TODO rather than initializing again free the original one
             arr_col_name = "p"* string(table_name) * "p" * string(col_name)
-            s *= arr_col_name * " = j2c_array<int64_t>::new_j2c_array_1d(NULL, new_array_len);\n"
+            s *= arr_col_name * " = j2c_array<int64_t>::new_j2c_array_1d(NULL, new_array_len-1);\n"
         end
-        s *= "for (int index = 1 ; index < new_array_len+1 ; index++) { \n"
+        s *= "for (int index = 1 ; index < new_array_len ; index++) { \n"
         for col_name in table_cols
             arr_col_name = "p"* string(table_name) * "p" * string(col_name)
             s *= arr_col_name * ".ARRAYELEM(index) = parallel_ir_new_array_name_" * arr_col_name *".ARRAYELEM(index); \n"
         end
+        # TODO Delete temp arrays used during filter
         s *= "};\n"
     end
     return s
 end
 
 function pattern_match_call_filter_seq(f::Any, table_name, table_cols,cond, linfo)
+    return ""
+end
+
+function pattern_match_call_join_seq(f::GlobalRef,table_new_name, table1_name, table2_name, table_new_cols, table1_cols, table2_cols, linfo)
+    # TODO Refactor this function to make it more readable
+    s = ""
+    if f.name==:__hpat_join
+        # assuming that all columns are of same size in a table
+        # Also generated table join table length would be sum of both table length
+        s *= "int column1_length_join = p"* string(table1_name) * "p" * string(table1_cols[1])* ".ARRAYLEN() ;\n "
+        s *= "int column2_length_join = p"* string(table2_name) * "p" * string(table2_cols[1])* ".ARRAYLEN() ;\n "
+        s *= "int array_length_join = column1_length_join + column2_length_join ;\n "
+        # Declaring and initializing new temp table after join
+        for col_name in table_new_cols
+             arr_col_name = "p"* string(table_new_name) * "_temp_p" * string(col_name)
+             s *= "j2c_array< int64_t >  " * arr_col_name *";\n"
+             s *=  arr_col_name *" = j2c_array<int64_t>::new_j2c_array_1d(NULL, array_length_join);\n"
+        end
+        # Assuming that join is always on the first column of tables
+        table1_col1 = "p"* string(table1_name) * "p" * string(table1_cols[1])
+        table2_col1 = "p"* string(table2_name) * "p" * string(table2_cols[1])
+        c_cond_sym = "=="
+        s *= "int table_new_counter_join = 1 ; \n"
+        s *= "for (int table1_index = 1 ; table1_index < column1_length_join+1 ; table1_index++) { \n"
+        s *= "for (int table2_index = 1 ; table2_index < column2_length_join+1 ; table2_index++) { \n" #
+        s *= "std::cout << \"Comparing: \" << pstore_salespss_item_sk.ARRAYELEM(table1_index) << \" ==  \" << pitempi_item_sk.ARRAYELEM(table2_index) << std::endl; \n"
+        s *= "if ( "* table1_col1 * ".ARRAYELEM(table1_index) "* c_cond_sym *" "* table2_col1 * ".ARRAYELEM(table2_index) ){\n"
+        count = 0;
+        for (index, col_name) in enumerate(table1_cols)
+            table_new_col_name = "p"* string(table_new_name) * "_temp_p" * string(table_new_cols[index])
+            table1_col_name = "p"* string(table1_name) * "p" * string(col_name)
+            s *= table_new_col_name *".ARRAYELEM(table_new_counter_join) = " * table1_col_name * ".ARRAYELEM(table1_index); \n"
+            count = count + 1
+        end
+        for (index, col_name) in enumerate(table2_cols)
+            if index == 1
+                continue
+            end
+            table_new_col_name = "p"* string(table_new_name) * "_temp_p" * string(table_new_cols[index+count-1])
+            table2_col_name = "p"* string(table2_name) * "p" * string(col_name)
+            s *= table_new_col_name *".ARRAYELEM(table_new_counter_join) = " * table2_col_name * ".ARRAYELEM(table2_index); \n"
+        end
+        s *= "table_new_counter_join++;\n"
+        s *= "};\n" # join if condition
+        s *= "};\n" # inner for loop
+        s *= "};\n" # outer for loop
+        # Copy back values
+        for col_name in table_new_cols
+            # TODO rather than initializing again free the original one
+            arr_col_name = "p"* string(table_new_name) * "p" * string(col_name)
+            s *= "j2c_array< int64_t >  " * arr_col_name *";\n"
+            s *= arr_col_name * " = j2c_array<int64_t>::new_j2c_array_1d(NULL, table_new_counter_join-1);\n"
+        end
+        s *= "for (int index = 1 ; index < table_new_counter_join ; index++) { \n"
+        for col_name in table_new_cols
+            arr_col_name_temp = "p"* string(table_new_name) * "_temp_p" * string(col_name)
+            arr_col_name = "p"* string(table_new_name) * "p" * string(col_name)
+            s *= arr_col_name * ".ARRAYELEM(index) = "* arr_col_name_temp *".ARRAYELEM(index); \n"
+        end
+        s *= "};\n" # for loop
+        # TODO Delete temp array
+    end
+    return s
+end
+
+function pattern_match_call_join_seq(f::Any,table_new, table1_name, table2_name, table_new_cols, table1_cols, table2_cols, linfo)
     return ""
 end
 
@@ -877,6 +944,8 @@ function pattern_match_call(ast::Array{Any, 1}, linfo)
         s *= pattern_match_call_dist_allreduce(ast[1],ast[2],ast[3], ast[4], ast[5], linfo)
         s *= pattern_match_call_dist_portion(ast[1],ast[2],ast[3], ast[4], ast[5], linfo)
         s *= pattern_match_call_dist_node_end(ast[1],ast[2],ast[3], ast[4], ast[5], linfo)
+    elseif(length(ast)==7)
+        s *= pattern_match_call_join_seq(ast[1],ast[2][2:end],ast[3][2:end],ast[4][2:end],ast[5],ast[6],ast[7], linfo)
     elseif(length(ast)==8)
         s *= pattern_match_call_kmeans(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8], linfo)
     elseif(length(ast)==12)
