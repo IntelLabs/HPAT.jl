@@ -83,8 +83,8 @@ function from_toplevel_body(nodes::Array{Any,1},tableCols,linfo)
             append!(res, translate_hpat_filter(node,nodes[index-1],tableCols,linfo))
         elseif isa(node, Expr) && node.head==:join
             append!(res, translate_hpat_join(node,linfo))
-        elseif isa(node, Expr) && node.head==:aggregate
-            append!(res, [node])
+       elseif isa(node, Expr) && node.head==:aggregate
+            append!(res, translate_hpat_aggregate(node,linfo))
         else
             append!(res, [node])
         end
@@ -93,7 +93,6 @@ function from_toplevel_body(nodes::Array{Any,1},tableCols,linfo)
 end
 
 #=
-        $(Expr(:join, :sale_items, :store_sales, :item, [:ss_item_sk,:ss_customer_sk,:i_category,:i_class_id], [:ss_item_sk,:ss_customer_sk], [:i_item_sk,:i_category,:i_class_id], [symbol("#sale_items#ss_item_sk"),symbol("#sale_items#ss_customer_sk"),symbol("#sale_items#i_category"),symbol("#sale_items#i_class_id")], [symbol("#store_sales#ss_item_sk"),symbol("#store_sales#ss_customer_sk")], [symbol("#item#i_item_sk"),symbol("#item#i_category"),symbol("#item#i_class_id")]))
 
 =#
 function translate_hpat_join(node,linfo)
@@ -114,11 +113,13 @@ function translate_hpat_filter(node,cond,tableCols,linfo)
 end
 
 #=
-    $(Expr(:aggregate, :customer_i_class, :sale_items, symbol("#sale_items#ss_customer_sk"), Any[:_customer_i_class_ss_item_count_e,:_customer_i_class_id2_e,:_customer_i_class_id15_e], Any[:(Main.length),:(Main.sum),:(Main.sum)], [symbol("#customer_i_class#ss_customer_sk"),symbol("#customer_i_class#ss_item_count"),symbol("#customer_i_class#id2"),symbol("#customer_i_class#id15")])) # /home/whassan/.julia/v0.4/HPAT/examples/queries_devel/tests/test_q26.jl, line 25:
 
 =#
 function translate_hpat_aggregate(node,linfo)
-    return node
+    res = Any[]
+    open_call = Expr(:call, GlobalRef(HPAT.API,:__hpat_aggregate), node.args[1],node.args[2],node.args[3],node.args[4],node.args[5],node.args[6])
+    push!(res, open_call)
+    return res
 end
 
 #=
@@ -135,14 +136,15 @@ function push_filter_up(nodes::Array{Any,1},tableCols,linfo)
             pos=i
         end
         if isa(nodes[i], Expr) && nodes[i].head==:filter && hit_join
-            # TODO change condition in filter expression too
+            # TODO change condition in filter expression node too
             new_filter_node = nodes[i]
-            cond = nodes[i-1]
-            table_name = find_table_from_cond(tableCols,cond)
-            replace_cond_in_linfo(linfo,cond,table_name)
-            new_cond_node =  AstWalk(nodes[i-1], replace_table_in_cond,table_name)
-            new_filter_node.args[1]=new_cond_node.args[1]
-            new_filter_node.args[2]=Symbol(table_name)
+            new_cond_node = nodes[i-1]
+            cond_lhs = string(nodes[i].args[1])
+            cond_rhs = string(nodes[i].args[5].args[2].name)
+            table_name = find_table_from_cond(tableCols,cond_rhs)
+            replace_cond_in_linfo(linfo,cond_lhs,table_name)
+            replace_table_in_cond(new_cond_node,table_name)
+            replace_table_in_filter_node(new_filter_node,table_name)
             # remove condition node above filter node
             pop!(new_nodes)
             splice!(new_nodes,pos:1,[new_cond_node,new_filter_node])
@@ -198,8 +200,7 @@ TODO make it short
 function find_table_from_cond(tableCols,cond)
     # TODO : This hack should be changes.
     # I am assuming that second element has column name
-    s = string(cond.args[2].args[2].name)
-    arr = split(s,'#')
+    arr = split(cond,'#')
     col_name = arr[3]
     for k in keys(tableCols)
         arr = tableCols[k]
@@ -216,8 +217,7 @@ end
 Replaces condition variable in symbol table with correct table
 TODO make it short
 =#
-function replace_cond_in_linfo(linfo,cond,table_name)
-    cond_var = string(cond.args[1])
+function replace_cond_in_linfo(linfo,cond_var,table_name)
     for i = 1:length(linfo.var_defs)
         if string(linfo.var_defs[i].name) == cond_var
             arr = split(string(linfo.var_defs[i].name),'#')
@@ -233,18 +233,22 @@ Replaces table name in the filter condition
 e.g
  table1#cond_e = table1#col1 > 1 => table2#cond_e = table2#col1 > 1
 =#
-function replace_table_in_cond(node::Symbol, table_name, top_level_number, is_top_level, read)
-    arr = split(string(node),'#')
-    return (length(arr) > 2) ? Symbol(string("#",table_name,"#",arr[3])) : CompilerTools.AstWalker.ASTWALK_RECURSE
+function replace_table_in_cond(node,table_name)
+    arr1 = split(string(node.args[1]),'#')
+    arr2 = split(string(node.args[2].args[1][1].name),'#')
+
+    node.args[1] = Symbol(string("#",table_name,"#",arr1[3]))
+    node.args[2].args[1][1] = Symbol(string("#",table_name,"#",arr2[3]))
 end
 
-function replace_table_in_cond(node::ANY, table_name, top_level_number, is_top_level, read)
-    return CompilerTools.AstWalker.ASTWALK_RECURSE
-end
+function replace_table_in_filter_node(node,table_name)
+    # TODO replace columns too
+    arr1 = split(string(node.args[1]),'#')
+    arr2 = split(string(node.args[5].args[2].name),'#')
 
-function replace_table_in_cond(node::SymbolNode, table_name, top_level_number, is_top_level, read)
-    arr = split(string(node.name),'#')
-    return (length(arr) > 2) ? Symbol(string("#",table_name,"#",arr[3])) : CompilerTools.AstWalker.ASTWALK_RECURSE
+    node.args[1] = Symbol(string("#",table_name,"#",arr1[3]))
+    node.args[2] = Symbol(table_name)
+    node.args[5].args[2] = Symbol(string("#",table_name,"#",arr2[3]))
 end
 
 end # DataTablePass
