@@ -300,8 +300,8 @@ function pattern_match_call_filter_seq(f::GlobalRef,cond, table_name, table_cols
         temp_filter_array= "temp_filter_array" * filter_rand*"_"
         for col_name in table_cols
             arr_col_name = return_j2c_array_name(table_name,col_name)
-            s *= "j2c_array< int64_t >  $temp_filter_array"* arr_col_name *";\n"
-            s *= "$temp_filter_array"* arr_col_name *" = j2c_array<int64_t>::new_j2c_array_1d(NULL,"* arr_col_name *".ARRAYLEN() );\n"
+            s *= "j2c_array< int64_t >  $temp_filter_array$arr_col_name ;\n"
+            s *= "$temp_filter_array$arr_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $arr_col_name.ARRAYLEN() );\n"
         end
         # Calculate final filtered array length
         new_array_len= "new_array_len" * filter_rand
@@ -313,10 +313,10 @@ function pattern_match_call_filter_seq(f::GlobalRef,cond, table_name, table_cols
         c_cond_input = string(cond.args[3].name)
 
         s *= "for (int index = 1 ; index < $array_length +1 ; index++) { \n"
-        s *= "if ( "* c_cond_arr * ".ARRAYELEM(index) "* c_cond_sym *" "*c_cond_input *" ){\n"
+        s *= "if ( $c_cond_arr.ARRAYELEM(index) $c_cond_sym $c_cond_input ){\n"
         for col_name in table_cols
             arr_col_name = return_j2c_array_name(table_name,col_name)
-            s *= "$temp_filter_array"* arr_col_name *".ARRAYELEM($new_array_len) = " * arr_col_name * ".ARRAYELEM(index); \n"
+            s *= "$temp_filter_array$arr_col_name.ARRAYELEM($new_array_len) =  $arr_col_name.ARRAYELEM(index); \n"
         end
         s *= "$new_array_len = $new_array_len + 1;\n"
         s *= "};\n" # if condition
@@ -326,12 +326,12 @@ function pattern_match_call_filter_seq(f::GlobalRef,cond, table_name, table_cols
         for col_name in table_cols
             # TODO rather than initializing again free the original one
             arr_col_name = return_j2c_array_name(table_name,col_name)
-            s *= arr_col_name * " = j2c_array<int64_t>::new_j2c_array_1d(NULL, $new_array_len - 1);\n"
+            s *= "$arr_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $new_array_len - 1);\n"
         end
         s *= "for (int index = 1 ; index < $new_array_len ; index++) { \n"
         for col_name in table_cols
             arr_col_name = return_j2c_array_name(table_name,col_name)
-            s *= arr_col_name * ".ARRAYELEM(index) = $temp_filter_array" * arr_col_name *".ARRAYELEM(index); \n"
+            s *= "$arr_col_name.ARRAYELEM(index) = $temp_filter_array$arr_col_name.ARRAYELEM(index); \n"
         end
         # TODO Delete temp arrays used during filter
         s *= "};\n"
@@ -361,7 +361,7 @@ function pattern_match_call_join_seq(f::GlobalRef,table_new_name, table1_name, t
         for col_name in table_new_cols
              arr_col_name = return_j2c_array_name(table_new_name, col_name)
              s *= "j2c_array< int64_t >  $temp_join_array" * arr_col_name *" ;\n"
-             s *= "$temp_join_array"* arr_col_name *" = j2c_array<int64_t>::new_j2c_array_1d(NULL, array_length_join);\n"
+             s *= "$temp_join_array$arr_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, array_length_join);\n"
         end
         # Assuming that join is always on the first column of tables
         table1_col1 = return_j2c_array_name(table1_name,table1_cols[1])
@@ -371,12 +371,12 @@ function pattern_match_call_join_seq(f::GlobalRef,table_new_name, table1_name, t
         s *= "for (int table1_index = 1 ; table1_index < column1_length_join+1 ; table1_index++) { \n"
         s *= "for (int table2_index = 1 ; table2_index < column2_length_join+1 ; table2_index++) { \n" #
         #s *= "std::cout << \"Comparing: \" << pstore_salespss_item_sk.ARRAYELEM(table1_index) << \" ==  \" << pitempi_item_sk.ARRAYELEM(table2_index) << std::endl; \n"
-        s *= "if ( "* table1_col1 * ".ARRAYELEM(table1_index) "* c_cond_sym *" "* table2_col1 * ".ARRAYELEM(table2_index) ){\n"
+        s *= "if ( $table1_col1 .ARRAYELEM(table1_index) $c_cond_sym  $table2_col1.ARRAYELEM(table2_index) ){\n"
         count = 0;
         for (index, col_name) in enumerate(table1_cols)
             table_new_col_name = temp_join_array * return_j2c_array_name(table_new_name, table_new_cols[index])
             table1_col_name = return_j2c_array_name(table1_name,col_name)
-            s *= table_new_col_name *".ARRAYELEM(table_new_counter_join) = " * table1_col_name * ".ARRAYELEM(table1_index); \n"
+            s *= "$table_new_col_name.ARRAYELEM(table_new_counter_join) = $table1_col_name.ARRAYELEM(table1_index); \n"
             count = count + 1
         end
         for (index, col_name) in enumerate(table2_cols)
@@ -385,7 +385,7 @@ function pattern_match_call_join_seq(f::GlobalRef,table_new_name, table1_name, t
             end
             table_new_col_name = temp_join_array * return_j2c_array_name(table_new_name, table_new_cols[index+count-1])
             table2_col_name = return_j2c_array_name(table2_name,col_name)
-            s *= table_new_col_name *".ARRAYELEM(table_new_counter_join) = " * table2_col_name * ".ARRAYELEM(table2_index); \n"
+            s *= "$table_new_col_name.ARRAYELEM(table_new_counter_join) =  $table2_col_name.ARRAYELEM(table2_index); \n"
         end
         s *= "table_new_counter_join++;\n"
         s *= "};\n" # join if condition
@@ -397,19 +397,19 @@ function pattern_match_call_join_seq(f::GlobalRef,table_new_name, table1_name, t
             arr_col_name = return_j2c_array_name(table_new_name,col_name)
             arr_col_name_pound = "#"* string(table_new_name) * "#" * string(col_name)
             if ( ! inSymbolTable(symbol(arr_col_name_pound),lstate))
-                s *= "j2c_array< int64_t >  " * arr_col_name *";\n"
+                s *= "j2c_array< int64_t >   $arr_col_name ;\n"
             end
-            s *= arr_col_name * " = j2c_array<int64_t>::new_j2c_array_1d(NULL, table_new_counter_join-1);\n"
+            s *= "$arr_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, table_new_counter_join-1);\n"
         end
         s *= "for (int index = 1 ; index < table_new_counter_join ; index++) { \n"
         for col_name in table_new_cols
             arr_col_name_temp = temp_join_array * return_j2c_array_name(table_new_name, col_name)
             arr_col_name = return_j2c_array_name(table_new_name,col_name)
-            s *= arr_col_name * ".ARRAYELEM(index) = "* arr_col_name_temp *".ARRAYELEM(index); \n"
+            s *= "$arr_col_name.ARRAYELEM(index) =  $arr_col_name_temp.ARRAYELEM(index); \n"
         end
         s *= "};\n" # for loop
         # TODO Delete temp array
-        #s *= "for (int i = 1 ; i < table_new_counter_join ; i++){ std::cout << psale_itemspss_item_sk.ARRAYELEM(i) << std::endl;}\n"
+        s *= "for (int i = 1 ; i < table_new_counter_join ; i++){ std::cout << psale_itemspss_item_sk.ARRAYELEM(i) << std::endl;}\n"
     end
     return s
 end
