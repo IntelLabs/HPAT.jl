@@ -117,7 +117,7 @@ end
 =#
 function translate_hpat_aggregate(node,linfo)
     res = Any[]
-    open_call = Expr(:call, GlobalRef(HPAT.API,:__hpat_aggregate), node.args[1],node.args[2],node.args[3],node.args[4],node.args[5],node.args[6])
+    open_call = Expr(:call, GlobalRef(HPAT.API,:__hpat_aggregate), node.args[1],node.args[2],node.args[3],node.args[4],node.args[5],node.args[6],node.args[7])
     push!(res, open_call)
     return res
 end
