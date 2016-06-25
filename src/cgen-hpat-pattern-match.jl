@@ -418,18 +418,40 @@ function pattern_match_call_join_seq(f::Any,table_new, table1_name, table2_name,
     return ""
 end
 
-function pattern_match_call_agg_seq(f::GlobalRef,table_new_name, table1_name, groupby_key, exprs_list, funcs_list, table_new_cols, linfo)
+function pattern_match_call_agg_seq(f::GlobalRef,table_new_name, table1_name, groupby_key, exprs_list, exprs_list_rhs, funcs_list, table_new_cols, linfo)
     # TODO Refactor this function to make it more readable
     s = ""
     if f.name==:__hpat_aggregate
         table_new_name = string(table_new_name)
         table1_name = string(table1_name)
-        s *= "std::cout << \" Found aggregate\"<< std::endl; \n"
+        agg_key = replace(string(groupby_key),'#','p',2)
+        for (index, value) in enumerate(table_new_cols)
+            s *= "std::unordered_map<int,int> temp_map_" * replace(string(value),'#','p',2) * ";\n"
+        end
+        agg_key_map_temp = " temp_map_" * replace(string(table_new_cols[1]),'#','p',2)
+        s *= "for(int i = 1 ; i < $agg_key.ARRAYLEN() + 1 ; i++){\n"
+        s *= "$agg_key_map_temp[$agg_key.ARRAYELEM(i)] = 1;\n"
+        for (index, func) in enumerate(funcs_list)
+            column_name = ""
+            if isa(exprs_list_rhs[index],Expr)
+                column_name = replace(string(exprs_list_rhs[index].args[2].name),'#','p',2)
+            else
+                column_name = replace(string(exprs_list_rhs[index]),'#','p',2)
+            end
+            # first item of table_new_cols is the aggregate key and we need to skip it
+            map_name = replace(string(table_new_cols[index+1]),'#','p',2)
+            s *= return_reduction_string(agg_key, column_name, string("temp_map_",map_name), func)
+        end
+        s *= "}\n"
+        # For debugging
+        # s *= "for(auto i : temp_map_pcustomer_i_classpss_item_count){\n"
+        # s *= "std::cout << i.first << \" ::\" << i.second << std::endl;\n"
+        # s *= "}\n"
     end
     return s
 end
 
-function pattern_match_call_agg_seq(f::Any,table_new_name, table1_name, groupby_key, exprs_list, funcs_list, table_new_cols, linfo)
+function pattern_match_call_agg_seq(f::Any,table_new_name, table1_name, groupby_key, exprs_list, exprs_list_rhs,funcs_list, table_new_cols, linfo)
     return ""
 end
 
@@ -977,9 +999,9 @@ function pattern_match_call(ast::Array{Any, 1}, linfo, lstate)
         s *= pattern_match_call_dist_node_end(ast[1],ast[2],ast[3], ast[4], ast[5], linfo)
     elseif(length(ast)==7)
         s *= pattern_match_call_join_seq(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7], linfo,lstate)
-        s *= pattern_match_call_agg_seq(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7], linfo)
     elseif(length(ast)==8)
         s *= pattern_match_call_kmeans(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8], linfo)
+        s *= pattern_match_call_agg_seq(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8], linfo)
     elseif(length(ast)==12)
         s *= pattern_match_call_linear_regression(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8],ast[9],ast[10],ast[11],ast[12], linfo)
     elseif(length(ast)==13)
@@ -1125,4 +1147,25 @@ function return_pound_array_name(table_name,table_column)
     return "#"* string(table_name) * "#" * string(table_column)
 end
 
+function return_reduction_string(agg_key,column_name,agg_map,func)
+    s = ""
+    if string(func) == "Main.length"
+        s *= "if ($agg_map.find($agg_key.ARRAYELEM(i)) == $agg_map.end())\n"
+        s *= "$agg_map[$agg_key.ARRAYELEM(i)] = 1;\n"
+        s *= "else \n"
+        s *= "$agg_map[$agg_key.ARRAYELEM(i)] += 1;\n\n"
+    elseif string(func) == "Main.sum"
+        s *= "if ($agg_map.find($agg_key.ARRAYELEM(i)) == $agg_map.end())\n"
+        s *= "$agg_map[$agg_key.ARRAYELEM(i)] = $column_name.ARRAYELEM(i);\n"
+        s *= "else \n"
+        s *= "$agg_map[$agg_key.ARRAYELEM(i)] += $column_name.ARRAYELEM(i) ;\n\n"
+    elseif string(func) == "Main.max"
+        s *= "if ($agg_map.find($agg_key.ARRAYELEM(i)) == $agg_map.end()){\n"
+        s *= "$agg_map[$agg_key.ARRAYELEM(i)] = $column_name.ARRAYELEM(i);}\n"
+        s *= "else{ \n"
+        s *= "if (agg_map_count[$agg_key.ARRAYELEM(i)] < $column_name.ARRAYELEM(i) ) \n"
+        s *= "$agg_map[$agg_key.ARRAYELEM(i)] = $column_name.ARRAYELEM(i);}\n\n"
+    end
+    return s
+end
 end # module
