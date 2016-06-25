@@ -1,3 +1,28 @@
+#=
+Copyright (c) 2016, Intel Corporation
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+- Redistributions of source code must retain the above copyright notice,
+  this list of conditions and the following disclaimer.
+- Redistributions in binary form must reproduce the above copyright notice,
+  this list of conditions and the following disclaimer in the documentation
+  and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+THE POSSIBILITY OF SUCH DAMAGE.
+=#
+
 module CaptureAPI
 
 using CompilerTools
@@ -201,6 +226,7 @@ function translate_aggregate(lhs, rhs, state)
     out_arrs = [c1_out_arr]
     out_cols = [c1]
     out_type_assigns = [ :($c1_out_arr::Vector{$(state.tableTypes[t1][1])} = $c1_out_arr) ]
+
     for col_expr in rhs.args[4:end]
         @assert col_expr.head==:kw "expected assignment for new aggregate column"
         # output column name
@@ -217,8 +243,8 @@ function translate_aggregate(lhs, rhs, state)
         e = AstWalk(e, convert_oprs_to_elementwise,  (t1, state.tableCols[t1]))
         # replace column name with actual array in expression
         e = AstWalk(e, replace_col_with_array,  (t1, state.tableCols[t1]))
-        out_e_arr = symbol("_$(lhs)_$(out_col)_e")
-        push!(out_aggs, :(($out_e_arr, $func)))
+        out_e_arr = symbol("#$(lhs)#$(out_col)#e")
+        push!(out_aggs, :(($out_e_arr,$e, $func)))
         push!(out_e,:($out_e_arr=$e))
         # to add types to aggregate output
         # make a dummy call to get the type with user's function
