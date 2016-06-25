@@ -341,11 +341,10 @@ function translate_aggregate(aggregate_node,state)
     agg_list = aggregate_node.args[2].args[3].args[2:end] # args[1] is top(vect)
     # example element args: Any[:(top(tuple)),:(_customer_i_class_id15_e::BitArray{1}),:(Main.sum)]
     in_e_arr_list = map(x->toLHSVar(x.args[2]), agg_list)
-    in_func_list = map(x->x.args[3], agg_list)
+    in_e_arr_list_rhs = map(x->toLHSVar(x.args[3]), agg_list)
+    in_func_list = map(x->x.args[4], agg_list)
     out_col_arrs = map(x->getColName(t2, x), t2_cols)
-
-    new_aggregate_node = Expr(:aggregate, t2, t1, key_arr, in_e_arr_list, in_func_list, out_col_arrs)
-
+    new_aggregate_node = Expr(:aggregate, t2, t1, key_arr, in_e_arr_list, in_e_arr_list_rhs, in_func_list, out_col_arrs)
     return remove_before, remove_after, [new_aggregate_node]
 end
 
