@@ -435,18 +435,29 @@ function pattern_match_call_agg_seq(f::GlobalRef,table_new_name, table1_name, gr
             column_name = ""
             if isa(exprs_list_rhs[index],Expr)
                 column_name = replace(string(exprs_list_rhs[index].args[2].name),'#','p',2)
+                map_name = replace(string(table_new_cols[index+1]),'#','p',2)
+                s *= return_reduction_string_with_closure(agg_key, column_name, string("temp_map_",map_name), func,exprs_list_rhs[index])
             else
                 column_name = replace(string(exprs_list_rhs[index]),'#','p',2)
+                map_name = replace(string(table_new_cols[index+1]),'#','p',2)
+                s *= return_reduction_string(agg_key, column_name, string("temp_map_",map_name), func)
             end
             # first item of table_new_cols is the aggregate key and we need to skip it
-            map_name = replace(string(table_new_cols[index+1]),'#','p',2)
-            s *= return_reduction_string(agg_key, column_name, string("temp_map_",map_name), func)
         end
         s *= "}\n"
-        # For debugging
-        # s *= "for(auto i : temp_map_pcustomer_i_classpss_item_count){\n"
-        # s *= "std::cout << i.first << \" ::\" << i.second << std::endl;\n"
-        # s *= "}\n"
+        # copy back the values from map into arrays
+        s *= "int counter_agg = 1;\n"
+        s *= "for(auto i : $agg_key_map_temp){\n"
+        for (index, value) in enumerate(exprs_list)
+            new_arr_name = replace(string(value),'#','p',3)
+            map_name = replace(string(table_new_cols[index]),'#','p',3)
+            s *= "$new_arr_name.ARRAYELEM(counter_agg) = temp_map_$map_name[i.first];\n"
+        end
+        s *= "$agg_key.ARRAYELEM(counter_agg) = i.first;\n "
+        s *= "counter_agg++;\n"
+        s *= "}\n"
+        # Debugging
+        # s *= "for (int i = 1 ; i < counter_agg ; i++){ std::cout << pcustomer_i_classpid2pe.ARRAYELEM(i) << std::endl;}\n"
     end
     return s
 end
@@ -1168,4 +1179,31 @@ function return_reduction_string(agg_key,column_name,agg_map,func)
     end
     return s
 end
+
+function return_reduction_string_with_closure(agg_key,column_name,agg_map,func,red_expr)
+    s = ""
+    c_expr_arr = replace(string(red_expr.args[2].name),'#','p',2)
+    c_expr_sym = string(red_expr.args[1].name)[2:end]
+    c_expr_input = string(red_expr.args[3])
+    c_cond = "( $c_expr_arr.ARRAYELEM(i) $c_expr_sym $c_expr_input) "
+    if string(func) == "Main.length"
+        s *= "if ($agg_map.find($agg_key.ARRAYELEM(i)) == $agg_map.end())\n"
+        s *= "$agg_map[$agg_key.ARRAYELEM(i)] = 1;\n"
+        s *= "else \n"
+        s *= "$agg_map[$agg_key.ARRAYELEM(i)] += 1;\n\n"
+    elseif string(func) == "Main.sum"
+        s *= "if ($agg_map.find($agg_key.ARRAYELEM(i)) == $agg_map.end())\n"
+        s *= "$agg_map[$agg_key.ARRAYELEM(i)] = $c_cond  ;\n"
+        s *= "else \n"
+        s *= "$agg_map[$agg_key.ARRAYELEM(i)] += $c_cond ;\n\n"
+    elseif string(func) == "Main.max"
+        s *= "if ($agg_map.find($agg_key.ARRAYELEM(i)) == $agg_map.end()){\n"
+        s *= "$agg_map[$agg_key.ARRAYELEM(i)] = $c_cond ;}\n"
+        s *= "else{ \n"
+        s *= "if (agg_map_count[$agg_key.ARRAYELEM(i)] < $column_name.ARRAYELEM(i) ) \n"
+        s *= "$agg_map[$agg_key.ARRAYELEM(i)] = $c_cond ;}\n\n"
+    end
+    return s
+end
+
 end # module
