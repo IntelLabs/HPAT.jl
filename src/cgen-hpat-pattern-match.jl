@@ -308,7 +308,7 @@ function pattern_match_call_filter_seq(f::GlobalRef,cond, table_name, table_cols
         s *= "int $new_array_len = 1;\n"
 
         # TODO this must be generalized for all kind of conditions
-        c_cond_arr = replace(string(cond.args[2]),'#','p',2)
+        c_cond_arr = replace(string(toLHSVar(cond.args[2])),'#','p',2)
         c_cond_sym = string(cond.args[1].name)[2:end]
         c_cond_input = string(cond.args[3].name)
 
@@ -418,13 +418,14 @@ function pattern_match_call_join_seq(f::Any,table_new, table1_name, table2_name,
     return ""
 end
 
-function pattern_match_call_agg_seq(f::GlobalRef,table_new_name, table1_name, groupby_key, exprs_list, exprs_list_rhs, funcs_list, table_new_cols, linfo)
+function pattern_match_call_agg_seq(f::GlobalRef,table_new_name, table1_name, groupby_key, exprs_list, exprs_list_rhs, funcs_list, table_new_cols, linfo, lstate)
     # TODO Refactor this function to make it more readable
     s = ""
     if f.name==:__hpat_aggregate
         table_new_name = string(table_new_name)
         table1_name = string(table1_name)
         agg_key = replace(string(groupby_key),'#','p',2)
+        agg_key_new_table = replace(string(table_new_cols[1]),'#','p',2)
         for (index, value) in enumerate(table_new_cols)
             s *= "std::unordered_map<int,int> temp_map_" * replace(string(value),'#','p',2) * ";\n"
         end
@@ -445,15 +446,24 @@ function pattern_match_call_agg_seq(f::GlobalRef,table_new_name, table1_name, gr
             # first item of table_new_cols is the aggregate key and we need to skip it
         end
         s *= "}\n"
+        # Initializing new columns
+        for col_name in table_new_cols
+            # TODO rather than initializing again free the original one
+            arr_col_name = replace(string(col_name),'#','p',3)
+            if ( ! inSymbolTable(symbol(col_name),lstate))
+                s *= "j2c_array< int64_t >   $arr_col_name;\n"
+            end
+            s *= "$arr_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $agg_key_map_temp.size());\n"
+        end
         # copy back the values from map into arrays
         s *= "int counter_agg = 1;\n"
         s *= "for(auto i : $agg_key_map_temp){\n"
+        # Always skip first element from the table_new_cols;it is not part of expressions list.
         for (index, value) in enumerate(exprs_list)
-            new_arr_name = replace(string(value),'#','p',3)
-            map_name = replace(string(table_new_cols[index]),'#','p',3)
-            s *= "$new_arr_name.ARRAYELEM(counter_agg) = temp_map_$map_name[i.first];\n"
+            map_name = replace(string(table_new_cols[index+1]),'#','p',3)
+            s *= "$map_name.ARRAYELEM(counter_agg) = temp_map_$map_name[i.first];\n"
         end
-        s *= "$agg_key.ARRAYELEM(counter_agg) = i.first;\n "
+        s *= "$agg_key_new_table.ARRAYELEM(counter_agg) = i.first;\n "
         s *= "counter_agg++;\n"
         s *= "}\n"
         # Debugging
@@ -462,7 +472,7 @@ function pattern_match_call_agg_seq(f::GlobalRef,table_new_name, table1_name, gr
     return s
 end
 
-function pattern_match_call_agg_seq(f::Any,table_new_name, table1_name, groupby_key, exprs_list, exprs_list_rhs,funcs_list, table_new_cols, linfo)
+function pattern_match_call_agg_seq(f::Any,table_new_name, table1_name, groupby_key, exprs_list, exprs_list_rhs,funcs_list, table_new_cols, linfo, lstate)
     return ""
 end
 
@@ -1012,7 +1022,7 @@ function pattern_match_call(ast::Array{Any, 1}, linfo, lstate)
         s *= pattern_match_call_join_seq(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7], linfo,lstate)
     elseif(length(ast)==8)
         s *= pattern_match_call_kmeans(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8], linfo)
-        s *= pattern_match_call_agg_seq(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8], linfo)
+        s *= pattern_match_call_agg_seq(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8], linfo,lstate)
     elseif(length(ast)==12)
         s *= pattern_match_call_linear_regression(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8],ast[9],ast[10],ast[11],ast[12], linfo)
     elseif(length(ast)==13)
