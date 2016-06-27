@@ -133,13 +133,14 @@ function from_toplevel_body(nodes::Array{Any,1},tableCols,linfo)
 end
 
 function make_query_plan(nodes::Array{Any,1},root_qtn)
+    last_child = root_qtn
     for (index, node) in enumerate(nodes)
         if isa(node, Expr) && node.head==:filter
-            add_child("filter",root_qtn,index-1,index)
+            last_child = add_child("filter",last_child,index-1,index)
         elseif isa(node, Expr) && node.head==:join
-            add_child("join",root_qtn,index,index)
+            last_child = add_child("join",last_child,index,index)
         elseif isa(node, Expr) && node.head==:aggregate
-            add_child("aggregate",root_qtn,(index-(length(node.args[4]))),index)
+            last_child = add_child("aggregate",last_child,(index-(length(node.args[4]))),index)
         else
         end
     end
