@@ -152,7 +152,8 @@ end
 =#
 function translate_hpat_join(node,linfo)
     res = Any[]
-    open_call = Expr(:call, GlobalRef(HPAT.API,:__hpat_join), string(":",node.args[1]), string(":",node.args[2]),string(":",node.args[3]),node.args[4],node.args[5],node.args[6])
+    open_call = mk_call(GlobalRef(HPAT.API,:__hpat_join),
+                        [length(node.args[7]),length(node.args[8]),length(node.args[9]),node.args[7],node.args[8],node.args[9]])
     push!(res, open_call)
     return res
 end
