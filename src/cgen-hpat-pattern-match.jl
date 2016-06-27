@@ -288,58 +288,38 @@ function pattern_match_call_data_src_close(f::Any, v::Any,linfo)
     return ""
 end
 
-function pattern_match_call_filter_seq(f::GlobalRef,cond, table_name, table_cols, linfo)
-    # TODO Refactor this function to make it more readable
+function pattern_match_call_filter_seq(linfo,f::GlobalRef,cond_e, num_cols,table_cols...)
     s = ""
-    if f.name==:__hpat_filter
-        filter_rand = string(convert(Int8, round(rand() * 100)))
-        # assuming that all columns are of same size in a table
-        array_length = "array_length" * filter_rand
-        s *= "int $array_length = " * return_j2c_array_name(table_name,table_cols[1]) * ".ARRAYLEN();\n"
-        # Declaring and initializing temp/dummy arrays for filter
-        temp_filter_array= "temp_filter_array" * filter_rand*"_"
-        for col_name in table_cols
-            arr_col_name = return_j2c_array_name(table_name,col_name)
-            s *= "j2c_array< int64_t >  $temp_filter_array$arr_col_name ;\n"
-            s *= "$temp_filter_array$arr_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $arr_col_name.ARRAYLEN() );\n"
-        end
-        # Calculate final filtered array length
-        new_array_len= "new_array_len" * filter_rand
-        s *= "int $new_array_len = 1;\n"
-
-        # TODO this must be generalized for all kind of conditions
-        c_cond_arr = replace(string(toLHSVar(cond.args[2])),'#','p',2)
-        c_cond_sym = string(cond.args[1].name)[2:end]
-        c_cond_input = string(cond.args[3].name)
-
-        s *= "for (int index = 1 ; index < $array_length +1 ; index++) { \n"
-        s *= "if ( $c_cond_arr.ARRAYELEM(index) $c_cond_sym $c_cond_input ){\n"
-        for col_name in table_cols
-            arr_col_name = return_j2c_array_name(table_name,col_name)
-            s *= "$temp_filter_array$arr_col_name.ARRAYELEM($new_array_len) =  $arr_col_name.ARRAYELEM(index); \n"
-        end
-        s *= "$new_array_len = $new_array_len + 1;\n"
-        s *= "};\n" # if condition
-        s *= "};\n" # for loop
-
-        # Copy back values to orignal arrays/columns
-        for col_name in table_cols
-            # TODO rather than initializing again free the original one
-            arr_col_name = return_j2c_array_name(table_name,col_name)
-            s *= "$arr_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $new_array_len - 1);\n"
-        end
-        s *= "for (int index = 1 ; index < $new_array_len ; index++) { \n"
-        for col_name in table_cols
-            arr_col_name = return_j2c_array_name(table_name,col_name)
-            s *= "$arr_col_name.ARRAYELEM(index) = $temp_filter_array$arr_col_name.ARRAYELEM(index); \n"
-        end
-        # TODO Delete temp arrays used during filter
-        s *= "};\n"
+    # its an array of array. array[2:end] and table_cols... notation does that
+    table_cols = table_cols[1]
+    # For unique counter variables of filter
+    filter_rand = string(convert(Int8, round(rand() * 100)))
+    # assuming that all columns are of same size in a table
+    array_length = "array_length" * filter_rand
+    s *= "int $array_length = " * ParallelAccelerator.CGen.from_expr(table_cols[1],linfo) * ".ARRAYLEN();\n"
+    # Calculate final filtered array length
+    write_index = "write_index" * filter_rand
+    s *= "int $write_index = 1;\n"
+    cond_e_arr = ParallelAccelerator.CGen.from_expr(cond_e, linfo)
+    s *= "for (int index = 1 ; index < $array_length + 1 ; index++) { \n"
+    s *= "if ( $cond_e_arr.ARRAYELEM(index) ){\n"
+    # If condition satisfy copy all columns values
+    for col_name in table_cols
+        arr_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
+        s *= "$arr_col_name.ARRAYELEM($write_index) =  $arr_col_name.ARRAYELEM(index); \n"
+    end
+    s *= "$write_index = $write_index + 1;\n"
+    s *= "};\n" # if condition
+    s *= "};\n" # for loop
+    # Change the size of each array
+    for col_name in table_cols
+        arr_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
+        s *= "$arr_col_name.dims[0] =  $write_index - 1; \n"
     end
     return s
 end
 
-function pattern_match_call_filter_seq(f::Any, table_name, table_cols,cond, linfo)
+function pattern_match_call_filter_seq(linfo,f::Any,cond_e, num_cols,table_cols...)
     return ""
 end
 
@@ -989,7 +969,9 @@ function pattern_match_call(ast::Array{Any, 1}, linfo, lstate)
     if length(ast)==1
         @dprintln(3,"ast1_typ = ", typeof(ast[1]))
         s *= pattern_match_call_dist_init(ast[1], linfo)
-        s *= pattern_match_call_get_sec_since_epoch(ast[1], linfo) 
+        s *= pattern_match_call_get_sec_since_epoch(ast[1], linfo)
+    elseif(ast[1].name==:__hpat_filter)
+        s *= pattern_match_call_filter_seq(linfo, ast[1], ast[2], ast[3], ast[4:end])
     elseif(length(ast)==2)
         @dprintln(3,"ast1_typ = ", typeof(ast[1]), " ast2_typ = ", typeof(ast[2]))
         s *= pattern_match_call_data_src_close(ast[1], ast[2], linfo)
@@ -1010,7 +992,6 @@ function pattern_match_call(ast::Array{Any, 1}, linfo, lstate)
         s *= pattern_match_call_dist_reduce(ast[1],ast[2],ast[3], ast[4], linfo)
         # text file read
         s *= pattern_match_call_data_src_open(ast[1],ast[2],ast[3], ast[4], linfo)
-        s *= pattern_match_call_filter_seq(ast[1], ast[2], ast[3], ast[4],linfo)
     elseif(length(ast)==5)
         # HDF5 open
         s *= pattern_match_call_data_src_open(ast[1],ast[2],ast[3], ast[4], ast[5], linfo)

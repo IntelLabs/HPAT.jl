@@ -40,6 +40,7 @@ using CompilerTools.Helper
 
 import HPAT
 using HPAT.DomainPass.get_table_meta
+import HPAT.CaptureAPI.getColName
 
 using ParallelAccelerator
 import ParallelAccelerator.ParallelIR
@@ -117,10 +118,10 @@ function from_toplevel_body(nodes::Array{Any,1},tableCols,linfo)
     res::Array{Any,1} = []
     nodes = push_filter_up(nodes,tableCols,linfo)
     @dprintln(3,"body after query optimizations ", nodes)
+    # After optimizations make actuall call nodes for cgen
     for (index, node) in enumerate(nodes)
         if isa(node, Expr) && node.head==:filter
-            pop!(res)
-            append!(res, translate_hpat_filter(node,nodes[index-1],tableCols,linfo))
+            append!(res, translate_hpat_filter(node))
         elseif isa(node, Expr) && node.head==:join
             append!(res, translate_hpat_join(node,linfo))
        elseif isa(node, Expr) && node.head==:aggregate
@@ -156,14 +157,15 @@ function translate_hpat_join(node,linfo)
     return res
 end
 
-function translate_hpat_filter(node,cond,tableCols,linfo)
-    res = Any[]
-    table_name= node.args[2]
-    cond = node.args[5]
-    table_col = tableCols[table_name]
-    open_call = Expr(:call, GlobalRef(HPAT.API,:__hpat_filter), cond,table_name,table_col)
-    push!(res, open_call)
-    return res
+#=
+Make filter :call node with the following layout
+condition expression lhs, columns length, columns names(#t1#c1) ...
+=#
+function translate_hpat_filter(node)
+    num_cols = length(node.args[4])
+    open_call = mk_call(GlobalRef(HPAT.API,:__hpat_filter),
+                        [node.args[1], num_cols, node.args[4]])
+    return [open_call]
 end
 
 #=
@@ -198,7 +200,7 @@ function push_filter_up(nodes::Array{Any,1},tableCols,linfo)
             table_name = find_table_from_cond(tableCols,cond_rhs)
             replace_cond_in_linfo(linfo,cond_lhs,table_name)
             replace_table_in_cond(new_cond_node,table_name)
-            replace_table_in_filter_node(new_filter_node,table_name)
+            replace_table_in_filter_node(new_filter_node,table_name,tableCols)
             # remove condition node above filter node
             pop!(new_nodes)
             splice!(new_nodes,pos:1,[new_cond_node,new_filter_node])
@@ -283,7 +285,7 @@ function replace_cond_in_linfo(linfo,cond_var,table_name)
 end
 
 #=
-Replaces table name in the filter condition
+Replaces table name in the filter condition(mmap)
 e.g
  table1#cond_e = table1#col1 > 1 => table2#cond_e = table2#col1 > 1
 =#
@@ -295,14 +297,21 @@ function replace_table_in_cond(node,table_name)
     node.args[2].args[1][1] = Symbol(string("#",table_name,"#",arr2[3]))
 end
 
-function replace_table_in_filter_node(node,table_name)
-    # TODO replace columns too
+#=
+Replaces table name and columns accordingly in the filter node after moving
+=#
+function replace_table_in_filter_node(node,table_name,tableCols)
     arr1 = split(string(node.args[1]),'#')
     arr2 = split(string(node.args[5].args[2].name),'#')
-
-    node.args[1] = Symbol(string("#",table_name,"#",arr1[3]))
+    node.args[1] = getColName(Symbol(table_name),Symbol(arr1[3]))
     node.args[2] = Symbol(table_name)
-    node.args[5].args[2] = Symbol(string("#",table_name,"#",arr2[3]))
+    # replace in condition expression (could be removed in future)
+    node.args[5].args[2] = getColName(Symbol(table_name),Symbol(arr2[3]))
+    # replace column array with new table columns
+    node.args[4] = []
+    for (index, col) in enumerate(tableCols[node.args[2]])
+        append!(node.args[4], [getColName(Symbol(table_name),col)])
+    end
 end
 
 end # DataTablePass
