@@ -61,13 +61,53 @@ import ParallelAccelerator.ParallelIR.PIRReduction
 
 mk_call(fun,args) = Expr(:call, fun, args...)
 # ENTRY to datatable-pass
+type QueryTreeNode{T}
+    data::T
+    parent::QueryTreeNode{T}
+    child::QueryTreeNode{T}
+    # positions in original AST
+    start_pos::Int
+    end_pos::Int
+    # Constructor for root
+    function QueryTreeNode(data::T)
+        n = new(data)
+        n.parent = n
+        n.child = n
+        n.start_pos = 0
+        n.end_pos = 0
+        n
+    end
+    # Constructor
+    function QueryTreeNode(data::T, parent::QueryTreeNode, sp, ep)
+        n = new(data, parent)
+        n.child = n
+        n.start_pos = sp
+        n.end_pos = ep
+        n
+    end
+end
+
+function add_child{T}(data::T,parent::QueryTreeNode{T},sp,ep)
+    newc = QueryTreeNode(data,parent,sp,ep)
+    parent.child = newc
+    newc
+end
+function print_tree(root_qtn)
+    # TODO recursive function to pretty print the query plan tree
+end
+
+QueryTreeNode{T}(data::T) = QueryTreeNode{T}(data)
+QueryTreeNode{T}(data::T, parent::QueryTreeNode{T},sp,ep) = QueryTreeNode{T}(data,parent,sp,ep)
+
 function from_root(function_name, ast::Tuple)
     @dprintln(1,"Starting main DataTablePass.from_root.  function = ", function_name, " ast = ", ast)
     (linfo, body) = ast
     lives = computeLiveness(body, linfo)
     tableCols, tableTypes = get_table_meta(body)
     # transform body
-    body.args = from_toplevel_body(body.args,tableCols,linfo)
+    root_qtn = QueryTreeNode("root")
+    plan = make_query_plan(body.args,root_qtn)
+    body.args = from_toplevel_body(body.args,tableCols, linfo)
     @dprintln(1,"DataTablePass.from_root returns function = ", function_name, " ast = ", body)
     return LambdaVarInfoToLambda(linfo, body.args)
 end
@@ -90,6 +130,19 @@ function from_toplevel_body(nodes::Array{Any,1},tableCols,linfo)
         end
     end
     return res
+end
+
+function make_query_plan(nodes::Array{Any,1},root_qtn)
+    for (index, node) in enumerate(nodes)
+        if isa(node, Expr) && node.head==:filter
+            add_child("filter",root_qtn,index-1,index)
+        elseif isa(node, Expr) && node.head==:join
+            add_child("join",root_qtn,index,index)
+        elseif isa(node, Expr) && node.head==:aggregate
+            add_child("aggregate",root_qtn,(index-(length(node.args[4]))),index)
+        else
+        end
+    end
 end
 
 #=
