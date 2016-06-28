@@ -3,3 +3,4 @@ CompilerTools
 ParallelAccelerator
 MPI
 HDF5
+DocOpt
