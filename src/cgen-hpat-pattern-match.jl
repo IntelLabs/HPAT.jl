@@ -393,6 +393,7 @@ function pattern_match_call_agg_seq(linfo, f::GlobalRef, groupby_key, num_exprs,
     expr_func_output_list = expr_func_output_list[1]
     exprs_list = expr_func_output_list[1:num_exprs]
     funcs_list = expr_func_output_list[num_exprs+1:(2*num_exprs)]
+    agg_rand = string(convert(Int8, round(rand() * 100)))
     # first element of output list is the groupbykey column
     output_cols_list = expr_func_output_list[(2*num_exprs)+1 : end]
     agg_key_col_input = ParallelAccelerator.CGen.from_expr(groupby_key, linfo)
@@ -418,13 +419,14 @@ function pattern_match_call_agg_seq(linfo, f::GlobalRef, groupby_key, num_exprs,
         s *= "$arr_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $agg_key_map_temp.size());\n"
     end
     # copy back the values from map into arrays
-    s *= "int counter_agg = 1;\n"
+    counter_agg = "counter_agg$agg_rand"
+    s *= "int $counter_agg = 1;\n"
     s *= "for(auto i : $agg_key_map_temp){\n"
     for (index, value) in enumerate(output_cols_list)
         map_name = ParallelAccelerator.CGen.from_expr(value, linfo)
-        s *= "$map_name.ARRAYELEM(counter_agg) = temp_map_$map_name[i.first];\n"
+        s *= "$map_name.ARRAYELEM($counter_agg) = temp_map_$map_name[i.first];\n"
     end
-    s *= "counter_agg++;\n"
+    s *= "$counter_agg++;\n"
     s *= "}\n"
     # Debugging
     # s *= "for (int i = 1 ; i < counter_agg ; i++){ std::cout << pcustomer_i_classpid3.ARRAYELEM(i) << std::endl;}\n"
