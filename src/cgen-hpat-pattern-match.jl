@@ -2,24 +2,24 @@
 Copyright (c) 2016, Intel Corporation
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without 
+Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
-- Redistributions of source code must retain the above copyright notice, 
+- Redistributions of source code must retain the above copyright notice,
   this list of conditions and the following disclaimer.
-- Redistributions in binary form must reproduce the above copyright notice, 
-  this list of conditions and the following disclaimer in the documentation 
+- Redistributions in binary form must reproduce the above copyright notice,
+  this list of conditions and the following disclaimer in the documentation
   and/or other materials provided with the distribution.
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
 AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE 
-LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS 
+ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
 INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF 
+CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
 THE POSSIBILITY OF SUCH DAMAGE.
 =#
 
@@ -106,7 +106,7 @@ function pattern_match_call_dist_reduce(f::GlobalRef, var::TypedVar, reductionFu
         else
             throw("CGen unsupported MPI reduction function")
         end
-                
+
         s="MPI_Reduce(&$(var.name), &$output, 1, $mpi_type, $mpi_func, 0, MPI_COMM_WORLD);"
         # debug print for 1D_sum
         #s*="printf(\"len %d start %d end %d\\n\", parallel_ir_save_array_len_1_1, __hpat_loop_start_2, __hpat_loop_end_3);\n"
@@ -156,7 +156,7 @@ function pattern_match_call_dist_allreduce(f::GlobalRef, var::RHSVar, reductionF
         c_output = ParallelAccelerator.CGen.from_expr(output, linfo)
         var_typ = ParallelAccelerator.CGen.getSymType(var, linfo)
         is_array =  var_typ<:Array
-        
+
         if is_array
             var_typ = eltype(var_typ)
             c_var *= ".data"
@@ -184,7 +184,7 @@ function pattern_match_call_dist_allreduce(f::GlobalRef, var::RHSVar, reductionF
         else
             throw("CGen unsupported MPI reduction function")
         end
-                
+
         s="MPI_Allreduce($c_var, $c_output, $size, $mpi_type, $mpi_func, MPI_COMM_WORLD);"
         # debug print for 1D_sum
         #s*="printf(\"len %d start %d end %d\\n\", parallel_ir_save_array_len_1_1, __hpat_loop_start_2, __hpat_loop_end_3);\n"
@@ -225,7 +225,7 @@ function pattern_match_call_dist_bcast(f::GlobalRef, var::RHSVar, size::ANY,linf
             println("reduction type ", var_typ)
             throw("CGen unsupported MPI broadcast type")
         end
-                
+
         s="MPI_Bcast($c_var, $c_size, $mpi_type, 0, MPI_COMM_WORLD);"
         return s
     else
@@ -245,7 +245,7 @@ function pattern_match_call_data_src_open(f::GlobalRef, id::Int, data_var::Union
     s = ""
     if f.name==:__hpat_data_source_HDF5_open
         num::AbstractString = string(id)
-    
+
         s = "hid_t plist_id_$num = H5Pcreate(H5P_FILE_ACCESS);\n"
         s *= "assert(plist_id_$num != -1);\n"
         s *= "herr_t ret_$num;\n"
@@ -268,13 +268,13 @@ function pattern_match_call_data_src_open(f::Any, v::Any, rf::Any, o::Any, arr::
 end
 
 """
-Generate code for HDF5 file close 
+Generate code for HDF5 file close
 """
 function pattern_match_call_data_src_close(f::GlobalRef, id::Int,linfo)
     s = ""
     if f.name==:__hpat_data_source_HDF5_close
         num::AbstractString = string(id)
-    
+
         s *= "H5Dclose(dataset_id_$num);\n"
         s *= "H5Fclose(file_id_$num);\n"
     elseif f.name==:__hpat_data_source_TXT_close
@@ -408,7 +408,7 @@ function pattern_match_call_agg_seq(linfo, f::GlobalRef, groupby_key, num_exprs,
     for (index, func) in enumerate(funcs_list)
         column_name = ""
         expr_name = ParallelAccelerator.CGen.from_expr(exprs_list[index],linfo)
-        map_name = "temp_map_" * ParallelAccelerator.CGen.from_expr(output_cols_list[index+1],linfo) 
+        map_name = "temp_map_" * ParallelAccelerator.CGen.from_expr(output_cols_list[index+1],linfo)
         s *= return_reduction_string_with_closure(agg_key_col_input, expr_name, map_name, func)
     end
     s *= "}\n"
@@ -684,7 +684,7 @@ end
 function pattern_match_call_data_src_read_seq(f::GlobalRef, id::Int, arr::RHSVar,linfo)
     s = ""
     num::AbstractString = string(id)
-    
+
     if f.name==:__hpat_data_source_HDF5_read
         data_typ = eltype(ParallelAccelerator.CGen.getSymType(arr, linfo))
         h5_typ = ""
@@ -701,7 +701,7 @@ function pattern_match_call_data_src_read_seq(f::GlobalRef, id::Int, arr::RHSVar
             println("g5 data type ", data_typ)
             throw("CGen unsupported HDF5 data type")
         end
-        
+
         # assuming 1st dimension is partitined
         s =  "hsize_t CGen_HDF5_start_$num[data_ndim_$num];\n"
         s *= "hsize_t CGen_HDF5_count_$num[data_ndim_$num];\n"
@@ -734,7 +734,7 @@ end
 function pattern_match_call_data_src_read(f::GlobalRef, id::Int, arr::RHSVar, start::LHSVar, count::LHSVar,linfo)
     s = ""
     num::AbstractString = string(id)
-    
+
     if f.name==:__hpat_data_source_HDF5_read
         data_typ = eltype(ParallelAccelerator.CGen.getSymType(arr, linfo))
         h5_typ = ""
@@ -751,7 +751,7 @@ function pattern_match_call_data_src_read(f::GlobalRef, id::Int, arr::RHSVar, st
             println("g5 data type ", data_typ)
             throw("CGen unsupported HDF5 data type")
         end
-        
+
         # assuming 1st dimension is partitined
         s =  "hsize_t CGen_HDF5_start_$num[data_ndim_$num];\n"
         s *= "hsize_t CGen_HDF5_count_$num[data_ndim_$num];\n"
@@ -777,13 +777,13 @@ function pattern_match_call_data_src_read(f::GlobalRef, id::Int, arr::RHSVar, st
         # assuming 1st dimension is partitined
         data_typ = eltype(ParallelAccelerator.CGen.getSymType(arr, linfo))
         t_typ = ParallelAccelerator.CGen.toCtype(data_typ)
-        
+
         s = """
             int64_t CGen_txt_start_$num = $start;
             int64_t CGen_txt_count_$num = $count;
             int64_t CGen_txt_end_$num = $start+$count;
-            
-            
+
+
             // std::cout<<"rank: "<<__hpat_node_id<<" start: "<<CGen_txt_start_$num<<" end: "<<CGen_txt_end_$num<<" columnSize: "<<CGen_txt_col_size_$num<<std::endl;
             // if data needs to be sent left
             // still call MPI_Send if first character is new line
@@ -793,7 +793,7 @@ function pattern_match_call_data_src_read(f::GlobalRef, id::Int, arr::RHSVar, st
             {
                 while(CGen_txt_tmp_curr_start_$num!=CGen_txt_start_$num)
                 {
-                    while(CGen_txt_buffer_$num[CGen_txt_left_send_size_$num]!=\'\\n\') 
+                    while(CGen_txt_buffer_$num[CGen_txt_left_send_size_$num]!=\'\\n\')
                         CGen_txt_left_send_size_$num++;
                     CGen_txt_left_send_size_$num++; // account for \n
                     CGen_txt_tmp_curr_start_$num++;
@@ -808,7 +808,7 @@ function pattern_match_call_data_src_read(f::GlobalRef, id::Int, arr::RHSVar, st
                 MPI_Isend(CGen_txt_buffer_$num, CGen_txt_left_send_size_$num, MPI_CHAR, __hpat_node_id-1, 1, MPI_COMM_WORLD, &CGen_txt_MPI_request2_$num);
                 // std::cout<<"rank: "<<__hpat_node_id<<" sent left "<<CGen_txt_left_send_size_$num<<std::endl;
             }
-            
+
             char* CGen_txt_right_buff_$num = NULL;
             int64_t CGen_txt_right_recv_size_$num = 0;
             // receive from right
@@ -819,13 +819,13 @@ function pattern_match_call_data_src_read(f::GlobalRef, id::Int, arr::RHSVar, st
                 MPI_Recv(CGen_txt_right_buff_$num, CGen_txt_right_recv_size_$num, MPI_CHAR, __hpat_node_id+1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
                 // std::cout<<"rank: "<<__hpat_node_id<<" received right "<<CGen_txt_right_recv_size_$num<<std::endl;
             }
-            
+
             if(__hpat_node_id!=0)
             {
                 MPI_Wait(&CGen_txt_MPI_request1_$num, &CGen_txt_MPI_status_$num);
                 MPI_Wait(&CGen_txt_MPI_request2_$num, &CGen_txt_MPI_status_$num);
             }
-            
+
             // if data needs to be sent right
             // still call MPI_Send if first character is new line
             int64_t CGen_txt_right_send_size_$num = 0;
@@ -835,7 +835,7 @@ function pattern_match_call_data_src_read(f::GlobalRef, id::Int, arr::RHSVar, st
                 while(CGen_txt_tmp_curr_end_$num!=CGen_txt_end_$num-1)
                 {
                     // -1 to account for \0
-                    while(CGen_txt_buffer_$num[CGen_txt_buff_size_$num-CGen_txt_right_send_size_$num-1]!=\'\\n\') 
+                    while(CGen_txt_buffer_$num[CGen_txt_buff_size_$num-CGen_txt_right_send_size_$num-1]!=\'\\n\')
                         CGen_txt_right_send_size_$num++;
                     CGen_txt_tmp_curr_end_$num--;
                     // corner case, last line doesn't have \'\\n\'
@@ -865,11 +865,11 @@ function pattern_match_call_data_src_read(f::GlobalRef, id::Int, arr::RHSVar, st
                 MPI_Wait(&CGen_txt_MPI_request2_$num, &CGen_txt_MPI_status_$num);
                 // std::cout<<"rank: "<<__hpat_node_id<<" sent right "<<CGen_txt_right_send_size_$num<<std::endl;
             }
-            
+
             // int64_t total_data_size = (CGen_txt_end_$num-CGen_txt_start_$num)*CGen_txt_col_size_$num;
             // double *my_data = new double[total_data_size];
             int64_t CGen_txt_data_ind_$num = 0;
-            
+
             char CGen_txt_sep_char_$num[] = \"\\n\";
             int64_t CGen_txt_curr_row_$num = 0;
             $t_typ * CGen_txt_data_arr = ($t_typ *)$arr.getData();
@@ -915,7 +915,7 @@ function pattern_match_call_data_src_read(f::GlobalRef, id::Int, arr::RHSVar, st
                 }
                 CGen_txt_curr_row_$num++;
             }
-            
+
          //   MPI_File_close(&dsrc_txt_file_$num);
             """
     end
@@ -941,7 +941,7 @@ end
 
 
 
-function pattern_match_call(ast::Array{Any, 1}, linfo, lstate)
+function pattern_match_call(ast::Array{Any, 1}, linfo)
 
     @dprintln(3,"hpat pattern matching ",ast)
     s = ""
@@ -963,7 +963,7 @@ function pattern_match_call(ast::Array{Any, 1}, linfo, lstate)
         s *= pattern_match_call_end_checkpoint(ast[1], ast[2], linfo)
         s *= pattern_match_call_finish_checkpoint(ast[1], ast[2], linfo)
         s *= pattern_match_call_restore_checkpoint_end(ast[1], ast[2], linfo)
-    elseif(length(ast)==3) 
+    elseif(length(ast)==3)
         @dprintln(3,"ast1_typ = ", typeof(ast[1]), " ast2_typ = ", typeof(ast[2]), " ast3_typ = ", typeof(ast[3]))
         s *= pattern_match_call_dist_h5_size(ast[1],ast[2],ast[3], linfo)
         s *= pattern_match_call_dist_bcast(ast[1],ast[2],ast[3], linfo)
@@ -984,7 +984,7 @@ function pattern_match_call(ast::Array{Any, 1}, linfo, lstate)
         s *= pattern_match_call_dist_node_end(ast[1],ast[2],ast[3], ast[4], ast[5], linfo)
     elseif(length(ast)==8)
         s *= pattern_match_call_kmeans(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8], linfo)
-        s *= pattern_match_call_agg_seq(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8], linfo,lstate)
+        s *= pattern_match_call_agg_seq(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8], linfo)
     elseif(length(ast)==12)
         s *= pattern_match_call_linear_regression(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8],ast[9],ast[10],ast[11],ast[12], linfo)
     elseif(length(ast)==13)
@@ -1000,10 +1000,10 @@ function from_assignment_match_dist(lhs::RHSVar, rhs::Expr, linfo)
     local num::AbstractString
     if rhs.head==:call && (isa(rhs.args[1],GlobalRef) || isa(rhs.args[1],TopNode)) && rhs.args[1].name==:__hpat_data_source_HDF5_size
         num = ParallelAccelerator.CGen.from_expr(rhs.args[2], linfo)
-        s = "hid_t space_id_$num = H5Dget_space(dataset_id_$num);\n"    
-        s *= "assert(space_id_$num != -1);\n"    
+        s = "hid_t space_id_$num = H5Dget_space(dataset_id_$num);\n"
+        s *= "assert(space_id_$num != -1);\n"
         s *= "hsize_t data_ndim_$num = H5Sget_simple_extent_ndims(space_id_$num);\n"
-        s *= "hsize_t space_dims_$num[data_ndim_$num];\n"    
+        s *= "hsize_t space_dims_$num[data_ndim_$num];\n"
         s *= "H5Sget_simple_extent_dims(space_id_$num, space_dims_$num, NULL);\n"
         s *= ParallelAccelerator.CGen.from_expr(lhs, linfo)*" = space_dims_$num;"
     elseif rhs.head==:call && length(rhs.args)==1 && rhs.args[1]==GlobalRef(HPAT.API,:hpat_dist_num_pes)
@@ -1032,7 +1032,7 @@ function from_assignment_match_dist(lhs::RHSVar, rhs::Expr, linfo)
             MPI_Offset CGen_txt_buff_size_$num;
             MPI_Offset CGen_txt_offset_start_$num;
             MPI_Offset CGen_txt_offset_end_$num;
-        
+
             /* divide file read */
             MPI_File_get_size(dsrc_txt_file_$num, &CGen_txt_tot_file_size_$num);
             CGen_txt_buff_size_$num = CGen_txt_tot_file_size_$num/__hpat_num_pes;
@@ -1041,16 +1041,16 @@ function from_assignment_match_dist(lhs::RHSVar, rhs::Expr, linfo)
             if (__hpat_node_id == __hpat_num_pes-1)
                 CGen_txt_offset_end_$num = CGen_txt_tot_file_size_$num;
             CGen_txt_buff_size_$num =  CGen_txt_offset_end_$num - CGen_txt_offset_start_$num + 1;
-        
+
             char* CGen_txt_buffer_$num = new char[CGen_txt_buff_size_$num+1];
-        
+
             MPI_File_read_at_all(dsrc_txt_file_$num, CGen_txt_offset_start_$num, CGen_txt_buffer_$num, CGen_txt_buff_size_$num, MPI_CHAR, MPI_STATUS_IGNORE);
             CGen_txt_buffer_$num[CGen_txt_buff_size_$num] = \'\\0\';
-            
+
             // make sure new line is there for last line
-            if(__hpat_node_id == __hpat_num_pes-1 && CGen_txt_buffer_$num[CGen_txt_buff_size_$num-2]!=\'\\n\') 
+            if(__hpat_node_id == __hpat_num_pes-1 && CGen_txt_buffer_$num[CGen_txt_buff_size_$num-2]!=\'\\n\')
                 CGen_txt_buffer_$num[CGen_txt_buff_size_$num-1]=\'\\n\';
-            
+
             // count number of new lines
             int64_t CGen_txt_num_lines_$num = 0;
             int64_t CGen_txt_char_index_$num = 0;
@@ -1059,13 +1059,13 @@ function from_assignment_match_dist(lhs::RHSVar, rhs::Expr, linfo)
                     CGen_txt_num_lines_$num++;
                 CGen_txt_char_index_$num++;
             }
-        
+
             // std::cout<<"rank: "<<__hpat_node_id<<" lines: "<<CGen_txt_num_lines_$num<<" startChar: "<<CGen_txt_buffer_$num[0]<<std::endl;
             // get total number of rows
             int64_t CGen_txt_tot_row_size_$num=0;
             MPI_Allreduce(&CGen_txt_num_lines_$num, &CGen_txt_tot_row_size_$num, 1, MPI_LONG_LONG_INT, MPI_SUM, MPI_COMM_WORLD);
             // std::cout<<"total rows: "<<CGen_txt_tot_row_size_$num<<std::endl;
-            
+
             // count number of values in a column
             // 1D data has CGen_txt_col_size_$num==1
             int64_t CGen_txt_col_size_$num = 1;
@@ -1078,7 +1078,7 @@ function from_assignment_match_dist(lhs::RHSVar, rhs::Expr, linfo)
                     CGen_txt_col_size_$num++;
                 CGen_txt_char_index_$num++;
             }
-            
+
             // prefix sum to find current global starting line on this node
             int64_t CGen_txt_curr_start_$num = 0;
             MPI_Scan(&CGen_txt_num_lines_$num, &CGen_txt_curr_start_$num, 1, MPI_LONG_LONG_INT, MPI_SUM, MPI_COMM_WORLD);
@@ -1118,9 +1118,6 @@ function from_assignment_match_dist(lhs::Any, rhs::Any, linfo)
     return ""
 end
 
-function inSymbolTable(x, lstate)
-    haskey(lstate.symboltable, x)
-end
 
 function return_j2c_array_name(table_name,table_column)
     return "p"* string(table_name) * "p" * string(table_column)
