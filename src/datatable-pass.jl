@@ -153,7 +153,7 @@ end
 function translate_hpat_join(node,linfo)
     res = Any[]
     open_call = mk_call(GlobalRef(HPAT.API,:__hpat_join),
-                        [length(node.args[7]),length(node.args[8]),length(node.args[9]),node.args[7],node.args[8],node.args[9]])
+                        [length(node.args[7]); length(node.args[8]); length(node.args[9]); node.args[7]; node.args[8]; node.args[9]])
     push!(res, open_call)
     return res
 end
@@ -165,7 +165,7 @@ condition expression lhs, columns length, columns names(#t1#c1) ...
 function translate_hpat_filter(node)
     num_cols = length(node.args[4])
     open_call = mk_call(GlobalRef(HPAT.API,:__hpat_filter),
-                        [node.args[1], num_cols, node.args[4]])
+                        [node.args[1]; num_cols; node.args[4]])
     return [open_call]
 end
 
@@ -175,7 +175,7 @@ end
 function translate_hpat_aggregate(node,linfo)
     res = Any[]
     open_call = mk_call(GlobalRef(HPAT.API,:__hpat_aggregate),
-                        [node.args[3],length(node.args[4]),node.args[4],node.args[6],node.args[7]])
+                        [node.args[3]; length(node.args[4]); node.args[4]; node.args[6]; node.args[7]])
     push!(res, open_call)
     return res
 end
