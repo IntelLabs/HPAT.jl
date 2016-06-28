@@ -40,6 +40,8 @@ function process_node(node::Expr, state, top_level_number, is_top_level, read)
     @dprintln(3,"translating expr, head: ",node.head," node: ",node)
     if node.head == :(=)
         return process_assignment(node, state, node.args[1], node.args[2])
+    elseif node.head==:call && node.args[1]==:DataSink
+      return translate_data_sink(node.args[2], state, node.args[3], node.args[4:end])
     elseif node.head==:ref
         t1 = node.args[1]
          # table column ref like: t1[:c1]
@@ -314,8 +316,7 @@ agg_oprs_map = Dict{Symbol, Symbol}(
 )
 
 
-"""
-Convert math operations to element-wise versions to work with arrays
+""" Convert math operations to element-wise versions to work with arrays
 
 example: user can write 't4 = aggregate(t3, :userid, :sumo2 = sum(:val2==1.1), :size_val3 = size(:val3))'
 the aggregate expression ':val2==1.1' should be translated to '_t4_val2.==1.1' to be valid for arrays.
@@ -361,6 +362,17 @@ function replace_col_with_array(node::ANY, table::Tuple{Symbol,Vector{Symbol}}, 
     return CompilerTools.AstWalker.ASTWALK_RECURSE
 end
 
+function translate_data_sink(var, state, source_typ, other_args)
+    @assert source_typ==:HDF5 || source_typ==:TXT "Only HDF5 and TXT (text) data sources supported for now."
+
+    # desugar call
+    call_name = symbol("data_sink_$source_typ")
+    # GlobalRef since Julia doesn't resolve the module!
+    api_call = GlobalRef(HPAT.API, call_name)
+    rhs = Expr(:call, api_call, var, other_args...)
+    return rhs
+end
+
 function translate_data_source(lhs, state, arr_var_expr, source_typ, other_args)
     @assert arr_var_expr.args[1]==:Array || arr_var_expr.args[1]==:Matrix || arr_var_expr.args[1]==:Vector "Data sources need Vector or Array or Matrix as type"
     @assert source_typ==:HDF5 || source_typ==:TXT "Only HDF5 and TXT (text) data sources supported for now."
@@ -373,8 +385,7 @@ function translate_data_source(lhs, state, arr_var_expr, source_typ, other_args)
     return Expr(:(=), lhs, rhs)
 end
 
-"""
-Data tables are broken down to individual column arrays, table meta data is saved
+""" Data tables are broken down to individual column arrays, table meta data is saved
 table_name = DataSource(DataTable{:column1=<typeof_column1>, :column2=<typeof_column2>, ...}, HDF5, file_name)
                 ->  table_name_column1 = DataSource(...)
                     table_name_column2 = DataSource(...)

@@ -14,6 +14,11 @@ end
     return arr
 end
 
+@noinline function data_sink_HDF5(y, var::AbstractString, file_name::AbstractString)
+    h5write(file_name, var,y)
+    return nothing
+end
+
 @noinline function data_source_TXT(T::DataType, file_name::AbstractString)
     arr::T = readdlm(file_name, ' ', eltype(T))
     return arr
