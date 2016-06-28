@@ -33,8 +33,7 @@ import HPAT
 import CompilerTools.DebugMsg
 DebugMsg.init()
 
-"""
-At macro level, translate DataSource into function calls so that type inference
+""" At macro level, translate DataSource into function calls so that type inference
 and ParallelAccelerator compilation works with knowledge of calls and allocations for arrays.
 """
 function process_node(node::Expr, state, top_level_number, is_top_level, read)
@@ -51,6 +50,8 @@ function process_node(node::Expr, state, top_level_number, is_top_level, read)
              return getColName(t1, getQuoteValue(c1))
         end
         CompilerTools.AstWalker.ASTWALK_RECURSE
+    elseif node.head==:macrocall
+      return process_macros(node, state,node.args[1])
     end
     CompilerTools.AstWalker.ASTWALK_RECURSE
 end
@@ -89,8 +90,15 @@ function process_assignment(node, state, lhs::ANY, rhs::ANY)
    CompilerTools.AstWalker.ASTWALK_RECURSE
 end
 
-"""
-Translate filter t1 = t1[cond]
+function process_macros(node, state, func)
+  if func==Symbol("@partitioned")
+    state.array_partitioning[node.args[2]] = node.args[3]
+    return CompilerTools.AstWalker.ASTWALK_REMOVE
+  end
+  return node
+end
+
+""" Translate filter t1 = t1[cond]
 
 We create an array of arrays to pass the columns to table_filter since
 arrays are passed by value with tuples.

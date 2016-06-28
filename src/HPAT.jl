@@ -141,8 +141,10 @@ type MacroState
     tableCols::Dict{Symbol,Vector{Symbol}}
     # Types of each table column
     tableTypes::Dict{Symbol,Vector{Symbol}}
+    # partitioning of arrays
+    array_partitioning::Dict{Symbol,Symbol}
     function MacroState()
-        new(Dict{Symbol,Vector{Symbol}}(),Dict{Symbol,Vector{Symbol}}())
+        new(Dict{Symbol,Vector{Symbol}}(),Dict{Symbol,Vector{Symbol}}(),Dict{Symbol,Symbol}())
     end
 end
 
@@ -157,8 +159,7 @@ function captureHPAT(func, ast, sig)
   return ast
 end
 
-"""
-Adds a duplicate of the function to be checkpointed with "_restart" appended to the name.
+""" Adds a duplicate of the function to be checkpointed with "_restart" appended to the name.
 """
 function createCheckpointFunc(func, ast, sig)
   @dprintln(1, "createCheckpointFunc func = ", func)
