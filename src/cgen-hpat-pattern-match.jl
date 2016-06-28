@@ -289,7 +289,8 @@ function pattern_match_call_data_src_close(f::Any, v::Any,linfo)
 end
 
 function pattern_match_call_filter_seq(linfo,f::GlobalRef,cond_e, num_cols,table_cols...)
-    s = ""
+  s = ""
+  if f.name==:__hpat_filter
     # its an array of array. array[2:end] and table_cols... notation does that
     table_cols = table_cols[1]
     # For unique counter variables of filter
@@ -305,18 +306,19 @@ function pattern_match_call_filter_seq(linfo,f::GlobalRef,cond_e, num_cols,table
     s *= "if ( $cond_e_arr.ARRAYELEM(index) ){\n"
     # If condition satisfy copy all columns values
     for col_name in table_cols
-        arr_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
-        s *= "$arr_col_name.ARRAYELEM($write_index) =  $arr_col_name.ARRAYELEM(index); \n"
+      arr_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
+      s *= "$arr_col_name.ARRAYELEM($write_index) =  $arr_col_name.ARRAYELEM(index); \n"
     end
     s *= "$write_index = $write_index + 1;\n"
     s *= "};\n" # if condition
     s *= "};\n" # for loop
     # Change the size of each array
     for col_name in table_cols
-        arr_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
-        s *= "$arr_col_name.dims[0] =  $write_index - 1; \n"
+      arr_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
+      s *= "$arr_col_name.dims[0] =  $write_index - 1; \n"
     end
-    return s
+  end
+  return s
 end
 
 function pattern_match_call_filter_seq(linfo,f::Any,cond_e, num_cols,table_cols...)
@@ -324,7 +326,8 @@ function pattern_match_call_filter_seq(linfo,f::Any,cond_e, num_cols,table_cols.
 end
 
 function pattern_match_call_join_seq(linfo, f::GlobalRef,table_new_cols_len, table1_cols_len, table2_cols_len, table_columns...)
-    s = ""
+  s = ""
+  if f.name==:__hpat_join
     # its an array of array. array[2:end] and table_cols... notation does that
     table_columns = table_columns[1]
     # extract columns of each table
@@ -344,8 +347,8 @@ function pattern_match_call_join_seq(linfo, f::GlobalRef,table_new_cols_len, tab
     s *= "int $joined_table_length = $t2c1_length_join + $t2c1_length_join ;\n "
     # Instantiation of output table
     for col_name in table_new_cols
-        arr_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
-        s *= "$arr_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $joined_table_length);\n"
+      arr_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
+      s *= "$arr_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $joined_table_length);\n"
     end
     # Assuming that join is always on the first column of tables
     # Nested for loop implementation of join
@@ -357,18 +360,18 @@ function pattern_match_call_join_seq(linfo, f::GlobalRef,table_new_cols_len, tab
     s *= "if ( $t1_c1_join.ARRAYELEM(table1_index) $c_cond_sym  $t2_c1_join.ARRAYELEM(table2_index) ){\n"
     count = 0;
     for (index, col_name) in enumerate(table1_cols)
-        table_new_col_name = ParallelAccelerator.CGen.from_expr(table_new_cols[index],linfo)
-        table1_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
-        s *= "$table_new_col_name.ARRAYELEM($table_new_counter_join) = $table1_col_name.ARRAYELEM(table1_index); \n"
-        count = count + 1
+      table_new_col_name = ParallelAccelerator.CGen.from_expr(table_new_cols[index],linfo)
+      table1_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
+      s *= "$table_new_col_name.ARRAYELEM($table_new_counter_join) = $table1_col_name.ARRAYELEM(table1_index); \n"
+      count = count + 1
     end
     for (index, col_name) in enumerate(table2_cols)
-        if index == 1
-            continue
-        end
-        table_new_col_name = ParallelAccelerator.CGen.from_expr(table_new_cols[index+count-1],linfo)
-        table2_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
-        s *= "$table_new_col_name.ARRAYELEM($table_new_counter_join) =  $table2_col_name.ARRAYELEM(table2_index); \n"
+      if index == 1
+        continue
+      end
+      table_new_col_name = ParallelAccelerator.CGen.from_expr(table_new_cols[index+count-1],linfo)
+      table2_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
+      s *= "$table_new_col_name.ARRAYELEM($table_new_counter_join) =  $table2_col_name.ARRAYELEM(table2_index); \n"
     end
     s *= "$table_new_counter_join++;\n"
     s *= "};\n" # join if condition
@@ -376,12 +379,13 @@ function pattern_match_call_join_seq(linfo, f::GlobalRef,table_new_cols_len, tab
     s *= "};\n" # outer for loop
     # Change the size of each output array
     for col_name in table_new_cols
-        arr_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
-        s *= "$arr_col_name.dims[0] =  $table_new_counter_join - 1; \n"
+      arr_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
+      s *= "$arr_col_name.dims[0] =  $table_new_counter_join - 1; \n"
     end
     # For debugging
     #s *= "for (int i = 1 ; i < $table_new_counter_join ; i++){ std::cout << psale_itemspss_item_sk.ARRAYELEM(i) << std::endl;}\n"
-    return s
+  end
+  return s
 end
 
 function pattern_match_call_join_seq(linfo, f::Any,table_new_len, table1_len, table2_len, table_columns...)
@@ -389,7 +393,8 @@ function pattern_match_call_join_seq(linfo, f::Any,table_new_len, table1_len, ta
 end
 
 function pattern_match_call_agg_seq(linfo, f::GlobalRef, groupby_key, num_exprs, expr_func_output_list...)
-    s = ""
+  s = ""
+  if f.name==:__hpat_aggregate
     expr_func_output_list = expr_func_output_list[1]
     exprs_list = expr_func_output_list[1:num_exprs]
     funcs_list = expr_func_output_list[num_exprs+1:(2*num_exprs)]
@@ -400,37 +405,38 @@ function pattern_match_call_agg_seq(linfo, f::GlobalRef, groupby_key, num_exprs,
     agg_key_col_output = ParallelAccelerator.CGen.from_expr(output_cols_list[1], linfo)
     # Temporaty map for each column
     for (index, value) in enumerate(output_cols_list)
-        table_new_col_name = ParallelAccelerator.CGen.from_expr(value,linfo)
-        s *= "std::unordered_map<int,int> temp_map_$table_new_col_name ;\n"
+      table_new_col_name = ParallelAccelerator.CGen.from_expr(value,linfo)
+      s *= "std::unordered_map<int,int> temp_map_$table_new_col_name ;\n"
     end
     agg_key_map_temp = "temp_map_$agg_key_col_output"
     s *= "for(int i = 1 ; i < $agg_key_col_input.ARRAYLEN() + 1 ; i++){\n"
     s *= "$agg_key_map_temp[$agg_key_col_input.ARRAYELEM(i)] = $agg_key_col_input.ARRAYELEM(i);\n"
     for (index, func) in enumerate(funcs_list)
-        column_name = ""
-        expr_name = ParallelAccelerator.CGen.from_expr(exprs_list[index],linfo)
-        map_name = "temp_map_" * ParallelAccelerator.CGen.from_expr(output_cols_list[index+1],linfo)
-        s *= return_reduction_string_with_closure(agg_key_col_input, expr_name, map_name, func)
+      column_name = ""
+      expr_name = ParallelAccelerator.CGen.from_expr(exprs_list[index],linfo)
+      map_name = "temp_map_" * ParallelAccelerator.CGen.from_expr(output_cols_list[index+1],linfo)
+      s *= return_reduction_string_with_closure(agg_key_col_input, expr_name, map_name, func)
     end
     s *= "}\n"
     # Initializing new columns
     for col_name in output_cols_list
-        arr_col_name = ParallelAccelerator.CGen.from_expr(col_name, linfo)
-        s *= "$arr_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $agg_key_map_temp.size());\n"
+      arr_col_name = ParallelAccelerator.CGen.from_expr(col_name, linfo)
+      s *= "$arr_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $agg_key_map_temp.size());\n"
     end
     # copy back the values from map into arrays
     counter_agg = "counter_agg$agg_rand"
     s *= "int $counter_agg = 1;\n"
     s *= "for(auto i : $agg_key_map_temp){\n"
     for (index, value) in enumerate(output_cols_list)
-        map_name = ParallelAccelerator.CGen.from_expr(value, linfo)
-        s *= "$map_name.ARRAYELEM($counter_agg) = temp_map_$map_name[i.first];\n"
+      map_name = ParallelAccelerator.CGen.from_expr(value, linfo)
+      s *= "$map_name.ARRAYELEM($counter_agg) = temp_map_$map_name[i.first];\n"
     end
     s *= "$counter_agg++;\n"
     s *= "}\n"
     # Debugging
     # s *= "for (int i = 1 ; i < counter_agg ; i++){ std::cout << pcustomer_i_classpid3.ARRAYELEM(i) << std::endl;}\n"
-    return s
+  end
+  return s
 end
 
 function pattern_match_call_agg_seq(linfo, f::Any, groupby_key, num_exprs, exprs_func_list...)
@@ -945,54 +951,54 @@ end
 
 function pattern_match_call(ast::Array{Any, 1}, linfo)
 
-    @dprintln(3,"hpat pattern matching ",ast)
-    s = ""
-    if length(ast)==1
-        @dprintln(3,"ast1_typ = ", typeof(ast[1]))
-        s *= pattern_match_call_dist_init(ast[1], linfo)
-        s *= pattern_match_call_get_sec_since_epoch(ast[1], linfo)
-    elseif(ast[1].name==:__hpat_filter)
-        s *= pattern_match_call_filter_seq(linfo, ast[1], ast[2], ast[3], ast[4:end])
-    elseif(ast[1].name==:__hpat_join)
-        s *= pattern_match_call_join_seq(linfo, ast[1], ast[2], ast[3], ast[4],ast[5:end])
-    elseif(ast[1].name==:__hpat_aggregate)
-        s *= pattern_match_call_agg_seq(linfo, ast[1], ast[2], ast[3], ast[4:end])
-    elseif(length(ast)==2)
-        @dprintln(3,"ast1_typ = ", typeof(ast[1]), " ast2_typ = ", typeof(ast[2]))
-        s *= pattern_match_call_data_src_close(ast[1], ast[2], linfo)
-        s *= pattern_match_call_get_checkpoint_time(ast[1], ast[2], linfo)
-        s *= pattern_match_call_start_checkpoint(ast[1], ast[2], linfo)
-        s *= pattern_match_call_end_checkpoint(ast[1], ast[2], linfo)
-        s *= pattern_match_call_finish_checkpoint(ast[1], ast[2], linfo)
-        s *= pattern_match_call_restore_checkpoint_end(ast[1], ast[2], linfo)
-    elseif(length(ast)==3)
-        @dprintln(3,"ast1_typ = ", typeof(ast[1]), " ast2_typ = ", typeof(ast[2]), " ast3_typ = ", typeof(ast[3]))
-        s *= pattern_match_call_dist_h5_size(ast[1],ast[2],ast[3], linfo)
-        s *= pattern_match_call_dist_bcast(ast[1],ast[2],ast[3], linfo)
-        s *= pattern_match_call_value_checkpoint(ast[1], ast[2], ast[3], linfo)
-        s *= pattern_match_call_restore_checkpoint_start(ast[1], ast[2], linfo)
-        s *= pattern_match_call_restore_checkpoint_value(ast[1], ast[2], ast[3], linfo)
-        s *= pattern_match_call_data_src_read_seq(ast[1],ast[2],ast[3], linfo)
-    elseif(length(ast)==4)
-        s *= pattern_match_call_dist_reduce(ast[1],ast[2],ast[3], ast[4], linfo)
-        # text file read
-        s *= pattern_match_call_data_src_open(ast[1],ast[2],ast[3], ast[4], linfo)
-    elseif(length(ast)==5)
-        # HDF5 open
-        s *= pattern_match_call_data_src_open(ast[1],ast[2],ast[3], ast[4], ast[5], linfo)
-        s *= pattern_match_call_data_src_read(ast[1],ast[2],ast[3], ast[4], ast[5], linfo)
-        s *= pattern_match_call_dist_allreduce(ast[1],ast[2],ast[3], ast[4], ast[5], linfo)
-        s *= pattern_match_call_dist_portion(ast[1],ast[2],ast[3], ast[4], ast[5], linfo)
-        s *= pattern_match_call_dist_node_end(ast[1],ast[2],ast[3], ast[4], ast[5], linfo)
-    elseif(length(ast)==8)
-        s *= pattern_match_call_kmeans(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8], linfo)
-        s *= pattern_match_call_agg_seq(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8], linfo)
-    elseif(length(ast)==12)
-        s *= pattern_match_call_linear_regression(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8],ast[9],ast[10],ast[11],ast[12], linfo)
-    elseif(length(ast)==13)
-        s *= pattern_match_call_naive_bayes(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8],ast[9],ast[10],ast[11],ast[12],ast[13], linfo)
-    end
-    return s
+  @dprintln(3,"hpat pattern matching ",ast)
+  s = ""
+  if length(ast)==1
+    @dprintln(3,"ast1_typ = ", typeof(ast[1]))
+    s *= pattern_match_call_dist_init(ast[1], linfo)
+    s *= pattern_match_call_get_sec_since_epoch(ast[1], linfo)
+  elseif length(ast)==2
+    @dprintln(3,"ast1_typ = ", typeof(ast[1]), " ast2_typ = ", typeof(ast[2]))
+    s *= pattern_match_call_data_src_close(ast[1], ast[2], linfo)
+    s *= pattern_match_call_get_checkpoint_time(ast[1], ast[2], linfo)
+    s *= pattern_match_call_start_checkpoint(ast[1], ast[2], linfo)
+    s *= pattern_match_call_end_checkpoint(ast[1], ast[2], linfo)
+    s *= pattern_match_call_finish_checkpoint(ast[1], ast[2], linfo)
+    s *= pattern_match_call_restore_checkpoint_end(ast[1], ast[2], linfo)
+  elseif length(ast)==3
+    @dprintln(3,"ast1_typ = ", typeof(ast[1]), " ast2_typ = ", typeof(ast[2]), " ast3_typ = ", typeof(ast[3]))
+    s *= pattern_match_call_dist_h5_size(ast[1],ast[2],ast[3], linfo)
+    s *= pattern_match_call_dist_bcast(ast[1],ast[2],ast[3], linfo)
+    s *= pattern_match_call_value_checkpoint(ast[1], ast[2], ast[3], linfo)
+    s *= pattern_match_call_restore_checkpoint_start(ast[1], ast[2], linfo)
+    s *= pattern_match_call_restore_checkpoint_value(ast[1], ast[2], ast[3], linfo)
+    s *= pattern_match_call_data_src_read_seq(ast[1],ast[2],ast[3], linfo)
+  elseif length(ast)==4
+    s *= pattern_match_call_dist_reduce(ast[1],ast[2],ast[3], ast[4], linfo)
+    # text file read
+    s *= pattern_match_call_data_src_open(ast[1],ast[2],ast[3], ast[4], linfo)
+  elseif length(ast)==5
+    # HDF5 open
+    s *= pattern_match_call_data_src_open(ast[1],ast[2],ast[3], ast[4], ast[5], linfo)
+    s *= pattern_match_call_data_src_read(ast[1],ast[2],ast[3], ast[4], ast[5], linfo)
+    s *= pattern_match_call_dist_allreduce(ast[1],ast[2],ast[3], ast[4], ast[5], linfo)
+    s *= pattern_match_call_dist_portion(ast[1],ast[2],ast[3], ast[4], ast[5], linfo)
+    s *= pattern_match_call_dist_node_end(ast[1],ast[2],ast[3], ast[4], ast[5], linfo)
+  elseif length(ast)==8
+    s *= pattern_match_call_kmeans(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8], linfo)
+  elseif length(ast)==12
+    s *= pattern_match_call_linear_regression(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8],ast[9],ast[10],ast[11],ast[12], linfo)
+  elseif length(ast)==13
+    s *= pattern_match_call_naive_bayes(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8],ast[9],ast[10],ast[11],ast[12],ast[13], linfo)
+  end
+  if length(ast)>=4
+    s *= pattern_match_call_filter_seq(linfo, ast[1], ast[2], ast[3], ast[4:end])
+    s *= pattern_match_call_agg_seq(linfo, ast[1], ast[2], ast[3], ast[4:end])
+  end
+  if length(ast)>=5
+    s *= pattern_match_call_join_seq(linfo, ast[1], ast[2], ast[3], ast[4],ast[5:end])
+  end
+  return s
 end
 
 
