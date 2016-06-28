@@ -192,8 +192,7 @@ function translate_table_oprs(nodes::Array{Any,1}, state::DomainState)
     return new_nodes
 end
 
-"""
-Translate table_filter to Expr(:filter, cond_arr, t1 ,col_arrs...) and remove array of array garbage
+""" Translate table_filter to Expr(:filter, cond_arr, t1 ,col_arrs...) and remove array of array garbage
 
     returns: number of junk nodes to remove before the filter call
              number of junk nodes to remove after the filter call
@@ -236,8 +235,7 @@ function translate_filter(nodes::Array{Any,1},pos,filter_node::Expr,state)
     return remove_before, remove_after, [new_filter_node]
 end
 
-"""
-Translate join to Expr(:join, t3,t1,t2,out_cols, in1_cols, in2_cols) and remove array of array garbage
+""" Translate join to Expr(:join, t3,t1,t2,out_cols, in1_cols, in2_cols) and remove array of array garbage
 
     returns: number of junk nodes to remove before the join call
              number of junk nodes to remove after the join call
@@ -301,8 +299,7 @@ function translate_join(join_node,state)
     return remove_before, remove_after, [new_join_node]
 end
 
-"""
-    Example:
+"""   Example:
         _T_ss_item_count = (Main.typeof)((Base.arraylen)(_customer_i_class_ss_item_count_e::Array{Int64,1})::Int64)::Type{Int64}
         _T_id1 = (Main.typeof)((ParallelAccelerator.API.sum)(1 .* _customer_i_class_id1_e::BitArray{1}::Array{Int64,1})::Int64)::Type{Int64}
         ...

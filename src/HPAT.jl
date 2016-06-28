@@ -84,7 +84,7 @@ ParallelAccelerator.CGen.setExternalPatternMatchAssignment(CGenPatternMatch.from
 
 HPAT_path = joinpath(dirname(@__FILE__), "..")
 
-HPAT_includes = string("#include <ctime>\n#include \"", HPAT_path, "/deps/include/hpat.h\"\n")
+HPAT_includes = string("#include <ctime>\n#include <unordered_map>\n#include \"", HPAT_path, "/deps/include/hpat.h\"\n")
 ParallelAccelerator.CGen.addCgenUserOptions(ParallelAccelerator.CGen.CgenUserOptions(HPAT_includes))
 
 function ns_to_sec(x)
@@ -155,6 +155,7 @@ function captureHPAT(func, ast, sig)
   macro_state = MacroState()
   AstWalk(ast, CaptureAPI.process_node, macro_state)
   pushmeta!(ast,:hpat_tables, macro_state.tableCols, macro_state.tableTypes)
+  pushmeta!(ast,:hpat_partitioning, macro_state.array_partitioning)
   #println(ast)
   return ast
 end
