@@ -388,61 +388,50 @@ function pattern_match_call_join_seq(linfo, f::Any,table_new_len, table1_len, ta
     return ""
 end
 
-function pattern_match_call_agg_seq(f::GlobalRef,table_new_name, table1_name, groupby_key, exprs_list, exprs_list_rhs, funcs_list, table_new_cols, linfo, lstate)
-    # TODO Refactor this function to make it more readable
+function pattern_match_call_agg_seq(linfo, f::GlobalRef, groupby_key, num_exprs, expr_func_output_list...)
     s = ""
-    if f.name==:__hpat_aggregate
-        table_new_name = string(table_new_name)
-        table1_name = string(table1_name)
-        agg_key = replace(string(groupby_key),'#','p',2)
-        agg_key_new_table = replace(string(table_new_cols[1]),'#','p',2)
-        for (index, value) in enumerate(table_new_cols)
-            s *= "std::unordered_map<int,int> temp_map_" * replace(string(value),'#','p',2) * ";\n"
-        end
-        agg_key_map_temp = " temp_map_" * replace(string(table_new_cols[1]),'#','p',2)
-        s *= "for(int i = 1 ; i < $agg_key.ARRAYLEN() + 1 ; i++){\n"
-        s *= "$agg_key_map_temp[$agg_key.ARRAYELEM(i)] = 1;\n"
-        for (index, func) in enumerate(funcs_list)
-            column_name = ""
-            if isa(exprs_list_rhs[index],Expr)
-                column_name = replace(string(exprs_list_rhs[index].args[2].name),'#','p',2)
-                map_name = replace(string(table_new_cols[index+1]),'#','p',2)
-                s *= return_reduction_string_with_closure(agg_key, column_name, string("temp_map_",map_name), func,exprs_list_rhs[index])
-            else
-                column_name = replace(string(exprs_list_rhs[index]),'#','p',2)
-                map_name = replace(string(table_new_cols[index+1]),'#','p',2)
-                s *= return_reduction_string(agg_key, column_name, string("temp_map_",map_name), func)
-            end
-            # first item of table_new_cols is the aggregate key and we need to skip it
-        end
-        s *= "}\n"
-        # Initializing new columns
-        for col_name in table_new_cols
-            # TODO rather than initializing again free the original one
-            arr_col_name = replace(string(col_name),'#','p',3)
-            if ( ! inSymbolTable(symbol(col_name),lstate))
-                s *= "j2c_array< int64_t >   $arr_col_name;\n"
-            end
-            s *= "$arr_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $agg_key_map_temp.size());\n"
-        end
-        # copy back the values from map into arrays
-        s *= "int counter_agg = 1;\n"
-        s *= "for(auto i : $agg_key_map_temp){\n"
-        # Always skip first element from the table_new_cols;it is not part of expressions list.
-        for (index, value) in enumerate(exprs_list)
-            map_name = replace(string(table_new_cols[index+1]),'#','p',3)
-            s *= "$map_name.ARRAYELEM(counter_agg) = temp_map_$map_name[i.first];\n"
-        end
-        s *= "$agg_key_new_table.ARRAYELEM(counter_agg) = i.first;\n "
-        s *= "counter_agg++;\n"
-        s *= "}\n"
-        # Debugging
-        # s *= "for (int i = 1 ; i < counter_agg ; i++){ std::cout << pcustomer_i_classpid2pe.ARRAYELEM(i) << std::endl;}\n"
+    expr_func_output_list = expr_func_output_list[1]
+    exprs_list = expr_func_output_list[1:num_exprs]
+    funcs_list = expr_func_output_list[num_exprs+1:(2*num_exprs)]
+    # first element of output list is the groupbykey column
+    output_cols_list = expr_func_output_list[(2*num_exprs)+1 : end]
+    agg_key_col_input = ParallelAccelerator.CGen.from_expr(groupby_key, linfo)
+    agg_key_col_output = ParallelAccelerator.CGen.from_expr(output_cols_list[1], linfo)
+    # Temporaty map for each column
+    for (index, value) in enumerate(output_cols_list)
+        table_new_col_name = ParallelAccelerator.CGen.from_expr(value,linfo)
+        s *= "std::unordered_map<int,int> temp_map_$table_new_col_name ;\n"
     end
+    agg_key_map_temp = "temp_map_$agg_key_col_output"
+    s *= "for(int i = 1 ; i < $agg_key_col_input.ARRAYLEN() + 1 ; i++){\n"
+    s *= "$agg_key_map_temp[$agg_key_col_input.ARRAYELEM(i)] = $agg_key_col_input.ARRAYELEM(i);\n"
+    for (index, func) in enumerate(funcs_list)
+        column_name = ""
+        expr_name = ParallelAccelerator.CGen.from_expr(exprs_list[index],linfo)
+        map_name = "temp_map_" * ParallelAccelerator.CGen.from_expr(output_cols_list[index+1],linfo) 
+        s *= return_reduction_string_with_closure(agg_key_col_input, expr_name, map_name, func)
+    end
+    s *= "}\n"
+    # Initializing new columns
+    for col_name in output_cols_list
+        arr_col_name = ParallelAccelerator.CGen.from_expr(col_name, linfo)
+        s *= "$arr_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $agg_key_map_temp.size());\n"
+    end
+    # copy back the values from map into arrays
+    s *= "int counter_agg = 1;\n"
+    s *= "for(auto i : $agg_key_map_temp){\n"
+    for (index, value) in enumerate(output_cols_list)
+        map_name = ParallelAccelerator.CGen.from_expr(value, linfo)
+        s *= "$map_name.ARRAYELEM(counter_agg) = temp_map_$map_name[i.first];\n"
+    end
+    s *= "counter_agg++;\n"
+    s *= "}\n"
+    # Debugging
+    # s *= "for (int i = 1 ; i < counter_agg ; i++){ std::cout << pcustomer_i_classpid3.ARRAYELEM(i) << std::endl;}\n"
     return s
 end
 
-function pattern_match_call_agg_seq(f::Any,table_new_name, table1_name, groupby_key, exprs_list, exprs_list_rhs,funcs_list, table_new_cols, linfo, lstate)
+function pattern_match_call_agg_seq(linfo, f::Any, groupby_key, num_exprs, exprs_func_list...)
     return ""
 end
 
@@ -964,6 +953,8 @@ function pattern_match_call(ast::Array{Any, 1}, linfo, lstate)
         s *= pattern_match_call_filter_seq(linfo, ast[1], ast[2], ast[3], ast[4:end])
     elseif(ast[1].name==:__hpat_join)
         s *= pattern_match_call_join_seq(linfo, ast[1], ast[2], ast[3], ast[4],ast[5:end])
+    elseif(ast[1].name==:__hpat_aggregate)
+        s *= pattern_match_call_agg_seq(linfo, ast[1], ast[2], ast[3], ast[4:end])
     elseif(length(ast)==2)
         @dprintln(3,"ast1_typ = ", typeof(ast[1]), " ast2_typ = ", typeof(ast[2]))
         s *= pattern_match_call_data_src_close(ast[1], ast[2], linfo)
@@ -1139,50 +1130,24 @@ function return_pound_array_name(table_name,table_column)
     return "#"* string(table_name) * "#" * string(table_column)
 end
 
-function return_reduction_string(agg_key,column_name,agg_map,func)
+function return_reduction_string_with_closure(agg_key_col_input,expr_arr,agg_map,func)
     s = ""
     if string(func) == "Main.length"
-        s *= "if ($agg_map.find($agg_key.ARRAYELEM(i)) == $agg_map.end())\n"
-        s *= "$agg_map[$agg_key.ARRAYELEM(i)] = 1;\n"
+        s *= "if ($agg_map.find($agg_key_col_input.ARRAYELEM(i)) == $agg_map.end())\n"
+        s *= "$agg_map[$agg_key_col_input.ARRAYELEM(i)] = 1;\n"
         s *= "else \n"
-        s *= "$agg_map[$agg_key.ARRAYELEM(i)] += 1;\n\n"
+        s *= "$agg_map[$agg_key_col_input.ARRAYELEM(i)] += 1;\n\n"
     elseif string(func) == "Main.sum"
-        s *= "if ($agg_map.find($agg_key.ARRAYELEM(i)) == $agg_map.end())\n"
-        s *= "$agg_map[$agg_key.ARRAYELEM(i)] = $column_name.ARRAYELEM(i);\n"
+        s *= "if ($agg_map.find($agg_key_col_input.ARRAYELEM(i)) == $agg_map.end())\n"
+        s *= "$agg_map[$agg_key_col_input.ARRAYELEM(i)] = $expr_arr.ARRAYELEM(i) ;\n"
         s *= "else \n"
-        s *= "$agg_map[$agg_key.ARRAYELEM(i)] += $column_name.ARRAYELEM(i) ;\n\n"
+        s *= "$agg_map[$agg_key_col_input.ARRAYELEM(i)] +=  $expr_arr.ARRAYELEM(i)  ;\n\n"
     elseif string(func) == "Main.max"
-        s *= "if ($agg_map.find($agg_key.ARRAYELEM(i)) == $agg_map.end()){\n"
-        s *= "$agg_map[$agg_key.ARRAYELEM(i)] = $column_name.ARRAYELEM(i);}\n"
+        s *= "if ($agg_map.find($agg_key_col_input.ARRAYELEM(i)) == $agg_map.end())){\n"
+        s *= "$agg_map[$agg_key_col_input.ARRAYELEM(i)] = $expr_arr.ARRAYELEM(i) ;}\n"
         s *= "else{ \n"
-        s *= "if (agg_map_count[$agg_key.ARRAYELEM(i)] < $column_name.ARRAYELEM(i) ) \n"
-        s *= "$agg_map[$agg_key.ARRAYELEM(i)] = $column_name.ARRAYELEM(i);}\n\n"
-    end
-    return s
-end
-
-function return_reduction_string_with_closure(agg_key,column_name,agg_map,func,red_expr)
-    s = ""
-    c_expr_arr = replace(string(red_expr.args[2].name),'#','p',2)
-    c_expr_sym = string(red_expr.args[1].name)[2:end]
-    c_expr_input = string(red_expr.args[3])
-    c_cond = "( $c_expr_arr.ARRAYELEM(i) $c_expr_sym $c_expr_input) "
-    if string(func) == "Main.length"
-        s *= "if ($agg_map.find($agg_key.ARRAYELEM(i)) == $agg_map.end())\n"
-        s *= "$agg_map[$agg_key.ARRAYELEM(i)] = 1;\n"
-        s *= "else \n"
-        s *= "$agg_map[$agg_key.ARRAYELEM(i)] += 1;\n\n"
-    elseif string(func) == "Main.sum"
-        s *= "if ($agg_map.find($agg_key.ARRAYELEM(i)) == $agg_map.end())\n"
-        s *= "$agg_map[$agg_key.ARRAYELEM(i)] = $c_cond  ;\n"
-        s *= "else \n"
-        s *= "$agg_map[$agg_key.ARRAYELEM(i)] += $c_cond ;\n\n"
-    elseif string(func) == "Main.max"
-        s *= "if ($agg_map.find($agg_key.ARRAYELEM(i)) == $agg_map.end()){\n"
-        s *= "$agg_map[$agg_key.ARRAYELEM(i)] = $c_cond ;}\n"
-        s *= "else{ \n"
-        s *= "if (agg_map_count[$agg_key.ARRAYELEM(i)] < $column_name.ARRAYELEM(i) ) \n"
-        s *= "$agg_map[$agg_key.ARRAYELEM(i)] = $c_cond ;}\n\n"
+        s *= "if (agg_map_count[$agg_key_col_input.ARRAYELEM(i)] < $expr_arr.ARRAYELEM(i) ) \n"
+        s *= "$agg_map[$agg_key_col_input.ARRAYELEM(i)] = $expr_arr.ARRAYELEM(i) ;}\n\n"
     end
     return s
 end
