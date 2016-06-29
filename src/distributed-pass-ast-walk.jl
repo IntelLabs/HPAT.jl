@@ -124,7 +124,7 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
                        # no need to check size for parallel arrays since ParallelIR already used equivalence class info
                        # || !eqSize(state.arrs_dist_info[arr].dim_sizes[end], state.arrs_dist_info[myArrs[1]].dim_sizes[end])
                     # last dimension of all parfor arrays should be equal since they are partitioned
-                    @dprintln(2,"DistPass parfor check array: ", arr," seq: ", state.arrs_dist_info[arr].isSequential)
+                    @dprintln(2,"DistPass parfor check array: ", arr," sequential: ", state.arrs_dist_info[arr].isSequential)
                     seq = true
             end
         end
@@ -255,10 +255,13 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
                 seq = state.arrs_dist_info[lhs].isSequential || state.arrs_dist_info[toLHSVar(rhs.args[2])].isSequential
                 state.arrs_dist_info[lhs].isSequential = state.arrs_dist_info[toLHSVar(rhs.args[2])].isSequential = seq
             else
-                @dprintln(3,"DistPass arr info reshape tuple not found: ", rhs.args[3])
+                @dprintln(3,"DistPass arr info reshape tuple not found: ", rhs.args[3]," therefore sequential: ",lhs," ",toLHSVar(rhs.args[2]))
                 state.arrs_dist_info[lhs].isSequential = state.arrs_dist_info[toLHSVar(rhs.args[2])].isSequential = true
             end
         elseif isBaseFunc(rhs.args[1],:tuple)
+            state.tuple_table[lhs] = [  toLHSVarOrNum(s) for s in rhs.args[2:end] ]
+            # TODO: do tuples need to be constant?
+            #=
             ok = true
             for s in rhs.args[2:end]
                 if !(isa(s,SymbolNode) || isa(s,Int))
@@ -271,6 +274,7 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
             else
                 @dprintln(3,"DistPass arr info tuple not constant: ", lhs," ",rhs.args[2:end])
             end
+            =#
         elseif isBaseFunc(func,:gemm_wrapper!)
             # determine output dimensions
             state.arrs_dist_info[lhs].dim_sizes = state.arrs_dist_info[toLHSVar(rhs.args[2])].dim_sizes
