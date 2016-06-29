@@ -2,24 +2,24 @@
 Copyright (c) 2016, Intel Corporation
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without 
+Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
-- Redistributions of source code must retain the above copyright notice, 
+- Redistributions of source code must retain the above copyright notice,
   this list of conditions and the following disclaimer.
-- Redistributions in binary form must reproduce the above copyright notice, 
-  this list of conditions and the following disclaimer in the documentation 
+- Redistributions in binary form must reproduce the above copyright notice,
+  this list of conditions and the following disclaimer in the documentation
   and/or other materials provided with the distribution.
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
 AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE 
-LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS 
+ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
 INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF 
+CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
 THE POSSIBILITY OF SUCH DAMAGE.
 =#
 
@@ -29,13 +29,13 @@ using CompilerTools.LivenessAnalysis
 
 function getArrayDistributionInfo(ast, state)
     before_dist_arrays = [arr for arr in keys(state.arrs_dist_info)]
-    
+
     while true
         dist_arrays = []
         @dprintln(3,"DistPass state before array info walk: ",state)
         ParallelIR.AstWalk(ast, get_arr_dist_info, state)
         @dprintln(3,"DistPass state after array info walk: ",state)
-            # all arrays not marked sequential are distributable at this point 
+            # all arrays not marked sequential are distributable at this point
         for arr in keys(state.arrs_dist_info)
             if state.arrs_dist_info[arr].isSequential==false
                 @dprintln(2,"DistPass distributable parfor array: ", arr)
@@ -61,7 +61,7 @@ mark sequential arrays
 function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, is_top_level, read)
     head = node.head
     # arrays written in parfors are ok for now
-    
+
     @dprintln(3,"DistPass arr info walk Expr head: ", head)
     if head==:(=)
         @dprintln(3,"DistPass arr info walk assignment: ", node)
@@ -73,17 +73,17 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
         parfor = getParforNode(node)
         rws = parfor.rws
         seq = false
-                
-        if length(parfor.arrays_read_past_index)!=0 || length(parfor.arrays_written_past_index)!=0 
+
+        if length(parfor.arrays_read_past_index)!=0 || length(parfor.arrays_written_past_index)!=0
             @dprintln(2,"DistPass arr info walk parfor sequential: ", node)
             seq = true
         end
-        
+
         indexVariable::Symbol = toLHSVar(parfor.loopNests[1].indexVariable)
-        
+
         allArrAccesses = merge(rws.readSet.arrays,rws.writeSet.arrays)
         myArrs = LHSVar[]
-        
+
         body_lives = CompilerTools.LivenessAnalysis.from_lambda(state.LambdaVarInfo, parfor.body, ParallelIR.pir_live_cb, state.LambdaVarInfo)
         #@dprintln(3, "body_lives = ", body_lives)
 
@@ -98,9 +98,9 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
                     push!(myArrs, arr)
                 end
                 # An array access index can be dependent on parfor's
-                # index variable as in nested comprehension case of K-Means. 
+                # index variable as in nested comprehension case of K-Means.
                 # Parfor can't be parallelized in general cases since array can't be partitioned properly.
-                # ParallelIR should optimize out the trivial cases where indices are essentially equal (i=1+1*index-1 in k-means)   
+                # ParallelIR should optimize out the trivial cases where indices are essentially equal (i=1+1*index-1 in k-means)
                 if isAccessIndexDependent(indices, indexVariable, body_lives, state)
                     #push!(myArrs, arr)
                     @dprintln(2,"DistPass arr info walk arr index dependent: ",arr," ", indices, " ", indexVariable)
@@ -120,9 +120,9 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
         @dprintln(3,"DistPass arr info walk parfor arrays: ", myArrs)
 
         for arr in myArrs
-            if state.arrs_dist_info[arr].isSequential 
+            if state.arrs_dist_info[arr].isSequential
                        # no need to check size for parallel arrays since ParallelIR already used equivalence class info
-                       # || !eqSize(state.arrs_dist_info[arr].dim_sizes[end], state.arrs_dist_info[myArrs[1]].dim_sizes[end]) 
+                       # || !eqSize(state.arrs_dist_info[arr].dim_sizes[end], state.arrs_dist_info[myArrs[1]].dim_sizes[end])
                     # last dimension of all parfor arrays should be equal since they are partitioned
                     @dprintln(2,"DistPass parfor check array: ", arr," seq: ", state.arrs_dist_info[arr].isSequential)
                     seq = true
@@ -136,7 +136,7 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
             end
         end
         return CompilerTools.AstWalker.ASTWALK_RECURSE
-    # functions dist_ir_funcs are either handled here or do not make arrays sequential  
+    # functions dist_ir_funcs are either handled here or do not make arrays sequential
     elseif head==:call && (isa(node.args[1],GlobalRef) || isa(node.args[1],TopNode)) && in(node.args[1].name, dist_ir_funcs)
         func = node.args[1].name
         if func==:__hpat_data_source_HDF5_read || func==:__hpat_data_source_TXT_read
@@ -161,30 +161,30 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
     # arrays written in sequential code are not distributed
     elseif head!=:body && head!=:block && head!=:lambda
         @dprintln(3,"DistPass arr info walk sequential code: ", node)
-        
+
         live_info = CompilerTools.LivenessAnalysis.from_lambda(state.LambdaVarInfo, TypedExpr(nothing, :body, node), ParallelIR.pir_live_cb, state.LambdaVarInfo)
         #@dprintln(3, "body_lives = ", body_lives)
         # live_info = CompilerTools.LivenessAnalysis.find_top_number(top_level_number, state.lives)
         # all_vars = union(live_info.def, live_info.use)
         all_vars = []
-        
+
         for bb in collect(values(live_info.basic_blocks))
             for stmt in bb.statements
                 append!(all_vars, collect(union(stmt.def, stmt.use)))
             end
         end
-        
+
         @dprintln(3,"DistPass arr info walk sequential code vars: ", all_vars)
         # ReadWriteSet is not robust enough now
         #rws = CompilerTools.ReadWriteSet.from_exprs([node], ParallelIR.pir_live_cb, state.LambdaVarInfo)
         #readArrs = collect(keys(rws.readSet.arrays))
         #writeArrs = collect(keys(rws.writeSet.arrays))
         #allArrs = [readArrs;writeArrs]
-        
+
         for var in all_vars
             if haskey(state.arrs_dist_info, toLHSVar(var))
                 @dprintln(2,"DistPass arr info walk array in sequential code: ", var, " ", node)
-                
+
                 state.arrs_dist_info[toLHSVar(var)].isSequential = true
             end
         end
@@ -225,10 +225,15 @@ function get_arr_dist_info(ast::Any, state::DistPassState, top_level_number, is_
     return CompilerTools.AstWalker.ASTWALK_RECURSE
 end
 
+""" return LHSVar if arg is RHSVar, otherwise no change
+used for allocation sizes which could be LHSVar or Int or TypedVar or Expr
+"""
+replaceAllocTypedVar(a::TypedVar) = toLHSVar(a)
+replaceAllocTypedVar(a::Union{Int,LHSVar,Expr}) = a
 
 function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_level_number, lhs, rhs)
     if isAllocation(rhs)
-            state.arrs_dist_info[lhs].dim_sizes = map(toLHSVarOrInt, get_alloc_shape(rhs.args[2:end]))
+            state.arrs_dist_info[lhs].dim_sizes = map(replaceAllocTypedVar, get_alloc_shape(rhs.args[2:end]))
             @dprintln(3,"DistPass arr info dim_sizes update: ", state.arrs_dist_info[lhs].dim_sizes)
     elseif isa(rhs,RHSVar)
         rhs = toLHSVar(rhs)
@@ -258,14 +263,14 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
             for s in rhs.args[2:end]
                 if !(isa(s,SymbolNode) || isa(s,Int))
                     ok = false
-                end 
-            end 
+                end
+            end
             if ok
                 state.tuple_table[lhs] = [  toLHSVarOrNum(s) for s in rhs.args[2:end] ]
                 @dprintln(3,"DistPass arr info tuple constant: ", lhs," ",rhs.args[2:end])
             else
                 @dprintln(3,"DistPass arr info tuple not constant: ", lhs," ",rhs.args[2:end])
-            end 
+            end
         elseif isBaseFunc(func,:gemm_wrapper!)
             # determine output dimensions
             state.arrs_dist_info[lhs].dim_sizes = state.arrs_dist_info[toLHSVar(rhs.args[2])].dim_sizes
@@ -273,10 +278,10 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
             t1 = (rhs.args[3]=='T')
             arr2 = toLHSVar(rhs.args[6])
             t2 = (rhs.args[4]=='T')
-            
+
             seq = false
-            
-            # result is sequential if both inputs are sequential 
+
+            # result is sequential if both inputs are sequential
             if state.arrs_dist_info[arr1].isSequential && state.arrs_dist_info[arr2].isSequential
                 seq = true
             # result is sequential but with reduction if both inputs are partitioned and second one is transposed
@@ -295,7 +300,7 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
                 state.arrs_dist_info[arr2].isSequential = true
                 seq = true
             end
-            
+
             if seq
                 @dprintln(3,"DistPass arr info gemm output is sequential: ", lhs," ",rhs.args[2])
             end
@@ -306,10 +311,10 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
             arr1 = toLHSVar(rhs.args[4])
             t1 = (rhs.args[3]=='T')
             arr2 = toLHSVar(rhs.args[5])
-            
+
             seq = false
-            
-            # result is sequential if both inputs are sequential 
+
+            # result is sequential if both inputs are sequential
             if state.arrs_dist_info[arr1].isSequential && state.arrs_dist_info[arr2].isSequential
                 seq = true
             # result is sequential but with reduction if both inputs are partitioned and matrix is not transposed (X*y)
@@ -326,7 +331,7 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
                 state.arrs_dist_info[arr2].isSequential = true
                 seq = true
             end
-            
+
             if seq
                 @dprintln(3,"DistPass arr info gemv output is sequential: ", lhs," ",rhs.args[2])
             end
@@ -360,7 +365,7 @@ function eqSize(a::Expr, b::Expr)
             return false
         end
     end
-    return true 
+    return true
 end
 
 function eqSize(a::SymbolNode, b::SymbolNode)
@@ -370,4 +375,3 @@ end
 function eqSize(a::Any, b::Any)
     return a==b
 end
-
