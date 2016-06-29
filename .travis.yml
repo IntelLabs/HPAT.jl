@@ -11,6 +11,7 @@ os:
 
 julia:
   - 0.4.5
+  - 0.4.6
 
 notifications:
   email: false
@@ -32,3 +33,4 @@ script:
   - mpirun -np 2 julia --depwarn=no examples/pi.jl
   - julia --depwarn=no generate_data/generate_logistic_regression.jl --instances=10000 --path=/tmp/
   - mpirun -np 2 julia --depwarn=no examples/logistic_regression.jl --iterations=10 --file=/tmp/logistic_regression.hdf5
+  - mpirun -np 2 julia --depwarn=no examples/kmeans.jl --iterations=10 --file=/tmp/logistic_regression.hdf5
