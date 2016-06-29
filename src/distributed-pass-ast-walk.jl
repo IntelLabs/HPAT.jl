@@ -158,9 +158,9 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
     elseif head==:gotoifnot
         @dprintln(3,"DistPass arr info gotoifnot: ", node)
         return CompilerTools.AstWalker.ASTWALK_RECURSE
-    # arrays written in sequential code are not distributed
+    # arrays written in serial code are not distributed
     elseif head!=:body && head!=:block && head!=:lambda
-        @dprintln(3,"DistPass arr info walk sequential code: ", node)
+        @dprintln(3,"DistPass arr info walk serial code: ", node)
 
         live_info = CompilerTools.LivenessAnalysis.from_lambda(state.LambdaVarInfo, TypedExpr(nothing, :body, node), ParallelIR.pir_live_cb, state.LambdaVarInfo)
         #@dprintln(3, "body_lives = ", body_lives)
@@ -174,7 +174,7 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
             end
         end
 
-        @dprintln(3,"DistPass arr info walk sequential code vars: ", all_vars)
+        @dprintln(3,"DistPass arr info walk serial code vars: ", all_vars)
         # ReadWriteSet is not robust enough now
         #rws = CompilerTools.ReadWriteSet.from_exprs([node], ParallelIR.pir_live_cb, state.LambdaVarInfo)
         #readArrs = collect(keys(rws.readSet.arrays))
@@ -183,7 +183,7 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
 
         for var in all_vars
             if haskey(state.arrs_dist_info, toLHSVar(var))
-                @dprintln(2,"DistPass arr info walk array in sequential code: ", var, " ", node)
+                @dprintln(2,"DistPass arr info walk array sequential since in serial code: ", var, " ", node)
 
                 state.arrs_dist_info[toLHSVar(var)].isSequential = true
             end
