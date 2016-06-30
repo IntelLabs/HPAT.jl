@@ -66,70 +66,7 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
     elseif head==:parfor
         @dprintln(3,"DistPass arr info walk parfor: ", node)
         parfor = getParforNode(node)
-        rws = parfor.rws
-        partitioning = ONE_D
-
-        if length(parfor.arrays_read_past_index)!=0 || length(parfor.arrays_written_past_index)!=0
-            @dprintln(2,"DistPass arr info walk parfor sequential: ", node)
-            partitioning = SEQ
-        end
-
-        indexVariable::Symbol = toLHSVar(parfor.loopNests[1].indexVariable)
-
-        allArrAccesses = merge(rws.readSet.arrays,rws.writeSet.arrays)
-        myArrs = LHSVar[]
-
-        body_lives = CompilerTools.LivenessAnalysis.from_lambda(state.LambdaVarInfo, parfor.body, ParallelIR.pir_live_cb, state.LambdaVarInfo)
-        #@dprintln(3, "body_lives = ", body_lives)
-
-        # If an array is accessed with a Parfor's index variable, the parfor and array should have same partitioning
-        for arr in keys(allArrAccesses)
-            # an array can be accessed multiple times in Pafor
-            # for each access:
-            for access_indices in allArrAccesses[arr]
-                indices = map(toLHSVar,access_indices)
-                # if array would be accessed in parallel in this Parfor
-                if indices[end]==indexVariable
-                    push!(myArrs, arr)
-                end
-                # An array access index can be dependent on parfor's
-                # index variable as in nested comprehension case of K-Means.
-                # Parfor can't be parallelized in general cases since array can't be partitioned properly.
-                # ParallelIR should optimize out the trivial cases where indices are essentially equal (i=1+1*index-1 in k-means)
-                if isAccessIndexDependent(indices, indexVariable, body_lives, state)
-                    #push!(myArrs, arr)
-                    @dprintln(2,"DistPass arr info walk arr index dependent: ",arr," ", indices, " ", indexVariable)
-                    partitioning = SEQ
-                end
-                # sequential if not accessed column major (last dimension)
-                # TODO: generalize?
-                if in(indexVariable, indices[1:end-1])
-                    @dprintln(2,"DistPass arr info walk arr index sequential: ",arr," ", indices, " ", indexVariable)
-                    partitioning = SEQ
-                end
-            end
-        end
-
-        # keep mapping from parfors to arrays
-        # state.parfor_info[parfor.unique_id] = myArrs
-        @dprintln(3,"DistPass arr info walk parfor arrays: ", myArrs)
-
-        for arr in myArrs
-            partitioning = min(partitioning,getArrayPartitioning(arr,state))
-            if isSEQ(arr,state)
-                       # no need to check size for parallel arrays since ParallelIR already used equivalence class info
-                       # || !eqSize(state.arrs_dist_info[arr].dim_sizes[end], state.arrs_dist_info[myArrs[1]].dim_sizes[end])
-                    # last dimension of all parfor arrays should be equal since they are partitioned
-                    @dprintln(2,"DistPass parfor check array: ", arr," sequential: ", isSEQ(arr,state))
-            end
-        end
-        # parfor and all its arrays have same partitioning
-        state.parfor_partitioning[parfor.unique_id] = partitioning
-        for arr in myArrs
-            setArrayPartitioning(arr,partitioning,state)
-        end
-
-        return CompilerTools.AstWalker.ASTWALK_RECURSE
+        return get_arr_dist_info_parfor(node, state, top_level_number, parfor)
     # functions dist_ir_funcs are either handled here or do not make arrays sequential
     elseif head==:call && (isa(node.args[1],GlobalRef) || isa(node.args[1],TopNode)) && in(node.args[1].name, dist_ir_funcs)
         func = node.args[1].name
@@ -155,35 +92,103 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
     # arrays written in serial code are not distributed
     elseif head!=:body && head!=:block && head!=:lambda
         @dprintln(3,"DistPass arr info walk serial code: ", node)
-
-        live_info = CompilerTools.LivenessAnalysis.from_lambda(state.LambdaVarInfo, TypedExpr(nothing, :body, node), ParallelIR.pir_live_cb, state.LambdaVarInfo)
-        #@dprintln(3, "body_lives = ", body_lives)
-        # live_info = CompilerTools.LivenessAnalysis.find_top_number(top_level_number, state.lives)
-        # all_vars = union(live_info.def, live_info.use)
-        all_vars = []
-
-        for bb in collect(values(live_info.basic_blocks))
-            for stmt in bb.statements
-                append!(all_vars, collect(union(stmt.def, stmt.use)))
-            end
-        end
-
-        @dprintln(3,"DistPass arr info walk serial code vars: ", all_vars)
-        # ReadWriteSet is not robust enough now
-        #rws = CompilerTools.ReadWriteSet.from_exprs([node], ParallelIR.pir_live_cb, state.LambdaVarInfo)
-        #readArrs = collect(keys(rws.readSet.arrays))
-        #writeArrs = collect(keys(rws.writeSet.arrays))
-        #allArrs = [readArrs;writeArrs]
-
-        for var in all_vars
-            if haskey(state.arrs_dist_info, toLHSVar(var))
-                @dprintln(2,"DistPass arr info walk array sequential since in serial code: ", var, " ", node)
-                setSEQ(toLHSVar(var),state)
-            end
-        end
-        return node
+        return get_arr_dist_info_serial_code(node, state, top_level_number)
     end
     return CompilerTools.AstWalker.ASTWALK_RECURSE
+end
+
+function get_arr_dist_info_serial_code(node, state, top_level_number)
+          live_info = CompilerTools.LivenessAnalysis.from_lambda(state.LambdaVarInfo, TypedExpr(nothing, :body, node), ParallelIR.pir_live_cb, state.LambdaVarInfo)
+          #@dprintln(3, "body_lives = ", body_lives)
+          # live_info = CompilerTools.LivenessAnalysis.find_top_number(top_level_number, state.lives)
+          # all_vars = union(live_info.def, live_info.use)
+          all_vars = []
+
+          for bb in collect(values(live_info.basic_blocks))
+              for stmt in bb.statements
+                  append!(all_vars, collect(union(stmt.def, stmt.use)))
+              end
+          end
+
+          @dprintln(3,"DistPass arr info walk serial code vars: ", all_vars)
+          # ReadWriteSet is not robust enough now
+          #rws = CompilerTools.ReadWriteSet.from_exprs([node], ParallelIR.pir_live_cb, state.LambdaVarInfo)
+          #readArrs = collect(keys(rws.readSet.arrays))
+          #writeArrs = collect(keys(rws.writeSet.arrays))
+          #allArrs = [readArrs;writeArrs]
+
+          for var in all_vars
+              if haskey(state.arrs_dist_info, toLHSVar(var))
+                  @dprintln(2,"DistPass arr info walk array sequential since in serial code: ", var, " ", node)
+                  setSEQ(toLHSVar(var),state)
+              end
+          end
+          return node
+end
+
+function get_arr_dist_info_parfor(node, state, top_level_number, parfor)
+  rws = parfor.rws
+  partitioning = ONE_D
+
+  if length(parfor.arrays_read_past_index)!=0 || length(parfor.arrays_written_past_index)!=0
+      @dprintln(2,"DistPass arr info walk parfor sequential: ", node)
+      partitioning = SEQ
+  end
+
+  indexVariable::Symbol = toLHSVar(parfor.loopNests[1].indexVariable)
+
+  allArrAccesses = merge(rws.readSet.arrays,rws.writeSet.arrays)
+  myArrs = LHSVar[]
+
+  body_lives = CompilerTools.LivenessAnalysis.from_lambda(state.LambdaVarInfo, parfor.body, ParallelIR.pir_live_cb, state.LambdaVarInfo)
+  #@dprintln(3, "body_lives = ", body_lives)
+
+  # If an array is accessed with a Parfor's index variable, the parfor and array should have same partitioning
+  for arr in keys(allArrAccesses)
+      # an array can be accessed multiple times in Pafor
+      # for each access:
+      for access_indices in allArrAccesses[arr]
+          indices = map(toLHSVar,access_indices)
+          # if array would be accessed in parallel in this Parfor
+          if indices[end]==indexVariable
+              push!(myArrs, arr)
+          end
+          # An array access index can be dependent on parfor's
+          # index variable as in nested comprehension case of K-Means.
+          # Parfor can't be parallelized in general cases since array can't be partitioned properly.
+          # ParallelIR should optimize out the trivial cases where indices are essentially equal (i=1+1*index-1 in k-means)
+          if isAccessIndexDependent(indices, indexVariable, body_lives, state)
+              #push!(myArrs, arr)
+              @dprintln(2,"DistPass arr info walk arr index dependent: ",arr," ", indices, " ", indexVariable)
+              partitioning = SEQ
+          end
+          # sequential if not accessed column major (last dimension)
+          # TODO: generalize?
+          if in(indexVariable, indices[1:end-1])
+              @dprintln(2,"DistPass arr info walk arr index sequential: ",arr," ", indices, " ", indexVariable)
+              partitioning = SEQ
+          end
+      end
+  end
+  # keep mapping from parfors to arrays
+  # state.parfor_info[parfor.unique_id] = myArrs
+  @dprintln(3,"DistPass arr info walk parfor arrays: ", myArrs)
+
+  for arr in myArrs
+      partitioning = min(partitioning,getArrayPartitioning(arr,state))
+      if isSEQ(arr,state)
+                 # no need to check size for parallel arrays since ParallelIR already used equivalence class info
+                 # || !eqSize(state.arrs_dist_info[arr].dim_sizes[end], state.arrs_dist_info[myArrs[1]].dim_sizes[end])
+              # last dimension of all parfor arrays should be equal since they are partitioned
+              @dprintln(2,"DistPass parfor check array: ", arr," sequential: ", isSEQ(arr,state))
+      end
+  end
+  # parfor and all its arrays have same partitioning
+  state.parfor_partitioning[parfor.unique_id] = partitioning
+  for arr in myArrs
+      setArrayPartitioning(arr,partitioning,state)
+  end
+  return CompilerTools.AstWalker.ASTWALK_RECURSE
 end
 
 function isAccessIndexDependent(indices::Vector{Any}, indexVariable::Symbol, body_lives::BlockLiveness, state)
