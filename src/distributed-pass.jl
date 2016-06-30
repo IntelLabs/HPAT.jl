@@ -114,8 +114,8 @@ function from_root(function_name, ast::Tuple)
     @dprintln(1,"DistributedPass.from_root returns function = ", function_name, " ast = ", body)
     return state.LambdaVarInfo, body
 end
-
-@enum ArrayPartitioning SEQ ONE_D TWO_D
+# smaller value means higher precedence
+@enum ArrayPartitioning SEQ=1 TWO_D=2 ONE_D=3
 
 type ArrDistInfo
     partitioning::ArrayPartitioning      # partitioning of array (SEQ,ONE_D,TWO_D)

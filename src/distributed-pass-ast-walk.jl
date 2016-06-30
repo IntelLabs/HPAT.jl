@@ -226,7 +226,19 @@ used for allocation sizes which could be LHSVar or Int or TypedVar or Expr
 replaceAllocTypedVar(a::TypedVar) = toLHSVar(a)
 replaceAllocTypedVar(a::Union{Int,LHSVar,Expr}) = a
 
-function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_level_number, lhs, rhs)
+function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_level_number, lhs::LHSVar, rhs::RHSVar)
+  rhs = toLHSVar(rhs)
+  @assert haskey(state.arrs_dist_info, rhs) "array $rhs not in array info"
+  state.arrs_dist_info[lhs].dim_sizes = state.arrs_dist_info[rhs].dim_sizes
+  # lhs and rhs are sequential if either is sequential
+  # partitioning based on precedence, SEQ has highest precedence
+  partitioning = min(state.arrs_dist_info[lhs].partitioning, state.arrs_dist_info[rhs].partitioning)
+  state.arrs_dist_info[lhs].isSequential = state.arrs_dist_info[rhs].isSequential = partitioning
+  @dprintln(3,"DistPass arr info dim_sizes update: ", state.arrs_dist_info[lhs].dim_sizes)
+  return node
+end
+
+function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_level_number, lhs::LHSVar, rhs::Expr)
     if isAllocation(rhs)
             # if allocated already, can't parallelize since we can't replace
             #   the arraysize() calls to global value statically. needs runtime support
@@ -237,15 +249,7 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
             end
             state.arrs_dist_info[lhs].dim_sizes = alloc_sizes
             @dprintln(3,"DistPass arr info dim_sizes update: ", state.arrs_dist_info[lhs].dim_sizes)
-    elseif isa(rhs,RHSVar)
-        rhs = toLHSVar(rhs)
-        if haskey(state.arrs_dist_info, rhs)
-            state.arrs_dist_info[lhs].dim_sizes = state.arrs_dist_info[rhs].dim_sizes
-            # lhs and rhs are sequential if either is sequential
-            seq = state.arrs_dist_info[lhs].isSequential || state.arrs_dist_info[rhs].isSequential
-            state.arrs_dist_info[lhs].isSequential = state.arrs_dist_info[rhs].isSequential = seq
-            @dprintln(3,"DistPass arr info dim_sizes update: ", state.arrs_dist_info[lhs].dim_sizes)
-        end
+
     elseif isa(rhs,Expr) && rhs.head==:call && (isa(rhs.args[1],GlobalRef) || isa(rhs.args[1],TopNode)) && in(rhs.args[1].name, dist_ir_funcs)
         func = rhs.args[1]
         if isBaseFunc(func,:reshape)
