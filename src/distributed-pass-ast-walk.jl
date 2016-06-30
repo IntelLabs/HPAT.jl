@@ -37,7 +37,7 @@ function getArrayDistributionInfo(ast, state)
         @dprintln(3,"DistPass state after array info walk: ",state)
             # all arrays not marked sequential are distributable at this point
         for arr in keys(state.arrs_dist_info)
-            if state.arrs_dist_info[arr].isSequential==false
+            if !isSEQ(arr,state)
                 @dprintln(2,"DistPass distributable parfor array: ", arr)
                 push!(dist_arrays,arr)
             end
@@ -120,11 +120,11 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
         @dprintln(3,"DistPass arr info walk parfor arrays: ", myArrs)
 
         for arr in myArrs
-            if state.arrs_dist_info[arr].isSequential
+            if isSEQ(arr,state)
                        # no need to check size for parallel arrays since ParallelIR already used equivalence class info
                        # || !eqSize(state.arrs_dist_info[arr].dim_sizes[end], state.arrs_dist_info[myArrs[1]].dim_sizes[end])
                     # last dimension of all parfor arrays should be equal since they are partitioned
-                    @dprintln(2,"DistPass parfor check array: ", arr," sequential: ", state.arrs_dist_info[arr].isSequential)
+                    @dprintln(2,"DistPass parfor check array: ", arr," sequential: ", isSEQ(arr1,state))
                     seq = true
             end
         end
@@ -240,7 +240,7 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
               state.arrs_dist_info[lhs].isSequential = true
               @dprintln(3,"DistPass arr info non-constant allocation found sequential: ", lhs," ",rhs.args[2:end])
             end
-            state.arrs_dist_info[lhs].dim_sizes = alloc_sizes 
+            state.arrs_dist_info[lhs].dim_sizes = alloc_sizes
             @dprintln(3,"DistPass arr info dim_sizes update: ", state.arrs_dist_info[lhs].dim_sizes)
     elseif isa(rhs,RHSVar)
         rhs = toLHSVar(rhs)
@@ -293,15 +293,15 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
             seq = false
 
             # result is sequential if both inputs are sequential
-            if state.arrs_dist_info[arr1].isSequential && state.arrs_dist_info[arr2].isSequential
+            if isSEQ(arr1,state) && isSEQ(arr2,state)
                 seq = true
             # result is sequential but with reduction if both inputs are partitioned and second one is transposed
             # e.g. labels*points'
-            elseif !state.arrs_dist_info[arr1].isSequential && !state.arrs_dist_info[arr2].isSequential && t2 && !t1
+          elseif !isSEQ(arr1,state) && !isSEQ(arr2,state) && t2 && !t1
                 seq = true
             # first input is sequential but output is parallel if the second input is partitioned but not transposed
             # e.g. w*points
-            elseif !state.arrs_dist_info[arr2].isSequential && !t2
+          elseif !isSEQ(arr2,state) && !t2
                 @dprintln(3,"DistPass arr info gemm first input is sequential: ", arr1)
                 state.arrs_dist_info[arr1].isSequential = true
             # otherwise, no known pattern found, every array is sequential
@@ -326,13 +326,13 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
             seq = false
 
             # result is sequential if both inputs are sequential
-            if state.arrs_dist_info[arr1].isSequential && state.arrs_dist_info[arr2].isSequential
+            if isSEQ(arr1,state) && isSEQ(arr2,state)
                 seq = true
             # result is sequential but with reduction if both inputs are partitioned and matrix is not transposed (X*y)
-            elseif !state.arrs_dist_info[arr1].isSequential && !state.arrs_dist_info[arr2].isSequential && !t1
+          elseif !isSEQ(arr1,state) && !isSEQ(arr2,state) && !t1
                 seq = true
             # result is parallel if matrix is parallel and transposed (X'*x)
-            elseif !state.arrs_dist_info[arr1].isSequential && t1
+            elseif !isSEQ(arr1,state) && t1
                 state.arrs_dist_info[arr2].isSequential = true
                 #seq = true
             # otherwise, no known pattern found, every array is sequential

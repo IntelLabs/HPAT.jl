@@ -115,19 +115,22 @@ function from_root(function_name, ast::Tuple)
     return state.LambdaVarInfo, body
 end
 
+@enum ArrayPartitioning SEQ ONE_D TWO_D
+
 type ArrDistInfo
-    isSequential::Bool      # can't be distributed; e.g. it is used in sequential code
+    partitioning::ArrayPartitioning      # partitioning of array (SEQ,ONE_D,TWO_D)
     dim_sizes::Array{Union{RHSVar,Int,Expr},1}      # sizes of array dimensions
     # assuming only last dimension is partitioned
     arr_id::Int # assign ID to distributed array to access partitioning info later
 
     function ArrDistInfo(num_dims::Int)
-        new(false, zeros(Int64,num_dims))
+        # one dimensional partitioning is default
+        new(ONE_D, zeros(Int64,num_dims))
     end
 end
 
 function show(io::IO, pnode::HPAT.DistributedPass.ArrDistInfo)
-    print(io,"seq:",pnode.isSequential," sizes:", pnode.dim_sizes)
+    print(io,"partitioning: ",pnode.partitioning," sizes: ", pnode.dim_sizes)
 end
 
 # information about AST gathered and used in DistributedPass
@@ -149,6 +152,8 @@ type DistPassState
              Dict{LHSVar,Array{Union{LHSVar,Int},1}}(),0)
     end
 end
+
+isSEQ(arr,state) = state.arrs_dist_info[arr].partitioning==SEQ
 
 include("distributed-pass-ast-walk.jl")
 
@@ -334,8 +339,7 @@ function from_assignment(node::Expr, state::DistPassState)
 
         # result is sequential but with reduction if both inputs are partitioned and second one is transposed
         # e.g. labels*points'
-        if !state.arrs_dist_info[arr1].isSequential && !state.arrs_dist_info[arr2].isSequential && t2 && !t1 &&
-                    state.arrs_dist_info[lhs].isSequential
+        if !isSEQ(arr1,state) && !isSEQ(arr2,state) && t2 && !t1 && isSEQ(lhs,state)
             @dprintln(3,"DistPass translating gemm reduce: ", node)
             # rhs.args[1] = :__hpat_gemm_reduce
             # allocate temporary array for local gemm values
@@ -367,7 +371,7 @@ function from_assignment(node::Expr, state::DistPassState)
             return [reduce_var_init; node; size_expr; allreduceCall; res_copy]
         # first input is sequential but output is parallel if the second input is partitioned but not transposed
         # e.g. w*points
-        elseif state.arrs_dist_info[arr1].isSequential && !state.arrs_dist_info[arr2].isSequential && !t2 && !state.arrs_dist_info[lhs].isSequential
+      elseif isSEQ(arr1,state) && !isSEQ(arr2,state) && !t2 && !isSEQ(lhs,state)
             @dprintln(3,"DistPass arr info gemm first input is sequential: ", arr1)
             #rhs.args[1] = :__hpat_gemm_broadcast
             @dprintln(3,"DistPass translating gemm broadcast: ", node)
@@ -381,8 +385,7 @@ function from_assignment(node::Expr, state::DistPassState)
 
         # result is sequential but with reduction if both inputs are partitioned and matrix is not transposed (X*y)
         # result is sequential but with reduction if matrix partitioned (X'*y)
-        if !state.arrs_dist_info[arr1].isSequential && state.arrs_dist_info[lhs].isSequential &&
-                !state.arrs_dist_info[arr2].isSequential && !t1
+        if !isSEQ(arr1,state) && isSEQ(lhs,state) && !isSEQ(arr2,state) && !t1
             @dprintln(3,"DistPass translating gemv reduce: ", node)
             # rhs.args[1] = :__hpat_gemm_reduce
             # allocate temporary array for local gemm values
