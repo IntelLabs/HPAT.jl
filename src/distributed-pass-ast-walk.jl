@@ -28,31 +28,26 @@ THE POSSIBILITY OF SUCH DAMAGE.
 using CompilerTools.LivenessAnalysis
 
 function getArrayDistributionInfo(ast, state)
-    before_dist_arrays = [arr for arr in keys(state.arrs_dist_info)]
+    before_arr_partitionings = [state.arrs_dist_info[arr].partitioning for arr in keys(state.arrs_dist_info)]
 
     while true
-        dist_arrays = []
+
         @dprintln(3,"DistPass state before array info walk: ",state)
         ParallelIR.AstWalk(ast, get_arr_dist_info, state)
         @dprintln(3,"DistPass state after array info walk: ",state)
-            # all arrays not marked sequential are distributable at this point
-        for arr in keys(state.arrs_dist_info)
-            if !isSEQ(arr,state)
-                @dprintln(2,"DistPass distributable parfor array: ", arr)
-                push!(dist_arrays,arr)
-            end
-        end
+
+        new_arr_partitionings = [state.arrs_dist_info[arr].partitioning for arr in keys(state.arrs_dist_info)]
         # break if no new sequential array discovered
-        if length(dist_arrays)==length(before_dist_arrays)
+        if new_arr_partitionings==before_arr_partitionings
             break
         end
-        before_dist_arrays = dist_arrays
+        before_arr_partitionings = new_arr_partitionings
     end
-    state.dist_arrays = before_dist_arrays
-    if length(state.dist_arrays)==0
+
+    # if all arrays are sequential
+    if all([isSEQ(arr,state) for arr in keys(state.arrs_dist_info)])
         warn("HPAT failed to parallelize! The program will run sequentially.")
     end
-    @dprintln(3,"DistPass state dist_arrays after array info walk: ",state.dist_arrays)
 end
 
 """

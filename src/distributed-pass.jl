@@ -140,7 +140,6 @@ type DistPassState
     parfor_info::Dict{Int, Array{LHSVar,1}}
     LambdaVarInfo::LambdaVarInfo
     seq_parfors::Array{Int,1}
-    dist_arrays::Array{LHSVar,1}
     uniqueId::Int
     lives  :: CompilerTools.LivenessAnalysis.BlockLiveness
     # keep values for constant tuples. They are often used for allocating and reshaping arrays.
@@ -168,11 +167,6 @@ function show(io::IO, pnode::HPAT.DistributedPass.DistPassState)
     end
     println(io,"DistPassState seq_parfors:")
     for i in pnode.seq_parfors
-        print(io," ", i)
-    end
-    println(io,"")
-    println(io,"DistPassState dist_arrays:")
-    for i in pnode.dist_arrays
         print(io," ", i)
     end
     println(io,"")
@@ -257,7 +251,7 @@ function from_assignment(node::Expr, state::DistPassState)
 
     if isAllocation(rhs)
         arr = toLHSVar(lhs)
-        if in(arr, state.dist_arrays)
+        if isONE_D(arr,state)
             @dprintln(3,"DistPass allocation array: ", arr)
             #shape = get_alloc_shape(node.args[2].args[2:end])
             #old_size = shape[end]
@@ -293,7 +287,7 @@ function from_assignment(node::Expr, state::DistPassState)
         end
     elseif isa(rhs,Expr) && rhs.head==:call && isBaseFunc(rhs.args[1],:reshape)
         arr = toLHSVar(lhs)
-        if in(arr, state.dist_arrays)
+        if isONE_D(arr,state)
             @dprintln(3,"DistPass reshape array: ", arr)
             dim_sizes = state.arrs_dist_info[arr].dim_sizes
             # generate array division
@@ -522,7 +516,7 @@ function from_call(node::Expr, state)
     @dprintln(2,"DistPass from_call ", node)
 
     func = node.args[1]
-    if (func==GlobalRef(HPAT.API,:__hpat_data_source_HDF5_read) || func==GlobalRef(HPAT.API,:__hpat_data_source_TXT_read)) && in(toLHSVar(node.args[3]), state.dist_arrays)
+    if (func==GlobalRef(HPAT.API,:__hpat_data_source_HDF5_read) || func==GlobalRef(HPAT.API,:__hpat_data_source_TXT_read)) && isONE_D(toLHSVar(node.args[3]),state)
         arr = toLHSVar(node.args[3])
         @dprintln(3,"DistPass data source for array: ", arr)
 
@@ -533,7 +527,7 @@ function from_call(node::Expr, state)
 
         push!(node.args, dsrc_start_var, dsrc_count_var)
         return [node]
-    elseif func==GlobalRef(HPAT.API,:Kmeans) && in(toLHSVar(node.args[3]), state.dist_arrays)
+    elseif func==GlobalRef(HPAT.API,:Kmeans) && isONE_D(toLHSVar(node.args[3]), state)
         arr = toLHSVar(node.args[3])
         @dprintln(3,"DistPass kmeans call for array: ", arr)
         node.args[1].name = :Kmeans_dist
@@ -545,7 +539,7 @@ function from_call(node::Expr, state)
         push!(node.args, dsrc_start_var, dsrc_count_var,
                 state.arrs_dist_info[arr].dim_sizes[1], state.arrs_dist_info[arr].dim_sizes[end])
         return [node]
-    elseif (func==GlobalRef(HPAT.API,:LinearRegression) || func==GlobalRef(HPAT.API,:NaiveBayes)) && in(toLHSVar(node.args[3]), state.dist_arrays) && in(toLHSVar(node.args[4]), state.dist_arrays)
+    elseif (func==GlobalRef(HPAT.API,:LinearRegression) || func==GlobalRef(HPAT.API,:NaiveBayes)) && isONE_D(toLHSVar(node.args[3]),state) && isONE_D(toLHSVar(node.args[4]),state)
         arr1 = toLHSVar(node.args[3])
         arr2 = toLHSVar(node.args[4])
         @dprintln(3,"DistPass LinearRegression/NaiveBayes call for arrays: ", arr1," ", arr2)
@@ -564,14 +558,14 @@ function from_call(node::Expr, state)
         push!(node.args, dsrc_start_var2, dsrc_count_var2,
                 state.arrs_dist_info[arr2].dim_sizes[1], state.arrs_dist_info[arr2].dim_sizes[end])
         return [node]
-    elseif isBaseFunc(func, :arraysize) && in(toLHSVar(node.args[2]), state.dist_arrays)
+    elseif isBaseFunc(func, :arraysize) && isONE_D(toLHSVar(node.args[2]),state)
         arr = toLHSVar(node.args[2])
         @dprintln(3,"found arraysize on dist array: ",node," ",arr)
         # replace last dimension size queries since it is partitioned
         if node.args[3]==length(state.arrs_dist_info[arr].dim_sizes)
             return [state.arrs_dist_info[arr].dim_sizes[end]]
         end
-    elseif isBaseFunc(func,:arraylen) && in(toLHSVar(node.args[2]), state.dist_arrays)
+    elseif isBaseFunc(func,:arraylen) && isONE_D(toLHSVar(node.args[2]), state)
         arr = toLHSVar(node.args[2])
         #len = parse(foldl((a,b)->"$a*$b", "1",state.arrs_dist_info[arr].dim_sizes))
         len = mk_mult_int_expr(state.arrs_dist_info[arr].dim_sizes)
