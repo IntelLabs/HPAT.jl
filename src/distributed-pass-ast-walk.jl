@@ -44,8 +44,8 @@ function getArrayDistributionInfo(ast, state)
         before_arr_partitionings = new_arr_partitionings
     end
 
-    # if all arrays are sequential
-    if all([isSEQ(arr,state) for arr in keys(state.arrs_dist_info)])
+    # if all parfors are sequential
+    if all([state.parfor_partitioning[parfor_id]==SEQ for parfor_id in keys(state.parfor_partitioning)])
         warn("HPAT failed to parallelize! The program will run sequentially.")
     end
 end
@@ -124,7 +124,7 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
             end
         end
         # parfor and all its arrays have same partitioning
-        state.parfor_partitioning = partitioning
+        state.parfor_partitioning[parfor.unique_id] = partitioning
         for arr in myArrs
             setArrayPartitioning(arr,partitioning,state)
         end
@@ -226,14 +226,16 @@ replaceAllocTypedVar(a::Union{Int,LHSVar,Expr}) = a
 
 function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_level_number, lhs::LHSVar, rhs::RHSVar)
   rhs = toLHSVar(rhs)
-  @assert haskey(state.arrs_dist_info, rhs) "array $rhs not in array info"
-  state.arrs_dist_info[lhs].dim_sizes = state.arrs_dist_info[rhs].dim_sizes
-  # lhs and rhs are sequential if either is sequential
-  # partitioning based on precedence, SEQ has highest precedence
-  partitioning = min(state.arrs_dist_info[lhs].partitioning, state.arrs_dist_info[rhs].partitioning)
-  state.arrs_dist_info[lhs].partitioning = state.arrs_dist_info[rhs].partitioning = partitioning
-  @dprintln(3,"DistPass arr info dim_sizes update: ", state.arrs_dist_info[lhs].dim_sizes)
-  return node
+  if haskey(state.arrs_dist_info, rhs)
+    state.arrs_dist_info[lhs].dim_sizes = state.arrs_dist_info[rhs].dim_sizes
+    # lhs and rhs are sequential if either is sequential
+    # partitioning based on precedence, SEQ has highest precedence
+    partitioning = min(state.arrs_dist_info[lhs].partitioning, state.arrs_dist_info[rhs].partitioning)
+    state.arrs_dist_info[lhs].partitioning = state.arrs_dist_info[rhs].partitioning = partitioning
+    @dprintln(3,"DistPass arr info dim_sizes update: ", state.arrs_dist_info[lhs].dim_sizes)
+    return node
+  end
+  return CompilerTools.AstWalker.ASTWALK_RECURSE
 end
 
 function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_level_number, lhs::LHSVar, rhs::Expr)
@@ -247,7 +249,6 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
             end
             state.arrs_dist_info[lhs].dim_sizes = alloc_sizes
             @dprintln(3,"DistPass arr info dim_sizes update: ", state.arrs_dist_info[lhs].dim_sizes)
-
     elseif isa(rhs,Expr) && rhs.head==:call && (isa(rhs.args[1],GlobalRef) || isa(rhs.args[1],TopNode)) && in(rhs.args[1].name, dist_ir_funcs)
         func = rhs.args[1]
         if isBaseFunc(func,:reshape)
@@ -314,7 +315,7 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
             if partitioning==SEQ
                 @dprintln(3,"DistPass arr info gemm output is sequential: ", lhs," ",rhs.args[2])
             end
-            setArrayPartitioning(lhs),partitioning,state)
+            setArrayPartitioning(lhs,partitioning,state)
             setArrayPartitioning(toLHSVar(rhs.args[2]),partitioning,state)
         elseif isBaseFunc(func,:gemv!)
             # determine output dimensions
@@ -355,6 +356,7 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
     return node
 end
 
+get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_level_number, lhs::ANY, rhs::ANY) = CompilerTools.AstWalker.ASTWALK_RECURSE
 
 function isEqualDimSize(sizes1::Array{Union{RHSVar,Int,Expr},1} , sizes2::Array{Union{RHSVar,Int,Expr},1})
     if length(sizes1)!=length(sizes2)

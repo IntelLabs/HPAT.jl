@@ -136,10 +136,9 @@ end
 # information about AST gathered and used in DistributedPass
 type DistPassState
     # information about all arrays
-    arrs_dist_info::Dict{LHSVar, ArrDistInfo}
-    parfor_partitioning::Dict{Int, Partitioning}
+    arrs_dist_info::Dict{LHSVar,ArrDistInfo}
+    parfor_partitioning::Dict{Int,Partitioning}
     LambdaVarInfo::LambdaVarInfo
-    seq_parfors::Array{Int,1}
     uniqueId::Int
     lives  :: CompilerTools.LivenessAnalysis.BlockLiveness
     # keep values for constant tuples. They are often used for allocating and reshaping arrays.
@@ -147,7 +146,7 @@ type DistPassState
     max_label :: Int # holds the max number of all LabelNodes
 
     function DistPassState(linfo, lives)
-        new(Dict{LHSVar, Array{ArrDistInfo,1}}(), Dict{Int, Array{LHSVar,1}}(), linfo, Int[], LHSVar[],0, lives,
+        new(Dict{LHSVar, Array{ArrDistInfo,1}}(), Dict{Int,Partitioning}(), linfo,0, lives,
              Dict{LHSVar,Array{Union{LHSVar,Int},1}}(),0)
     end
 end
@@ -158,7 +157,7 @@ function setSEQ(arr,state)
   state.arrs_dist_info[arr].partitioning=SEQ
 end
 
-function getArrayPartitioning(arr,state) = state.arrs_dist_info[arr].partitioning
+getArrayPartitioning(arr,state) = state.arrs_dist_info[arr].partitioning
 
 function setArrayPartitioning(arr,part,state)
   state.arrs_dist_info[arr].partitioning=part
@@ -175,11 +174,11 @@ function show(io::IO, pnode::HPAT.DistributedPass.DistPassState)
     #= println(io,"DistPassState parfor_info:")
     for i in pnode.parfor_info
         println(io,"  ", i)
-    end =#
+    end
     println(io,"DistPassState seq_parfors:")
     for i in pnode.seq_parfors
         print(io," ", i)
-    end
+    end=#
     println(io,"")
 end
 
