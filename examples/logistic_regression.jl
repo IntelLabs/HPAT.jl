@@ -27,16 +27,10 @@ using HPAT
 using MPI
 using DocOpt
 
-#CompilerTools.OptFramework.set_debug_level(3)
-#ParallelAccelerator.ParallelIR.set_debug_level(3)
-#ParallelAccelerator.CGen.set_debug_level(3)
-#CompilerTools.LivenessAnalysis.set_debug_level(5)
-
 @acc hpat function logistic_regression(iterations, file_name)
     points = DataSource(Matrix{Float32},HDF5,"/points", file_name)
     responses = DataSource(Vector{Float32},HDF5,"/responses", file_name)
-    D = size(points,1) # number of features
-    N = size(points,2) # number of instances
+    D,N = size(points) # number of features,samples
     labels = reshape(responses,1,N)
     w = reshape(2.0f0.*rand(Float32,D)-1.0f0,1,D)
 
