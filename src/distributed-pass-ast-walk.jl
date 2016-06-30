@@ -358,6 +358,7 @@ end
 
 get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_level_number, lhs::ANY, rhs::ANY) = CompilerTools.AstWalker.ASTWALK_RECURSE
 
+#=
 function isEqualDimSize(sizes1::Array{Union{RHSVar,Int,Expr},1} , sizes2::Array{Union{RHSVar,Int,Expr},1})
     if length(sizes1)!=length(sizes2)
         return false
@@ -382,10 +383,11 @@ function eqSize(a::Expr, b::Expr)
     return true
 end
 
-function eqSize(a::SymbolNode, b::SymbolNode)
-    return a.name == b.name
+function eqSize(a::RHSVar, b::RHSVar)
+    return toLHSVar(a) == toLHSVar(b)
 end
 
 function eqSize(a::Any, b::Any)
     return a==b
 end
+=#
