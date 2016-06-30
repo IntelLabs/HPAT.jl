@@ -56,6 +56,12 @@ end
 
 OptFramework.setSaveOriginalFunction(false)
 
+force_parallel = true
+
+function setForceParallel(v::Bool)
+  global force_parallel=v
+end
+
 include("api.jl")
 using HPAT.API
 export data_source_HDF5, data_source_TXT
