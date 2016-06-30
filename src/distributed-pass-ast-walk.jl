@@ -233,7 +233,14 @@ replaceAllocTypedVar(a::Union{Int,LHSVar,Expr}) = a
 
 function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_level_number, lhs, rhs)
     if isAllocation(rhs)
-            state.arrs_dist_info[lhs].dim_sizes = map(replaceAllocTypedVar, get_alloc_shape(rhs.args[2:end]))
+            # if allocated already, can't parallelize since we can't replace
+            #   the arraysize() calls to global value statically. needs runtime support
+            alloc_sizes = map(replaceAllocTypedVar, get_alloc_shape(rhs.args[2:end]))
+            if state.arrs_dist_info[lhs].dim_sizes[1]!=0 && state.arrs_dist_info[lhs].dim_sizes!=alloc_sizes
+              state.arrs_dist_info[lhs].isSequential = true
+              @dprintln(3,"DistPass arr info non-constant allocation found sequential: ", lhs," ",rhs.args[2:end])
+            end
+            state.arrs_dist_info[lhs].dim_sizes = alloc_sizes 
             @dprintln(3,"DistPass arr info dim_sizes update: ", state.arrs_dist_info[lhs].dim_sizes)
     elseif isa(rhs,RHSVar)
         rhs = toLHSVar(rhs)
