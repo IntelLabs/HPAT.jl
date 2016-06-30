@@ -120,7 +120,7 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
                        # no need to check size for parallel arrays since ParallelIR already used equivalence class info
                        # || !eqSize(state.arrs_dist_info[arr].dim_sizes[end], state.arrs_dist_info[myArrs[1]].dim_sizes[end])
                     # last dimension of all parfor arrays should be equal since they are partitioned
-                    @dprintln(2,"DistPass parfor check array: ", arr," sequential: ", isSEQ(arr1,state))
+                    @dprintln(2,"DistPass parfor check array: ", arr," sequential: ", isSEQ(arr,state))
             end
         end
         # parfor and all its arrays have same partitioning

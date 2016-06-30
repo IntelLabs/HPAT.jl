@@ -152,6 +152,7 @@ type DistPassState
 end
 
 isSEQ(arr,state) = (state.arrs_dist_info[arr].partitioning==SEQ)
+isONE_D(arr,state) = (state.arrs_dist_info[arr].partitioning==ONE_D)
 
 function setSEQ(arr,state)
   state.arrs_dist_info[arr].partitioning=SEQ
