@@ -152,7 +152,15 @@ type DistPassState
     end
 end
 
-isSEQ(arr,state) = state.arrs_dist_info[arr].partitioning==SEQ
+isSEQ(arr,state) = (state.arrs_dist_info[arr].partitioning==SEQ)
+
+function setSEQ(arr,state)
+  state.arrs_dist_info[arr].partitioning=SEQ
+end
+
+function setArrayPartitioning(arr,part,state)
+  state.arrs_dist_info[arr].partitioning=part
+end
 
 include("distributed-pass-ast-walk.jl")
 

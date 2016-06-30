@@ -233,7 +233,7 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
   # lhs and rhs are sequential if either is sequential
   # partitioning based on precedence, SEQ has highest precedence
   partitioning = min(state.arrs_dist_info[lhs].partitioning, state.arrs_dist_info[rhs].partitioning)
-  state.arrs_dist_info[lhs].isSequential = state.arrs_dist_info[rhs].isSequential = partitioning
+  state.arrs_dist_info[lhs].partitioning = state.arrs_dist_info[rhs].partitioning = partitioning
   @dprintln(3,"DistPass arr info dim_sizes update: ", state.arrs_dist_info[lhs].dim_sizes)
   return node
 end
@@ -244,7 +244,7 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
             #   the arraysize() calls to global value statically. needs runtime support
             alloc_sizes = map(replaceAllocTypedVar, get_alloc_shape(rhs.args[2:end]))
             if state.arrs_dist_info[lhs].dim_sizes[1]!=0 && state.arrs_dist_info[lhs].dim_sizes!=alloc_sizes
-              state.arrs_dist_info[lhs].isSequential = true
+              setSEQ(lhs,state)
               @dprintln(3,"DistPass arr info non-constant allocation found sequential: ", lhs," ",rhs.args[2:end])
             end
             state.arrs_dist_info[lhs].dim_sizes = alloc_sizes
@@ -258,11 +258,13 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
                 state.arrs_dist_info[lhs].dim_sizes = state.tuple_table[rhs.args[3]]
                 @dprintln(3,"DistPass arr info dim_sizes update: ", state.arrs_dist_info[lhs].dim_sizes)
                 # lhs and rhs are sequential if either is sequential
-                seq = state.arrs_dist_info[lhs].isSequential || state.arrs_dist_info[toLHSVar(rhs.args[2])].isSequential
-                state.arrs_dist_info[lhs].isSequential = state.arrs_dist_info[toLHSVar(rhs.args[2])].isSequential = seq
+                # partitioning based on precedence, SEQ has highest precedence
+                partitioning = min(state.arrs_dist_info[lhs].partitioning, state.arrs_dist_info[toLHSVar(rhs.args[2])].partitioning)
+                state.arrs_dist_info[lhs].partitioning = state.arrs_dist_info[toLHSVar(rhs.args[2])].partitioning = partitioning
             else
                 @dprintln(3,"DistPass arr info reshape tuple not found: ", rhs.args[3]," therefore sequential: ",lhs," ",toLHSVar(rhs.args[2]))
-                state.arrs_dist_info[lhs].isSequential = state.arrs_dist_info[toLHSVar(rhs.args[2])].isSequential = true
+                setSEQ(lhs,state)
+                setSEQ(toLHSVar(rhs.args[2]),state)
             end
         elseif isBaseFunc(rhs.args[1],:tuple)
             state.tuple_table[lhs] = [  toLHSVarOrNum(s) for s in rhs.args[2:end] ]
@@ -289,32 +291,33 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
             arr2 = toLHSVar(rhs.args[6])
             t2 = (rhs.args[4]=='T')
 
-            seq = false
+            partitioning=ONE_D
 
             # result is sequential if both inputs are sequential
             if isSEQ(arr1,state) && isSEQ(arr2,state)
-                seq = true
+                partitioning=SEQ
             # result is sequential but with reduction if both inputs are partitioned and second one is transposed
             # e.g. labels*points'
           elseif !isSEQ(arr1,state) && !isSEQ(arr2,state) && t2 && !t1
-                seq = true
+                partitioning=SEQ
             # first input is sequential but output is parallel if the second input is partitioned but not transposed
             # e.g. w*points
           elseif !isSEQ(arr2,state) && !t2
                 @dprintln(3,"DistPass arr info gemm first input is sequential: ", arr1)
-                state.arrs_dist_info[arr1].isSequential = true
+                setSEQ(arr1,state)
             # otherwise, no known pattern found, every array is sequential
             else
                 @dprintln(3,"DistPass arr info gemm all sequential: ", arr1," ", arr2)
-                state.arrs_dist_info[arr1].isSequential = true
-                state.arrs_dist_info[arr2].isSequential = true
-                seq = true
+                setSEQ(arr1,state)
+                setSEQ(arr2,state)
+                partitioning=SEQ
             end
 
-            if seq
+            if partitioning==SEQ
                 @dprintln(3,"DistPass arr info gemm output is sequential: ", lhs," ",rhs.args[2])
             end
-            state.arrs_dist_info[lhs].isSequential = state.arrs_dist_info[toLHSVar(rhs.args[2])].isSequential = seq
+            setArrayPartitioning(lhs),partitioning,state)
+            setArrayPartitioning(toLHSVar(rhs.args[2]),partitioning,state)
         elseif isBaseFunc(func,:gemv!)
             # determine output dimensions
             state.arrs_dist_info[lhs].dim_sizes = state.arrs_dist_info[toLHSVar(rhs.args[2])].dim_sizes
@@ -322,30 +325,31 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
             t1 = (rhs.args[3]=='T')
             arr2 = toLHSVar(rhs.args[5])
 
-            seq = false
+            partitioning = ONE_D
 
             # result is sequential if both inputs are sequential
             if isSEQ(arr1,state) && isSEQ(arr2,state)
-                seq = true
+                partitioning = SEQ
             # result is sequential but with reduction if both inputs are partitioned and matrix is not transposed (X*y)
           elseif !isSEQ(arr1,state) && !isSEQ(arr2,state) && !t1
-                seq = true
+                partitioning = SEQ
             # result is parallel if matrix is parallel and transposed (X'*x)
             elseif !isSEQ(arr1,state) && t1
-                state.arrs_dist_info[arr2].isSequential = true
+                setSEQ(arr2,state)
                 #seq = true
             # otherwise, no known pattern found, every array is sequential
             else
                 @dprintln(3,"DistPass arr info gemv all sequential: ", arr1," ", arr2)
-                state.arrs_dist_info[arr1].isSequential = true
-                state.arrs_dist_info[arr2].isSequential = true
-                seq = true
+                setSEQ(arr1,state)
+                setSEQ(arr2,state)
+                partitioning = SEQ
             end
 
-            if seq
+            if partitioning==SEQ
                 @dprintln(3,"DistPass arr info gemv output is sequential: ", lhs," ",rhs.args[2])
             end
-            state.arrs_dist_info[lhs].isSequential = state.arrs_dist_info[toLHSVar(rhs.args[2])].isSequential = seq
+            setArrayPartitioning(lhs,partitioning,state)
+            setArrayPartitioning(toLHSVar(rhs.args[2]),partitioning,state)
         end
     else
         return CompilerTools.AstWalker.ASTWALK_RECURSE
