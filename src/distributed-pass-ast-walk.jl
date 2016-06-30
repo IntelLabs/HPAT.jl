@@ -288,72 +288,9 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
             end
             =#
         elseif isBaseFunc(func,:gemm_wrapper!)
-            # determine output dimensions
-            state.arrs_dist_info[lhs].dim_sizes = state.arrs_dist_info[toLHSVar(rhs.args[2])].dim_sizes
-            arr1 = toLHSVar(rhs.args[5])
-            t1 = (rhs.args[3]=='T')
-            arr2 = toLHSVar(rhs.args[6])
-            t2 = (rhs.args[4]=='T')
-
-            partitioning=ONE_D
-
-            # result is sequential if both inputs are sequential
-            if isSEQ(arr1,state) && isSEQ(arr2,state)
-                partitioning=SEQ
-            # result is sequential but with reduction if both inputs are partitioned and second one is transposed
-            # e.g. labels*points'
-          elseif !isSEQ(arr1,state) && !isSEQ(arr2,state) && t2 && !t1
-                partitioning=SEQ
-            # first input is sequential but output is parallel if the second input is partitioned but not transposed
-            # e.g. w*points
-          elseif !isSEQ(arr2,state) && !t2
-                @dprintln(3,"DistPass arr info gemm first input is sequential: ", arr1)
-                setSEQ(arr1,state)
-            # otherwise, no known pattern found, every array is sequential
-            else
-                @dprintln(3,"DistPass arr info gemm all sequential: ", arr1," ", arr2)
-                setSEQ(arr1,state)
-                setSEQ(arr2,state)
-                partitioning=SEQ
-            end
-
-            if partitioning==SEQ
-                @dprintln(3,"DistPass arr info gemm output is sequential: ", lhs," ",rhs.args[2])
-            end
-            setArrayPartitioning(lhs,partitioning,state)
-            setArrayPartitioning(toLHSVar(rhs.args[2]),partitioning,state)
+            return get_arr_dist_info_gemm(node, state, top_level_number, lhs, rhs)
         elseif isBaseFunc(func,:gemv!)
-            # determine output dimensions
-            state.arrs_dist_info[lhs].dim_sizes = state.arrs_dist_info[toLHSVar(rhs.args[2])].dim_sizes
-            arr1 = toLHSVar(rhs.args[4])
-            t1 = (rhs.args[3]=='T')
-            arr2 = toLHSVar(rhs.args[5])
-
-            partitioning = ONE_D
-
-            # result is sequential if both inputs are sequential
-            if isSEQ(arr1,state) && isSEQ(arr2,state)
-                partitioning = SEQ
-            # result is sequential but with reduction if both inputs are partitioned and matrix is not transposed (X*y)
-          elseif !isSEQ(arr1,state) && !isSEQ(arr2,state) && !t1
-                partitioning = SEQ
-            # result is parallel if matrix is parallel and transposed (X'*x)
-            elseif !isSEQ(arr1,state) && t1
-                setSEQ(arr2,state)
-                #seq = true
-            # otherwise, no known pattern found, every array is sequential
-            else
-                @dprintln(3,"DistPass arr info gemv all sequential: ", arr1," ", arr2)
-                setSEQ(arr1,state)
-                setSEQ(arr2,state)
-                partitioning = SEQ
-            end
-
-            if partitioning==SEQ
-                @dprintln(3,"DistPass arr info gemv output is sequential: ", lhs," ",rhs.args[2])
-            end
-            setArrayPartitioning(lhs,partitioning,state)
-            setArrayPartitioning(toLHSVar(rhs.args[2]),partitioning,state)
+            return get_arr_dist_info_gemv(node, state, top_level_number, lhs, rhs)
         end
     else
         return CompilerTools.AstWalker.ASTWALK_RECURSE
@@ -362,6 +299,79 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
 end
 
 get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_level_number, lhs::ANY, rhs::ANY) = CompilerTools.AstWalker.ASTWALK_RECURSE
+
+function get_arr_dist_info_gemm(node::Expr, state::DistPassState, top_level_number, lhs::LHSVar, rhs::Expr)
+  # determine output dimensions
+  state.arrs_dist_info[lhs].dim_sizes = state.arrs_dist_info[toLHSVar(rhs.args[2])].dim_sizes
+  arr1 = toLHSVar(rhs.args[5])
+  t1 = (rhs.args[3]=='T')
+  arr2 = toLHSVar(rhs.args[6])
+  t2 = (rhs.args[4]=='T')
+
+  partitioning=ONE_D
+
+  # result is sequential if both inputs are sequential
+  if isSEQ(arr1,state) && isSEQ(arr2,state)
+      partitioning=SEQ
+  # result is sequential but with reduction if both inputs are partitioned and second one is transposed
+  # e.g. labels*points'
+  elseif !isSEQ(arr1,state) && !isSEQ(arr2,state) && t2 && !t1
+      partitioning=SEQ
+  # first input is sequential but output is parallel if the second input is partitioned but not transposed
+  # e.g. w*points
+  elseif !isSEQ(arr2,state) && !t2
+      @dprintln(3,"DistPass arr info gemm first input is sequential: ", arr1)
+      setSEQ(arr1,state)
+  # otherwise, no known pattern found, every array is sequential
+  else
+      @dprintln(3,"DistPass arr info gemm all sequential: ", arr1," ", arr2)
+      setSEQ(arr1,state)
+      setSEQ(arr2,state)
+      partitioning=SEQ
+  end
+
+  if partitioning==SEQ
+      @dprintln(3,"DistPass arr info gemm output is sequential: ", lhs," ",rhs.args[2])
+  end
+  setArrayPartitioning(lhs,partitioning,state)
+  setArrayPartitioning(toLHSVar(rhs.args[2]),partitioning,state)
+  return node
+end
+
+function get_arr_dist_info_gemv(node::Expr, state::DistPassState, top_level_number, lhs::LHSVar, rhs::Expr)
+  # determine output dimensions
+  state.arrs_dist_info[lhs].dim_sizes = state.arrs_dist_info[toLHSVar(rhs.args[2])].dim_sizes
+  arr1 = toLHSVar(rhs.args[4])
+  t1 = (rhs.args[3]=='T')
+  arr2 = toLHSVar(rhs.args[5])
+
+  partitioning = ONE_D
+
+  # result is sequential if both inputs are sequential
+  if isSEQ(arr1,state) && isSEQ(arr2,state)
+      partitioning = SEQ
+  # result is sequential but with reduction if both inputs are partitioned and matrix is not transposed (X*y)
+  elseif !isSEQ(arr1,state) && !isSEQ(arr2,state) && !t1
+      partitioning = SEQ
+  # result is parallel if matrix is parallel and transposed (X'*x)
+  elseif !isSEQ(arr1,state) && t1
+      setSEQ(arr2,state)
+      #seq = true
+  # otherwise, no known pattern found, every array is sequential
+  else
+      @dprintln(3,"DistPass arr info gemv all sequential: ", arr1," ", arr2)
+      setSEQ(arr1,state)
+      setSEQ(arr2,state)
+      partitioning = SEQ
+  end
+
+  if partitioning==SEQ
+      @dprintln(3,"DistPass arr info gemv output is sequential: ", lhs," ",rhs.args[2])
+  end
+  setArrayPartitioning(lhs,partitioning,state)
+  setArrayPartitioning(toLHSVar(rhs.args[2]),partitioning,state)
+  return node
+end
 
 #=
 function isEqualDimSize(sizes1::Array{Union{RHSVar,Int,Expr},1} , sizes2::Array{Union{RHSVar,Int,Expr},1})
