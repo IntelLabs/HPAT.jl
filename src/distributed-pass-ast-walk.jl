@@ -67,11 +67,11 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
         @dprintln(3,"DistPass arr info walk parfor: ", node)
         parfor = getParforNode(node)
         rws = parfor.rws
-        seq = false
+        partitioning = ONE_D
 
         if length(parfor.arrays_read_past_index)!=0 || length(parfor.arrays_written_past_index)!=0
             @dprintln(2,"DistPass arr info walk parfor sequential: ", node)
-            seq = true
+            partitioning = SEQ
         end
 
         indexVariable::Symbol = toLHSVar(parfor.loopNests[1].indexVariable)
@@ -99,37 +99,36 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
                 if isAccessIndexDependent(indices, indexVariable, body_lives, state)
                     #push!(myArrs, arr)
                     @dprintln(2,"DistPass arr info walk arr index dependent: ",arr," ", indices, " ", indexVariable)
-                    seq = true
+                    partitioning = SEQ
                 end
                 # sequential if not accessed column major (last dimension)
                 # TODO: generalize?
                 if in(indexVariable, indices[1:end-1])
                     @dprintln(2,"DistPass arr info walk arr index sequential: ",arr," ", indices, " ", indexVariable)
-                    seq = true
+                    partitioning = SEQ
                 end
             end
         end
 
         # keep mapping from parfors to arrays
-        state.parfor_info[parfor.unique_id] = myArrs
+        # state.parfor_info[parfor.unique_id] = myArrs
         @dprintln(3,"DistPass arr info walk parfor arrays: ", myArrs)
 
         for arr in myArrs
+            partitioning = min(partitioning,getArrayPartitioning(arr,state))
             if isSEQ(arr,state)
                        # no need to check size for parallel arrays since ParallelIR already used equivalence class info
                        # || !eqSize(state.arrs_dist_info[arr].dim_sizes[end], state.arrs_dist_info[myArrs[1]].dim_sizes[end])
                     # last dimension of all parfor arrays should be equal since they are partitioned
                     @dprintln(2,"DistPass parfor check array: ", arr," sequential: ", isSEQ(arr1,state))
-                    seq = true
             end
         end
-        # parfor and all its arrays are sequential
-        if seq
-            push!(state.seq_parfors, parfor.unique_id)
-            for arr in myArrs
-                state.arrs_dist_info[arr].isSequential = true
-            end
+        # parfor and all its arrays have same partitioning
+        state.parfor_partitioning = partitioning
+        for arr in myArrs
+            setArrayPartitioning(arr,partitioning,state)
         end
+
         return CompilerTools.AstWalker.ASTWALK_RECURSE
     # functions dist_ir_funcs are either handled here or do not make arrays sequential
     elseif head==:call && (isa(node.args[1],GlobalRef) || isa(node.args[1],TopNode)) && in(node.args[1].name, dist_ir_funcs)
@@ -141,13 +140,13 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
             @dprintln(2,"DistPass arr info walk kmeans ", node)
             # first array is cluster output and is sequential
             # second array is input matrix and is parallel
-            state.arrs_dist_info[toLHSVar(node.args[2])].isSequential = true
+            setSEQ(toLHSVar(node.args[2]),state)
         elseif func==:LinearRegression || func==:NaiveBayes
             @dprintln(2,"DistPass arr info walk LinearRegression/NaiveBayes ", node)
             # first array is cluster output and is sequential
             # second array is input matrix and is parallel
             # third array is responses and is parallel
-            state.arrs_dist_info[toLHSVar(node.args[2])].isSequential = true
+            setSEQ(toLHSVar(node.args[2]),state)
         end
         return node
     elseif head==:gotoifnot
@@ -179,8 +178,7 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
         for var in all_vars
             if haskey(state.arrs_dist_info, toLHSVar(var))
                 @dprintln(2,"DistPass arr info walk array sequential since in serial code: ", var, " ", node)
-
-                state.arrs_dist_info[toLHSVar(var)].isSequential = true
+                setSEQ(toLHSVar(var),state)
             end
         end
         return node

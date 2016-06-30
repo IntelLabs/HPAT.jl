@@ -115,10 +115,10 @@ function from_root(function_name, ast::Tuple)
     return state.LambdaVarInfo, body
 end
 # smaller value means higher precedence
-@enum ArrayPartitioning SEQ=1 TWO_D=2 ONE_D=3
+@enum Partitioning SEQ=1 TWO_D=2 ONE_D=3
 
 type ArrDistInfo
-    partitioning::ArrayPartitioning      # partitioning of array (SEQ,ONE_D,TWO_D)
+    partitioning::Partitioning      # partitioning of array (SEQ,ONE_D,TWO_D)
     dim_sizes::Array{Union{RHSVar,Int,Expr},1}      # sizes of array dimensions
     # assuming only last dimension is partitioned
     arr_id::Int # assign ID to distributed array to access partitioning info later
@@ -137,7 +137,7 @@ end
 type DistPassState
     # information about all arrays
     arrs_dist_info::Dict{LHSVar, ArrDistInfo}
-    parfor_info::Dict{Int, Array{LHSVar,1}}
+    parfor_partitioning::Dict{Int, Partitioning}
     LambdaVarInfo::LambdaVarInfo
     seq_parfors::Array{Int,1}
     uniqueId::Int
@@ -158,6 +158,8 @@ function setSEQ(arr,state)
   state.arrs_dist_info[arr].partitioning=SEQ
 end
 
+function getArrayPartitioning(arr,state) = state.arrs_dist_info[arr].partitioning
+
 function setArrayPartitioning(arr,part,state)
   state.arrs_dist_info[arr].partitioning=part
 end
@@ -169,10 +171,11 @@ function show(io::IO, pnode::HPAT.DistributedPass.DistPassState)
     for i in pnode.arrs_dist_info
         println(io,"  ", i)
     end
-    println(io,"DistPassState parfor_info:")
+    println(io,"DistPassState parfor_partitioning: ",pnode.parfor_partitioning)
+    #= println(io,"DistPassState parfor_info:")
     for i in pnode.parfor_info
         println(io,"  ", i)
-    end
+    end =#
     println(io,"DistPassState seq_parfors:")
     for i in pnode.seq_parfors
         print(io," ", i)
@@ -432,7 +435,7 @@ function from_parfor(node::Expr, state)
     parfor = node.args[1]
     parfor.body = from_nested_body(parfor.body, state)
 
-    if !in(parfor.unique_id, state.seq_parfors)
+    if state.parfor_partitioning[parfor.unique_id]==ONE_D
         @dprintln(3,"DistPass translating parfor: ", parfor.unique_id)
         # TODO: assuming 1st loop nest is the last dimension
         loopnest = parfor.loopNests[1]
