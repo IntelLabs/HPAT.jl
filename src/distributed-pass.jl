@@ -490,7 +490,9 @@ function from_parfor(node::Expr, state)
         # broadcast results of sequential parfors if rand() is used
         has_rand = false
         for stmt in parfor.body
-            if isa(stmt,Expr) && stmt.head==:(=) && isa(stmt.args[2],Expr) && stmt.args[2].head==:call && isBaseFunc(stmt.args[2].args[1],:rand!)
+            if isa(stmt,Expr) && stmt.head==:(=) && isa(stmt.args[2],Expr) && stmt.args[2].head==:call &&
+                 (isBaseFunc(stmt.args[2].args[1],:rand!) || isBaseFunc(stmt.args[2].args[1],:rand) ||
+                   isBaseFunc(stmt.args[2].args[1],:randn!) || isBaseFunc(stmt.args[2].args[1],:randn) )
                 has_rand = true
                 break
             end
