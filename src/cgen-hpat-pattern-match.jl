@@ -245,7 +245,6 @@ function pattern_match_call_data_src_open(f::GlobalRef, id::Int, data_var::Union
     s = ""
     if f.name==:__hpat_data_source_HDF5_open
         num::AbstractString = string(id)
-
         s = "hid_t plist_id_$num = H5Pcreate(H5P_FILE_ACCESS);\n"
         s *= "assert(plist_id_$num != -1);\n"
         s *= "herr_t ret_$num;\n"
@@ -259,6 +258,21 @@ function pattern_match_call_data_src_open(f::GlobalRef, id::Int, data_var::Union
         s *= "hid_t dataset_id_$num;\n"
         s *= "dataset_id_$num = H5Dopen2(file_id_$num, "*ParallelAccelerator.CGen.from_expr(data_var, linfo)*", H5P_DEFAULT);\n"
         s *= "assert(dataset_id_$num != -1);\n"
+    elseif f.name==:__hpat_data_sink_HDF5_open
+      num = string(id)
+      s = "hid_t plist_id_$num = H5Pcreate(H5P_FILE_ACCESS);\n"
+      s *= "assert(plist_id_$num != -1);\n"
+      s *= "herr_t ret_$num;\n"
+      s *= "hid_t file_id_$num;\n"
+      s *= "ret_$num = H5Pset_fapl_mpio(plist_id_$num, MPI_COMM_WORLD, MPI_INFO_NULL);\n"
+      s *= "assert(ret_$num != -1);\n"
+      s *= "file_id_$num = H5Fcreate((const char*)"*ParallelAccelerator.CGen.from_expr(file_name, linfo)*".data.data, H5F_ACC_TRUNC, H5P_DEFAULT, plist_id_$num);\n"
+      s *= "assert(file_id_$num != -1);\n"
+      s *= "ret_$num = H5Pclose(plist_id_$num);\n"
+      s *= "assert(ret_$num != -1);\n"
+#      s *= "hid_t dataset_id_$num;\n"
+      #s *= "dataset_id_$num = H5Dcreate(file_id_$num, "*ParallelAccelerator.CGen.from_expr(data_var, linfo)*", H5P_DEFAULT);\n"
+      #s *= "assert(dataset_id_$num != -1);\n"
     end
     return s
 end
@@ -272,7 +286,7 @@ Generate code for HDF5 file close
 """
 function pattern_match_call_data_src_close(f::GlobalRef, id::Int,linfo)
     s = ""
-    if f.name==:__hpat_data_source_HDF5_close
+    if f.name==:__hpat_data_source_HDF5_close || f.name==:__hpat_data_sink_HDF5_close
         num::AbstractString = string(id)
 
         s *= "H5Dclose(dataset_id_$num);\n"
@@ -947,7 +961,73 @@ function pattern_match_call_dist_h5_size(f::Any, size_arr::Any, ind::Any,linfo)
     return ""
 end
 
+function pattern_match_call_data_sink_write(f::GlobalRef, id::Int, hdf5_var, arr::RHSVar, start::LHSVar, count::LHSVar,tot_size,linfo)
+    s = ""
+    num::AbstractString = string(id)
 
+    if f.name==:__hpat_data_sink_HDF5_write
+        arr_typ = ParallelAccelerator.CGen.getSymType(arr, linfo)
+        num_dims = ndims(arr_typ)
+        data_typ = eltype(arr_typ)
+        h5_typ = ""
+        carr = ParallelAccelerator.CGen.from_expr(toLHSVar(arr), linfo)
+        if data_typ==Float64
+            h5_typ = "H5T_NATIVE_DOUBLE"
+        elseif data_typ==Float32
+            h5_typ = "H5T_NATIVE_FLOAT"
+        elseif data_typ==Int32
+            h5_typ = "H5T_NATIVE_INT"
+        elseif data_typ==Int64
+            h5_typ = "H5T_NATIVE_LLONG"
+        else
+            println("g5 data type ", data_typ)
+            throw("CGen unsupported HDF5 data type")
+        end
+
+        # create dataset
+        s *= " hid_t dataset_id_$num;\n"
+        s *= " hid_t  filespace_$num, memspace_$num;\n"
+        s *= " hsize_t  dataset_dims_$num[$num_dims];\n"
+        #s *= " for(int i=0; i<$num_dims; i++) dataset_dims_$num[i]=$(ParallelAccelerator.CGen.from_expr(tot_size[i],linfo));\n"
+        for i in 1:length(tot_size)
+            s*= "dataset_dims_$num[$i-1]=$(ParallelAccelerator.CGen.from_expr(tot_size[i],linfo));\n"
+        end
+        s *= "  filespace_$num = H5Screate_simple($num_dims, dataset_dims_$num, NULL);\n" 
+        s *= "  dataset_id_$num = H5Dcreate(file_id_$num, \"$hdf5_var\", $h5_typ, filespace_$num,\n"
+        s *=  "     H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);\n"
+        s *= " H5Sclose(filespace_$num);\n"
+        # assuming 1st dimension is partitined
+        s *=  "hsize_t CGen_HDF5_start_$num[$num_dims];\n"
+        s *= "hsize_t CGen_HDF5_count_$num[$num_dims];\n"
+        s *= "CGen_HDF5_start_$num[0] = $start;\n"
+        s *= "CGen_HDF5_count_$num[0] = $count;\n"
+        #s *= "for(int i_CGen_dim=1; i_CGen_dim<$num_dims; i_CGen_dim++) {\n"
+        for i in 1:length(tot_size)-1
+            s *= "  CGen_HDF5_start_$num[$i] = 0;\n"
+            s *= "  CGen_HDF5_count_$num[$i] = $(ParallelAccelerator.CGen.from_expr(tot_size[i],linfo));\n"
+        end
+        #s *= "}\n"
+        #s *= "std::cout<<\"read size \"<<CGen_HDF5_start_$num[0]<<\" \"<<CGen_HDF5_count_$num[0]<<\" \"<<CGen_HDF5_start_$num[1]<<\" \"<<CGen_HDF5_count_$num[1]<<std::endl;\n"
+        s *= "filespace_$num = H5Dget_space(dataset_id_$num);\n"
+        s *= "ret_$num = H5Sselect_hyperslab(filespace_$num, H5S_SELECT_SET, CGen_HDF5_start_$num, NULL, CGen_HDF5_count_$num, NULL);\n"
+        s *= "assert(ret_$num != -1);\n"
+        s *= "hid_t mem_dataspace_$num = H5Screate_simple ($num_dims, CGen_HDF5_count_$num, NULL);\n"
+        s *= "assert (mem_dataspace_$num != -1);\n"
+        s *= "hid_t xfer_plist_$num = H5Pcreate (H5P_DATASET_XFER);\n"
+        s *= "assert(xfer_plist_$num != -1);\n"
+        s *= "double h5_read_start_$num = MPI_Wtime();\n"
+        s *= "H5Pset_dxpl_mpio(xfer_plist_$num, H5FD_MPIO_COLLECTIVE);\n"
+        s *= "ret_$num = H5Dwrite(dataset_id_$num, $h5_typ, mem_dataspace_$num, filespace_$num, xfer_plist_$num, $carr.getData());\n"
+        s *= "assert(ret_$num != -1);\n"
+        #s*="if(__hpat_node_id==__hpat_num_pes/2) printf(\"h5 read %lf\\n\", MPI_Wtime()-h5_read_start_$num);\n"
+        s *= ";\n"
+    end
+    return s
+end
+
+function pattern_match_call_data_sink_write(f::ANY, id::ANY, hdf5_var, arr::ANY, tot_size::ANY, start::ANY, count::ANY,linfo)
+    return ""
+end
 
 function pattern_match_call(ast::Array{Any, 1}, linfo)
 
@@ -984,6 +1064,8 @@ function pattern_match_call(ast::Array{Any, 1}, linfo)
     s *= pattern_match_call_dist_allreduce(ast[1],ast[2],ast[3], ast[4], ast[5], linfo)
     s *= pattern_match_call_dist_portion(ast[1],ast[2],ast[3], ast[4], ast[5], linfo)
     s *= pattern_match_call_dist_node_end(ast[1],ast[2],ast[3], ast[4], ast[5], linfo)
+  elseif length(ast)==7
+    s *= pattern_match_call_data_sink_write(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7], linfo)
   elseif length(ast)==8
     s *= pattern_match_call_kmeans(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8], linfo)
   elseif length(ast)==12

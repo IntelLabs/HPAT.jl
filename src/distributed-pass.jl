@@ -84,9 +84,11 @@ mk_div_int_expr(a,b) = mk_call(GlobalRef(Base,:box),[Int64, mk_call(GlobalRef(Ba
 dist_ir_funcs = Set([   :unsafe_arrayref,
                         :unsafe_arrayset,
                         :__hpat_data_source_HDF5_open,
+                        :__hpat_data_sink_HDF5_open,
                         :__hpat_data_source_HDF5_size,
                         :__hpat_get_H5_dim_size,
                         :__hpat_data_source_HDF5_read,
+                        :__hpat_data_sink_HDF5_write,
                         :__hpat_data_source_TXT_open,
                         :__hpat_data_source_TXT_size,
                         :__hpat_get_TXT_dim_size,
@@ -539,6 +541,17 @@ function from_call(node::Expr, state)
         dsrc_count_var = symbol("__hpat_dist_arr_count_"*string(arr_id))
 
         push!(node.args, dsrc_start_var, dsrc_count_var)
+        return [node]
+    elseif func==GlobalRef(HPAT.API,:__hpat_data_sink_HDF5_write)  && isONE_D(toLHSVar(node.args[4]),state)
+        arr = toLHSVar(node.args[4])
+        @dprintln(3,"DistPass data source for array: ", arr)
+
+        arr_id = state.arrs_dist_info[arr].arr_id
+
+        dsrc_start_var = symbol("__hpat_dist_arr_start_"*string(arr_id))
+        dsrc_count_var = symbol("__hpat_dist_arr_count_"*string(arr_id))
+
+        push!(node.args, dsrc_start_var, dsrc_count_var, state.arrs_dist_info[arr].dim_sizes)
         return [node]
     elseif func==GlobalRef(HPAT.API,:Kmeans) && isONE_D(toLHSVar(node.args[3]), state)
         arr = toLHSVar(node.args[3])

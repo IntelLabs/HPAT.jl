@@ -119,11 +119,16 @@ function from_toplevel_body(nodes::Array{Any,1}, state::DomainState)
     return res
 end
 
-
 function from_expr(node::Expr, state::DomainState)
     head = node.head
     if head==:(=)
         return from_assignment(node, state)
+    elseif head==:call && node.args[1]==GlobalRef(HPAT.API,:data_sink_HDF5)
+        return translate_data_sink_HDF5(node.args[2], node.args[3], node.args[4], state)
+    elseif head==:return && node.args[1].head==:call && node.args[1].args[1]==GlobalRef(HPAT.API,:data_sink_HDF5)
+        snode = node.args[1]
+        s_expr = translate_data_sink_HDF5(snode.args[2], snode.args[3], snode.args[4], state)
+        return Any[s_expr;Expr(:return,nothing)]
     else
         return [node]
     end
@@ -510,6 +515,49 @@ function pattern_match_hpat_dist_calls(lhs::Any, rhs::Any, state)
     return Any[]
 end
 =#
+function translate_data_sink_HDF5(y, hdf5_var, hdf5_file, state)
+    res = Any[]
+    dprintln(3,"HPAT data sink found ", y)
+    # update counter and get data source number
+    state.data_source_counter += 1
+    dsrc_num = state.data_source_counter
+    dsrc_id_var = addTempVariable(Int64, state.linfo)
+    push!(res, TypedExpr(Int64, :(=), dsrc_id_var, dsrc_num))
+    # get array type
+    arr_typ = getType(y, state.linfo)
+    dims = ndims(arr_typ)
+    elem_typ = eltype(arr_typ)
+    # generate open call
+    # y is dummy argument so ParallelIR wouldn't reorder
+    open_call = mk_call(GlobalRef(HPAT.API,:__hpat_data_sink_HDF5_open), [dsrc_id_var, hdf5_var, hdf5_file, y])
+    push!(res, open_call)
+    #=
+    # generate array size call
+    # arr_size_var = addTempVariable(Tuple, state.linfo)
+    # assume 1D for now
+    arr_size_var = addTempVariable(ParallelAccelerator.H5SizeArr_t, state.linfo)
+    size_call = mk_call(GlobalRef(HPAT.API,:__hpat_data_source_HDF5_size), [dsrc_id_var, y])
+    push!(res, TypedExpr(arr_size_var, :(=), arr_size_var, size_call))
+    # generate array allocation
+    size_expr = Any[]
+    for i in dims:-1:1
+        size_i = symbol("__hpat_h5_dim_size_"*string(dsrc_num)*"_"*string(i))
+        CompilerTools.LambdaHandling.addLocalVariable(size_i, Int64, ISASSIGNEDONCE | ISASSIGNED, state.linfo)
+        # size_i = addTempVariable(Int64, state.linfo)
+        size_i_call = mk_call(GlobalRef(HPAT.API,:__hpat_get_H5_dim_size), [arr_size_var, i])
+        push!(res, TypedExpr(Int64, :(=), size_i, size_i_call))
+        push!(size_expr, size_i)
+    end
+    arrdef = TypedExpr(arr_typ, :alloc, elem_typ, size_expr)
+    push!(res, TypedExpr(arr_typ, :(=), y, arrdef))
+    =#
+    # generate read call
+    write_call = mk_call(GlobalRef(HPAT.API,:__hpat_data_sink_HDF5_write), [dsrc_id_var, hdf5_var, y])
+    push!(res, write_call)
+    close_call = mk_call(GlobalRef(HPAT.API,:__hpat_data_sink_HDF5_close), [dsrc_id_var])
+    push!(res, close_call)
+    return res
+end
 
 function AstWalkCallback(node::Expr,dw)
 
