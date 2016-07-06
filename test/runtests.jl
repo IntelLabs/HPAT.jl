@@ -1,4 +1,4 @@
 using Base.Test
 
-include("mpi-test.jl")
-include("sink_test.jl")
+run(`mpirun -np 2 julia mpi-test.jl`)
+run(`mpirun -np 2 julia sink_test.jl`)

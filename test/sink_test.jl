@@ -10,6 +10,6 @@ end
 
 end
 
-
 SinkTest.sink("y.hdf5")
-rm("y.hdf5")
+using MPI
+if MPI.Comm_rank(MPI.COMM_WORLD)==0 rm("y.hdf5") end
