@@ -28,15 +28,16 @@ THE POSSIBILITY OF SUCH DAMAGE.
 using CompilerTools.LivenessAnalysis
 
 function getArrayDistributionInfo(ast, state)
+    set_user_partitionings(state)
     before_arr_partitionings = [state.arrs_dist_info[arr].partitioning for arr in keys(state.arrs_dist_info)]
 
     while true
 
-        set_user_partitionings(state)
         @dprintln(3,"DistPass state before array info walk: ",state)
         ParallelIR.AstWalk(ast, get_arr_dist_info, state)
         @dprintln(3,"DistPass state after array info walk: ",state)
 
+        set_user_partitionings(state)
         new_arr_partitionings = [state.arrs_dist_info[arr].partitioning for arr in keys(state.arrs_dist_info)]
         # break if no new sequential array discovered
         if new_arr_partitionings==before_arr_partitionings
@@ -246,6 +247,10 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
     state.arrs_dist_info[lhs].partitioning = state.arrs_dist_info[rhs].partitioning = partitioning
     @dprintln(3,"DistPass arr info dim_sizes update: ", state.arrs_dist_info[lhs].dim_sizes)
     return node
+  # lhs is sequential if rhs is unknown
+  elseif haskey(state.arrs_dist_info, lhs)
+    @dprintln(3,"DistPass assignment unknown rhs:", rhs,", sequentlial lhs: ",lhs)
+    state.arrs_dist_info[lhs].partitioning = SEQ
   end
   return CompilerTools.AstWalker.ASTWALK_RECURSE
 end
@@ -300,7 +305,12 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
             return get_arr_dist_info_gemv(node, state, top_level_number, lhs, rhs)
         end
     else
-        return CompilerTools.AstWalker.ASTWALK_RECURSE
+      # lhs is sequential if rhs is unknown
+      if haskey(state.arrs_dist_info, lhs)
+        @dprintln(3,"DistPass assignment unknown rhs:", rhs,", sequentlial lhs: ",lhs)
+        state.arrs_dist_info[lhs].partitioning = SEQ
+      end
+      return CompilerTools.AstWalker.ASTWALK_RECURSE
     end
     return node
 end
