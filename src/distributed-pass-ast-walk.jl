@@ -332,11 +332,11 @@ function get_arr_dist_info_gemm(node::Expr, state::DistPassState, top_level_numb
       partitioning=SEQ
   # result is sequential but with reduction if both inputs are partitioned and second one is transposed
   # e.g. labels*points'
-  elseif !isSEQ(arr1,state) && !isSEQ(arr2,state) && t2 && !t1
+elseif isONE_D(arr1,state) && isONE_D(arr2,state) && t2 && !t1
       partitioning=SEQ
   # first input is sequential but output is parallel if the second input is partitioned but not transposed
   # e.g. w*points
-  elseif !isSEQ(arr2,state) && !t2
+elseif isONE_D(arr2,state) && !t2 && !isTWO_D(arr1,state)
       @dprintln(3,"DistPass arr info gemm first input is sequential: ", arr1)
       setSEQ(arr1,state)
   # if no array is sequential and any array is 2D, then all are TWO_D
