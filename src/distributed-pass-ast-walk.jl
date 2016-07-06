@@ -32,6 +32,7 @@ function getArrayDistributionInfo(ast, state)
 
     while true
 
+        set_user_partitionings(state)
         @dprintln(3,"DistPass state before array info walk: ",state)
         ParallelIR.AstWalk(ast, get_arr_dist_info, state)
         @dprintln(3,"DistPass state after array info walk: ",state)
@@ -47,6 +48,12 @@ function getArrayDistributionInfo(ast, state)
     # if all parfors are sequential
     if HPAT.force_parallel && all([state.parfor_partitioning[parfor_id]==SEQ for parfor_id in keys(state.parfor_partitioning)])
         error("HPAT failed to parallelize! Fix the parallelism problem or use \"HPAT.setForceParallel(false)\" to run sequentially.")
+    end
+end
+
+function set_user_partitionings(state)
+    for (arr,part) in state.user_partitionings
+      state.arrs_dist_info[arr].partitioning = part
     end
 end
 
@@ -322,6 +329,13 @@ function get_arr_dist_info_gemm(node::Expr, state::DistPassState, top_level_numb
   elseif !isSEQ(arr2,state) && !t2
       @dprintln(3,"DistPass arr info gemm first input is sequential: ", arr1)
       setSEQ(arr1,state)
+  # if no array is sequential and any array is 2D, then all are TWO_D
+  elseif !isSEQ(arr1,state) && !isSEQ(arr2,state) && !isSEQ(lhs,state) &&
+          ( isTWO_D(arr1,state) || isTWO_D(arr2,state) || isTWO_D(lhs,state) )
+    @dprintln(3,"DistPass arr info gemm 2D: ", arr1)
+    setTWO_D(arr1,state)
+    setTWO_D(arr2,state)
+    partitioning=TWO_D
   # otherwise, no known pattern found, every array is sequential
   else
       @dprintln(3,"DistPass arr info gemm all sequential: ", arr1," ", arr2)

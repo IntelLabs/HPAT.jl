@@ -62,6 +62,9 @@ function setForceParallel(v::Bool)
   global force_parallel=v
 end
 
+# smaller value means higher precedence
+@enum Partitioning SEQ=1 TWO_D=2 ONE_D=3
+
 include("api.jl")
 using HPAT.API
 export data_source_HDF5, data_source_TXT
@@ -148,7 +151,7 @@ type MacroState
     # Types of each table column
     tableTypes::Dict{Symbol,Vector{Symbol}}
     # partitioning of arrays
-    array_partitioning::Dict{Symbol,Symbol}
+    array_partitioning::Dict{Symbol,Partitioning}
     function MacroState()
         new(Dict{Symbol,Vector{Symbol}}(),Dict{Symbol,Vector{Symbol}}(),Dict{Symbol,Symbol}())
     end

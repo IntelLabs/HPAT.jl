@@ -94,10 +94,29 @@ end
 
 function process_macros(node, state, func)
   if func==Symbol("@partitioned")
-    state.array_partitioning[node.args[2]] = node.args[3]
+    state.array_partitioning[node.args[2]] = convert_partitioning(node.args[3])
     return CompilerTools.AstWalker.ASTWALK_REMOVE
   end
   return node
+end
+
+using HPAT.Partitioning
+using HPAT.SEQ
+using HPAT.TWO_D
+using HPAT.ONE_D
+
+function convert_partitioning(p::Symbol)
+  if p==:HPAT_2D
+    return TWO_D
+  elseif p==:HPAT_1D
+    return ONE_D
+  elseif p==:HPAT_SEQ
+    return SEQ
+  else
+    error("unknown partitioning $p")
+    return SEQ
+  end
+  return SEQ
 end
 
 """ Translate filter t1 = t1[cond]

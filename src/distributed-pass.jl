@@ -39,6 +39,10 @@ using CompilerTools.LambdaHandling
 using CompilerTools.Helper
 
 import HPAT
+using HPAT.Partitioning
+using HPAT.SEQ
+using HPAT.TWO_D
+using HPAT.ONE_D
 
 using ParallelAccelerator
 import ParallelAccelerator.ParallelIR
@@ -106,7 +110,8 @@ function from_root(function_name, ast::Tuple)
 
     (linfo, body) = ast
     lives = computeLiveness(body, linfo)
-    state::DistPassState = initDistState(linfo,lives)
+    user_partitionings = get_user_partitionings(body)
+    state::DistPassState = initDistState(linfo,lives,user_partitionings)
 
     # find if an array should be partitioned, sequential, or shared
     getArrayDistributionInfo(body, state)
@@ -116,8 +121,6 @@ function from_root(function_name, ast::Tuple)
     @dprintln(1,"DistributedPass.from_root returns function = ", function_name, " ast = ", body)
     return state.LambdaVarInfo, body
 end
-# smaller value means higher precedence
-@enum Partitioning SEQ=1 TWO_D=2 ONE_D=3
 
 type ArrDistInfo
     partitioning::Partitioning      # partitioning of array (SEQ,ONE_D,TWO_D)
@@ -146,18 +149,24 @@ type DistPassState
     # keep values for constant tuples. They are often used for allocating and reshaping arrays.
     tuple_table              :: Dict{LHSVar,Array{Union{LHSVar,Int},1}}
     max_label :: Int # holds the max number of all LabelNodes
+    user_partitionings::Dict{Symbol,Partitioning}
 
-    function DistPassState(linfo, lives)
+    function DistPassState(linfo, lives, user_partitionings)
         new(Dict{LHSVar, Array{ArrDistInfo,1}}(), Dict{Int,Partitioning}(), linfo,0, lives,
-             Dict{LHSVar,Array{Union{LHSVar,Int},1}}(),0)
+             Dict{LHSVar,Array{Union{LHSVar,Int},1}}(),0,user_partitionings)
     end
 end
 
 isSEQ(arr,state) = (state.arrs_dist_info[arr].partitioning==SEQ)
 isONE_D(arr,state) = (state.arrs_dist_info[arr].partitioning==ONE_D)
+isTWO_D(arr,state) = (state.arrs_dist_info[arr].partitioning==TWO_D)
 
 function setSEQ(arr,state)
   state.arrs_dist_info[arr].partitioning=SEQ
+end
+
+function setTWO_D(arr,state)
+  state.arrs_dist_info[arr].partitioning=TWO_D
 end
 
 getArrayPartitioning(arr,state) = state.arrs_dist_info[arr].partitioning
@@ -185,8 +194,21 @@ function show(io::IO, pnode::HPAT.DistributedPass.DistPassState)
     println(io,"")
 end
 
-function initDistState(linfo::LambdaVarInfo, lives)
-    state = DistPassState(linfo, lives)
+function get_user_partitionings(body)
+    first_arg = body.args[1]
+    if isa(first_arg, Expr) && first_arg.head==:meta
+        for meta in first_arg.args
+            if meta.head==:hpat_partitioning
+                @dprintln(3, "hpat partitionings found: ", meta)
+                return meta.args[1]
+            end
+        end
+    end
+    return Dict{Symbol,Symbol}()
+end
+
+function initDistState(linfo::LambdaVarInfo, lives, user_partitionings)
+    state = DistPassState(linfo, lives, user_partitionings)
 
     vars = getLocalVariables(linfo)
     # Populate the symbol table
