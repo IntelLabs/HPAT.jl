@@ -259,7 +259,7 @@ end
 function from_expr(node::Expr, state::DistPassState)
     head = node.head
     if head==:(=)
-        return from_assignment(node, state)
+        return from_assignment(node, state, toLHSVar(node.args[1]), node.args[2])
     elseif head==:parfor
         return from_parfor(node, state)
     #elseif head==:block
@@ -290,91 +290,13 @@ function genDistributedInit(state::DistPassState)
     return Any[initCall; num_pes_assign; node_id_assign]
 end
 
-function from_assignment(node::Expr, state::DistPassState)
+function from_assignment(node::Expr, state::DistPassState, lhs::LHSVar, rhs::Expr)
     @assert node.head==:(=) "DistributedPass invalid assignment head"
-    lhs = node.args[1]
-    rhs = node.args[2]
 
     if isAllocation(rhs)
-        arr = toLHSVar(lhs)
-        if isONE_D(arr,state)
-            @dprintln(3,"DistPass allocation array: ", arr)
-            #shape = get_alloc_shape(node.args[2].args[2:end])
-            #old_size = shape[end]
-            dim_sizes = state.arrs_dist_info[arr].dim_sizes
-            # generate array division
-            # simple 1D partitioning of last dimension, more general partitioning needed
-            # match common big data matrix reperesentation
-            arr_tot_size = dim_sizes[end]
-
-            arr_id = getDistNewID(state)
-            state.arrs_dist_info[arr].arr_id = arr_id
-            darr_start_var = symbol("__hpat_dist_arr_start_"*string(arr_id))
-            darr_div_var = symbol("__hpat_dist_arr_div_"*string(arr_id))
-            darr_count_var = symbol("__hpat_dist_arr_count_"*string(arr_id))
-            state.arrs_dist_info[arr].starts[end] = darr_start_var
-            state.arrs_dist_info[arr].counts[end] = darr_count_var
-
-            CompilerTools.LambdaHandling.addLocalVariable(darr_start_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-            CompilerTools.LambdaHandling.addLocalVariable(darr_div_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-            CompilerTools.LambdaHandling.addLocalVariable(darr_count_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-
-
-            darr_div_expr = Expr(:(=),darr_div_var, mk_div_int_expr(arr_tot_size,:__hpat_num_pes))
-            # zero-based index to match C interface of HDF5
-            darr_start_expr = Expr(:(=), darr_start_var, mk_mult_int_expr([:__hpat_node_id,darr_div_var]))
-            # darr_count_expr = :($darr_count_var = __hpat_node_id==__hpat_num_pes-1 ? $arr_tot_size-__hpat_node_id*$darr_div_var : $darr_div_var)
-            darr_count_expr = Expr(:(=), darr_count_var, mk_call(GlobalRef(HPAT.API,:__hpat_get_node_portion),[arr_tot_size, darr_div_var, :__hpat_num_pes, :__hpat_node_id]))
-
-            # set new divided allocation size
-            rhs.args[end-1] = darr_count_var
-
-            res = [darr_div_expr; darr_start_expr; darr_count_expr; node]
-            #debug_size_print = :(println("size ",$darr_count_var))
-            #push!(res,debug_size_print)
-            return res
-        end
-    elseif isa(rhs,Expr) && rhs.head==:call && isBaseFunc(rhs.args[1],:reshape)
-        arr = toLHSVar(lhs)
-        if isONE_D(arr,state)
-            @dprintln(3,"DistPass reshape array: ", arr)
-            dim_sizes = state.arrs_dist_info[arr].dim_sizes
-            # generate array division
-            # simple 1D partitioning of last dimension, more general partitioning needed
-            # match common big data matrix reperesentation
-            arr_tot_size = dim_sizes[end]
-
-            arr_id = getDistNewID(state)
-            state.arrs_dist_info[arr].arr_id = arr_id
-            darr_start_var = symbol("__hpat_dist_arr_start_"*string(arr_id))
-            darr_div_var = symbol("__hpat_dist_arr_div_"*string(arr_id))
-            darr_count_var = symbol("__hpat_dist_arr_count_"*string(arr_id))
-            state.arrs_dist_info[arr].starts[end] = darr_start_var
-            state.arrs_dist_info[arr].counts[end] = darr_count_var
-
-            CompilerTools.LambdaHandling.addLocalVariable(darr_start_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-            CompilerTools.LambdaHandling.addLocalVariable(darr_div_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-            CompilerTools.LambdaHandling.addLocalVariable(darr_count_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-
-
-            darr_div_expr = Expr(:(=), darr_div_var, mk_div_int_expr(arr_tot_size,:__hpat_num_pes))
-            # zero-based index to match C interface of HDF5
-            darr_start_expr = Expr(:(=),darr_start_var, mk_mult_int_expr([:__hpat_node_id, darr_div_var]))
-            #darr_count_expr = :($darr_count_var = __hpat_node_id==__hpat_num_pes-1 ? $arr_tot_size-__hpat_node_id*$darr_div_var : $darr_div_var)
-            darr_count_expr = Expr(:(=), darr_count_var, mk_call(GlobalRef(HPAT.API,:__hpat_get_node_portion),[arr_tot_size, darr_div_var, :__hpat_num_pes, :__hpat_node_id]))
-
-            # create a new tuple for reshape
-            tup_call = Expr(:call, TopNode(:tuple), dim_sizes[1:end-1]... , darr_count_var)
-            reshape_tup_var = symbol("__hpat_dist_tup_var_"*string(arr_id))
-            tup_typ = CompilerTools.LambdaHandling.getType(rhs.args[3], state.LambdaVarInfo)
-            CompilerTools.LambdaHandling.addLocalVariable(reshape_tup_var, tup_typ, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-            tup_expr = Expr(:(=),reshape_tup_var,tup_call)
-            rhs.args[3] = reshape_tup_var
-            res = [darr_div_expr; darr_start_expr; darr_count_expr; tup_expr; node]
-            #debug_size_print = :(println("size ",$darr_count_var))
-            #push!(res,debug_size_print)
-            return res
-        end
+      return from_assignment_alloc(node,state,lhs,rhs)
+    elseif rhs.head==:call && isBaseFunc(rhs.args[1],:reshape)
+      return from_assignment_reshape(node,state,lhs,rhs)
     elseif isa(rhs,Expr) && rhs.head==:call && isBaseFunc(rhs.args[1],:gemm_wrapper!)
 
         arr1 = toLHSVar(rhs.args[5])
@@ -468,6 +390,94 @@ function from_assignment(node::Expr, state::DistPassState)
     return [node]
 end
 
+function from_assignment(node::Expr, state::DistPassState, lhs::LHSVar, rhs::ANY)
+  node.args[2] = from_expr(rhs,state)[1]
+  return [node]
+end
+
+function from_assignment_alloc(node::Expr, state::DistPassState, arr::LHSVar, rhs::Expr)
+  if isONE_D(arr,state)
+      @dprintln(3,"DistPass allocation array: ", arr)
+      #shape = get_alloc_shape(node.args[2].args[2:end])
+      #old_size = shape[end]
+      dim_sizes = state.arrs_dist_info[arr].dim_sizes
+      # generate array division
+      # simple 1D partitioning of last dimension, more general partitioning needed
+      # match common big data matrix reperesentation
+      arr_tot_size = dim_sizes[end]
+
+      arr_id = getDistNewID(state)
+      state.arrs_dist_info[arr].arr_id = arr_id
+      darr_start_var = symbol("__hpat_dist_arr_start_"*string(arr_id))
+      darr_div_var = symbol("__hpat_dist_arr_div_"*string(arr_id))
+      darr_count_var = symbol("__hpat_dist_arr_count_"*string(arr_id))
+      state.arrs_dist_info[arr].starts[end] = darr_start_var
+      state.arrs_dist_info[arr].counts[end] = darr_count_var
+
+      CompilerTools.LambdaHandling.addLocalVariable(darr_start_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+      CompilerTools.LambdaHandling.addLocalVariable(darr_div_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+      CompilerTools.LambdaHandling.addLocalVariable(darr_count_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+
+
+      darr_div_expr = Expr(:(=),darr_div_var, mk_div_int_expr(arr_tot_size,:__hpat_num_pes))
+      # zero-based index to match C interface of HDF5
+      darr_start_expr = Expr(:(=), darr_start_var, mk_mult_int_expr([:__hpat_node_id,darr_div_var]))
+      # darr_count_expr = :($darr_count_var = __hpat_node_id==__hpat_num_pes-1 ? $arr_tot_size-__hpat_node_id*$darr_div_var : $darr_div_var)
+      darr_count_expr = Expr(:(=), darr_count_var, mk_call(GlobalRef(HPAT.API,:__hpat_get_node_portion),[arr_tot_size, darr_div_var, :__hpat_num_pes, :__hpat_node_id]))
+
+      # set new divided allocation size
+      rhs.args[end-1] = darr_count_var
+
+      res = [darr_div_expr; darr_start_expr; darr_count_expr; node]
+      #debug_size_print = :(println("size ",$darr_count_var))
+      #push!(res,debug_size_print)
+      return res
+  end
+  return [node]
+end
+
+function from_assignment_reshape(node::Expr, state::DistPassState, arr::LHSVar, rhs::Expr)
+  if isONE_D(arr,state)
+      @dprintln(3,"DistPass reshape array: ", arr)
+      dim_sizes = state.arrs_dist_info[arr].dim_sizes
+      # generate array division
+      # simple 1D partitioning of last dimension, more general partitioning needed
+      # match common big data matrix reperesentation
+      arr_tot_size = dim_sizes[end]
+
+      arr_id = getDistNewID(state)
+      state.arrs_dist_info[arr].arr_id = arr_id
+      darr_start_var = symbol("__hpat_dist_arr_start_"*string(arr_id))
+      darr_div_var = symbol("__hpat_dist_arr_div_"*string(arr_id))
+      darr_count_var = symbol("__hpat_dist_arr_count_"*string(arr_id))
+      state.arrs_dist_info[arr].starts[end] = darr_start_var
+      state.arrs_dist_info[arr].counts[end] = darr_count_var
+
+      CompilerTools.LambdaHandling.addLocalVariable(darr_start_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+      CompilerTools.LambdaHandling.addLocalVariable(darr_div_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+      CompilerTools.LambdaHandling.addLocalVariable(darr_count_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+
+
+      darr_div_expr = Expr(:(=), darr_div_var, mk_div_int_expr(arr_tot_size,:__hpat_num_pes))
+      # zero-based index to match C interface of HDF5
+      darr_start_expr = Expr(:(=),darr_start_var, mk_mult_int_expr([:__hpat_node_id, darr_div_var]))
+      #darr_count_expr = :($darr_count_var = __hpat_node_id==__hpat_num_pes-1 ? $arr_tot_size-__hpat_node_id*$darr_div_var : $darr_div_var)
+      darr_count_expr = Expr(:(=), darr_count_var, mk_call(GlobalRef(HPAT.API,:__hpat_get_node_portion),[arr_tot_size, darr_div_var, :__hpat_num_pes, :__hpat_node_id]))
+
+      # create a new tuple for reshape
+      tup_call = Expr(:call, TopNode(:tuple), dim_sizes[1:end-1]... , darr_count_var)
+      reshape_tup_var = symbol("__hpat_dist_tup_var_"*string(arr_id))
+      tup_typ = CompilerTools.LambdaHandling.getType(rhs.args[3], state.LambdaVarInfo)
+      CompilerTools.LambdaHandling.addLocalVariable(reshape_tup_var, tup_typ, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+      tup_expr = Expr(:(=),reshape_tup_var,tup_call)
+      rhs.args[3] = reshape_tup_var
+      res = [darr_div_expr; darr_start_expr; darr_count_expr; tup_expr; node]
+      #debug_size_print = :(println("size ",$darr_count_var))
+      #push!(res,debug_size_print)
+      return res
+  end
+  return [node]
+end
 
 function from_parfor(node::Expr, state)
     @assert node.head==:parfor "DistributedPass invalid parfor head"
