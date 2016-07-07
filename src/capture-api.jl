@@ -149,8 +149,8 @@ function translate_filter(t1::Symbol, cond::Expr, state)
 
     col_arrs = map(x->getColName(t1,x), state.tableCols[t1])
     assigns = [ Expr(:(=),:($arg_arr[$i]),:($(col_arrs[i]))) for i in 1:length(state.tableCols[t1]) ]
-    #out_assigns = [ Expr(:(=), :($(col_arrs[i])::Vector{$(state.tableTypes[t1][i])}) ,:($arg_arr[$i])) for i in 1:length(state.tableCols[t1]) ]
-    out_assigns = [ Expr(:(=), :($(col_arrs[i])) ,:($arg_arr[$i])) for i in 1:length(state.tableCols[t1]) ]
+    out_assigns = [ Expr(:(=), :($(col_arrs[i])::Vector{$(state.tableTypes[t1][i])}) ,:($arg_arr[$i])) for i in 1:length(state.tableCols[t1]) ]
+    #out_assigns = [ Expr(:(=), :($(col_arrs[i])) ,:($arg_arr[$i])) for i in 1:length(state.tableCols[t1]) ]
 
     mod_call = GlobalRef(HPAT.API, :table_filter!)
     filter_call = :( ($mod_call)($cond_arr,($arg_arr)) )
