@@ -286,8 +286,30 @@ function genDistributedInit(state::DistPassState)
 
     num_pes_assign = Expr(:(=), :__hpat_num_pes, numPesCall)
     node_id_assign = Expr(:(=), :__hpat_node_id, nodeIdCall)
+    res = Any[initCall; num_pes_assign; node_id_assign]
 
-    return Any[initCall; num_pes_assign; node_id_assign]
+    # generate 2D init if there is any 2D array or parfor
+    if any([state.arrs_dist_info[arr].partitioning==TWO_D for arr in keys(state.arrs_dist_info)]) ||
+        any([state.parfor_partitioning[parfor_id]==TWO_D for parfor_id in keys(state.parfor_partitioning)])
+      @dprintln(3,"DistPass generating 2D init")
+      initCall2d = Expr(:call, GlobalRef(HPAT.API,:hpat_dist_2d_init))
+      CompilerTools.LambdaHandling.addLocalVariable(symbol("__hpat_num_pes_x"), Int32, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+      CompilerTools.LambdaHandling.addLocalVariable(symbol("__hpat_num_pes_y"), Int32, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+      CompilerTools.LambdaHandling.addLocalVariable(symbol("__hpat_node_id_x"), Int32, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+      CompilerTools.LambdaHandling.addLocalVariable(symbol("__hpat_node_id_y"), Int32, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+      numPesCallx = Expr(:call, GlobalRef(HPAT.API,:hpat_dist_num_pes_x))
+      numPesCally = Expr(:call, GlobalRef(HPAT.API,:hpat_dist_num_pes_y))
+      nodeIdCallx = Expr(:call, GlobalRef(HPAT.API,:hpat_dist_node_id_x))
+      nodeIdCally = Expr(:call, GlobalRef(HPAT.API,:hpat_dist_node_id_y))
+      num_pes_assign_x = Expr(:(=), :__hpat_num_pes_x, numPesCallx)
+      num_pes_assign_y = Expr(:(=), :__hpat_num_pes_x, numPesCally)
+      node_id_assign_x = Expr(:(=), :__hpat_node_id_x, nodeIdCallx)
+      node_id_assign_y = Expr(:(=), :__hpat_node_id_y, nodeIdCally)
+      res2 = Any[initCall2d; num_pes_assign_x; num_pes_assign_y; node_id_assign_x; node_id_assign_y]
+      res = [res;res2]
+    end
+
+    return res
 end
 
 function from_assignment(node::Expr, state::DistPassState, lhs::LHSVar, rhs::Expr)
@@ -349,9 +371,75 @@ function from_assignment_alloc(node::Expr, state::DistPassState, arr::LHSVar, rh
       #debug_size_print = :(println("size ",$darr_count_var))
       #push!(res,debug_size_print)
       return res
+  elseif isTWO_D(arr,state)
+    return from_assignment_alloc_2d(node, state, arr, rhs)
   end
   return [node]
 end
+
+function from_assignment_alloc_2d(node::Expr, state::DistPassState, arr::LHSVar, rhs::Expr)
+  arr_id = getDistNewID(state)
+  state.arrs_dist_info[arr].arr_id = arr_id
+  dim_sizes = state.arrs_dist_info[arr].dim_sizes
+  arr_tot_size_x = dim_sizes[end-1]
+  arr_tot_size_y = dim_sizes[end]
+
+  # constant block size for block-cyclic partitioning
+  BLOCK_SIZE = 100
+  block_size_var = symbol("__hpat_dist_arr_2d_block_size_"*string(arr_id))
+  CompilerTools.LambdaHandling.addLocalVariable(block_size_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+  # same block size for both dimensions
+  # block size should be less than smaller dimension
+  # block_size_expr = Expr(:(=), block_size_var, mk_call(GlobalRef(HPAT.API,:__hpat_min),[:($BLOCK_SIZE), dim_sizes[end], dim_sizes[end-1]])
+  block_size_expr = Expr(:(=), block_size_var, :($BLOCK_SIZE))
+  state.arrs_dist_info[arr].blocks[end-1] = state.arrs_dist_info[arr].blocks[end] = block_size_var
+
+  # start = id*block_size
+  start_x_var = symbol("__hpat_dist_arr_2d_start_x_"*string(arr_id))
+  start_y_var = symbol("__hpat_dist_arr_2d_start_y_"*string(arr_id))
+  CompilerTools.LambdaHandling.addLocalVariable(start_x_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+  CompilerTools.LambdaHandling.addLocalVariable(start_y_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+  start_x_expr = Expr(:(=), start_x_var, mk_mult_int_expr([:__hpat_node_id_x,block_size_var]))
+  start_y_expr = Expr(:(=), start_y_var, mk_mult_int_expr([:__hpat_node_id_y,block_size_var]))
+  state.arrs_dist_info[arr].starts[end-1] = start_x_var
+  state.arrs_dist_info[arr].starts[end] = start_y_var
+
+  # stride = num_pes*block_size
+  stride_x_var = symbol("__hpat_dist_arr_2d_stride_x_"*string(arr_id))
+  stride_y_var = symbol("__hpat_dist_arr_2d_stride_y_"*string(arr_id))
+  CompilerTools.LambdaHandling.addLocalVariable(stride_x_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+  CompilerTools.LambdaHandling.addLocalVariable(stride_y_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+  stride_x_expr = Expr(:(=), stride_x_var, mk_mult_int_expr([:__hpat_num_pes_x,block_size_var]))
+  stride_y_expr = Expr(:(=), stride_y_var, mk_mult_int_expr([:__hpat_num_pes_y,block_size_var]))
+  state.arrs_dist_info[arr].strides[end-1] = stride_x_var
+  state.arrs_dist_info[arr].strides[end] = stride_y_var
+
+  # calculate number of blocks in each dimension
+  num_blocks_x_var = symbol("__hpat_dist_arr_2d_num_blocks_x_"*string(arr_id))
+  num_blocks_y_var = symbol("__hpat_dist_arr_2d_num_blocks_y_"*string(arr_id))
+  CompilerTools.LambdaHandling.addLocalVariable(num_blocks_x_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+  CompilerTools.LambdaHandling.addLocalVariable(num_blocks_y_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+  nb_x_div_expr = Expr(:(=),num_blocks_x_var, mk_div_int_expr(arr_tot_size_x, block_size_var))
+  nb_y_div_expr = Expr(:(=),num_blocks_y_var, mk_div_int_expr(arr_tot_size_y, block_size_var))
+
+  # number of blocks per PE in each dimension
+  blocks_per_pe_x_var = symbol("__hpat_dist_arr_2d_blocks_per_pe_x_"*string(arr_id))
+  blocks_per_pe_y_var = symbol("__hpat_dist_arr_2d_blocks_per_pe_y_"*string(arr_id))
+  CompilerTools.LambdaHandling.addLocalVariable(blocks_per_pe_x_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+  CompilerTools.LambdaHandling.addLocalVariable(blocks_per_pe_y_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+  bppx_div_expr = Expr(:(=),blocks_per_pe_x_var, mk_div_int_expr(num_blocks_x_var,:__hpat_num_pes_x))
+  bppy_div_expr = Expr(:(=),blocks_per_pe_y_var, mk_div_int_expr(num_blocks_y_var,:__hpat_num_pes_y))
+  state.arrs_dist_info[arr].counts[end-1] = blocks_per_pe_x_var
+  state.arrs_dist_info[arr].counts[end] = blocks_per_pe_y_var
+
+  # TODO: handle extra blocks and partial block
+  res = [block_size_expr; start_x_expr; start_y_expr; stride_x_expr; stride_y_expr;
+            nb_x_div_expr; nb_y_div_expr; bppx_div_expr; bppy_div_expr; node]
+  #debug_size_print = :(println("size ",$darr_count_var))
+  #push!(res,debug_size_print)
+  return res
+end
+
 
 function from_assignment_reshape(node::Expr, state::DistPassState, arr::LHSVar, rhs::Expr)
   if isONE_D(arr,state)
