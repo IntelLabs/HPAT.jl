@@ -129,9 +129,19 @@ type ArrDistInfo
     # assuming only last dimension is partitioned
     arr_id::Int # assign ID to distributed array to access partitioning info later
 
+    # array partitioning information similar to HDF5 hyperslab interface
+    # for 1D, only start and count of last dimension are set
+    # for 2D, these are set to mirror ScaLAPACK's block cyclic distribution
+    starts::Array{LHSVar}
+    counts::Array{LHSVar}
+    strides::Array{LHSVar}
+    blocks::Array{LHSVar}
+
     function ArrDistInfo(num_dims::Int)
         # one dimensional partitioning is default
-        new(ONE_D, zeros(Int64,num_dims))
+        new(ONE_D, zeros(Int64,num_dims),0,
+        Array(LHSVar,num_dims), Array(LHSVar,num_dims),
+        Array(LHSVar,num_dims), Array(LHSVar,num_dims))
     end
 end
 
@@ -302,6 +312,8 @@ function from_assignment(node::Expr, state::DistPassState)
             darr_start_var = symbol("__hpat_dist_arr_start_"*string(arr_id))
             darr_div_var = symbol("__hpat_dist_arr_div_"*string(arr_id))
             darr_count_var = symbol("__hpat_dist_arr_count_"*string(arr_id))
+            state.arrs_dist_info[arr].starts[end] = darr_start_var
+            state.arrs_dist_info[arr].counts[end] = darr_count_var
 
             CompilerTools.LambdaHandling.addLocalVariable(darr_start_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
             CompilerTools.LambdaHandling.addLocalVariable(darr_div_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
@@ -314,6 +326,7 @@ function from_assignment(node::Expr, state::DistPassState)
             # darr_count_expr = :($darr_count_var = __hpat_node_id==__hpat_num_pes-1 ? $arr_tot_size-__hpat_node_id*$darr_div_var : $darr_div_var)
             darr_count_expr = Expr(:(=), darr_count_var, mk_call(GlobalRef(HPAT.API,:__hpat_get_node_portion),[arr_tot_size, darr_div_var, :__hpat_num_pes, :__hpat_node_id]))
 
+            # set new divided allocation size
             rhs.args[end-1] = darr_count_var
 
             res = [darr_div_expr; darr_start_expr; darr_count_expr; node]
@@ -336,6 +349,8 @@ function from_assignment(node::Expr, state::DistPassState)
             darr_start_var = symbol("__hpat_dist_arr_start_"*string(arr_id))
             darr_div_var = symbol("__hpat_dist_arr_div_"*string(arr_id))
             darr_count_var = symbol("__hpat_dist_arr_count_"*string(arr_id))
+            state.arrs_dist_info[arr].starts[end] = darr_start_var
+            state.arrs_dist_info[arr].counts[end] = darr_count_var
 
             CompilerTools.LambdaHandling.addLocalVariable(darr_start_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
             CompilerTools.LambdaHandling.addLocalVariable(darr_div_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
@@ -558,34 +573,23 @@ function from_call(node::Expr, state)
         arr = toLHSVar(node.args[3])
         @dprintln(3,"DistPass data source for array: ", arr)
 
-        arr_id = state.arrs_dist_info[arr].arr_id
-
-        dsrc_start_var = symbol("__hpat_dist_arr_start_"*string(arr_id))
-        dsrc_count_var = symbol("__hpat_dist_arr_count_"*string(arr_id))
-
-        push!(node.args, dsrc_start_var, dsrc_count_var)
+        # 1D read, add start and count indices of last dimension
+        push!(node.args, state.arrs_dist_info[arr].starts[end], state.arrs_dist_info[arr].counts[end])
         return [node]
     elseif func==GlobalRef(HPAT.API,:__hpat_data_sink_HDF5_write)  && isONE_D(toLHSVar(node.args[4]),state)
         arr = toLHSVar(node.args[4])
         @dprintln(3,"DistPass data source for array: ", arr)
 
-        arr_id = state.arrs_dist_info[arr].arr_id
-
-        dsrc_start_var = symbol("__hpat_dist_arr_start_"*string(arr_id))
-        dsrc_count_var = symbol("__hpat_dist_arr_count_"*string(arr_id))
-
-        push!(node.args, dsrc_start_var, dsrc_count_var, state.arrs_dist_info[arr].dim_sizes)
+        # 1D write, add start and count indices of last dimension, total sizes
+        push!(node.args, state.arrs_dist_info[arr].starts[end], state.arrs_dist_info[arr].counts[end],
+                   state.arrs_dist_info[arr].dim_sizes)
         return [node]
     elseif func==GlobalRef(HPAT.API,:Kmeans) && isONE_D(toLHSVar(node.args[3]), state)
         arr = toLHSVar(node.args[3])
         @dprintln(3,"DistPass kmeans call for array: ", arr)
         node.args[1].name = :Kmeans_dist
-        arr_id = state.arrs_dist_info[arr].arr_id
 
-        dsrc_start_var = symbol("__hpat_dist_arr_start_"*string(arr_id))
-        dsrc_count_var = symbol("__hpat_dist_arr_count_"*string(arr_id))
-
-        push!(node.args, dsrc_start_var, dsrc_count_var,
+        push!(node.args, state.arrs_dist_info[arr].starts[end], state.arrs_dist_info[arr].counts[end],
                 state.arrs_dist_info[arr].dim_sizes[1], state.arrs_dist_info[arr].dim_sizes[end])
         return [node]
     elseif (func==GlobalRef(HPAT.API,:LinearRegression) || func==GlobalRef(HPAT.API,:NaiveBayes)) && isONE_D(toLHSVar(node.args[3]),state) && isONE_D(toLHSVar(node.args[4]),state)
@@ -593,18 +597,10 @@ function from_call(node::Expr, state)
         arr2 = toLHSVar(node.args[4])
         @dprintln(3,"DistPass LinearRegression/NaiveBayes call for arrays: ", arr1," ", arr2)
         node.args[1].name = symbol("$(func)_dist")
-        arr1_id = state.arrs_dist_info[arr1].arr_id
-        arr2_id = state.arrs_dist_info[arr2].arr_id
 
-        dsrc_start_var1 = symbol("__hpat_dist_arr_start_"*string(arr1_id))
-        dsrc_count_var1 = symbol("__hpat_dist_arr_count_"*string(arr1_id))
-
-        dsrc_start_var2 = symbol("__hpat_dist_arr_start_"*string(arr2_id))
-        dsrc_count_var2 = symbol("__hpat_dist_arr_count_"*string(arr2_id))
-
-        push!(node.args, dsrc_start_var1, dsrc_count_var1,
+        push!(node.args, state.arrs_dist_info[arr1].starts[end], state.arrs_dist_info[arr1].counts[end],
                 state.arrs_dist_info[arr1].dim_sizes[1], state.arrs_dist_info[arr1].dim_sizes[end])
-        push!(node.args, dsrc_start_var2, dsrc_count_var2,
+        push!(node.args, state.arrs_dist_info[arr2].starts[end], state.arrs_dist_info[arr2].counts[end],
                 state.arrs_dist_info[arr2].dim_sizes[1], state.arrs_dist_info[arr2].dim_sizes[end])
         return [node]
     elseif isBaseFunc(func, :arraysize) && isONE_D(toLHSVar(node.args[2]),state)
