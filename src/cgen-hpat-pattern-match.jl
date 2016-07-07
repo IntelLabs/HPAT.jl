@@ -50,6 +50,24 @@ function pattern_match_call_dist_init(f::Any,linfo)
     return ""
 end
 
+function pattern_match_call_dist_init2d(f::GlobalRef,linfo)
+    if f.name==:hpat_dist_init
+        return """    blacs_setup_( &__hpat_node_id, &__hpat_num_pes);
+                      // get default context
+                      int i_zero=0, i_one=1, i_negone=-1, ictxt=-1;
+                      blacs_get_( &i_negone, &i_zero, &ictxt );
+                      int __hpat_2d_dims[2];
+                      MPI_Dims_create(__hpat_num_pes, 2, __hpat_2d_dims)
+              """
+    else
+        return ""
+    end
+end
+
+function pattern_match_call_dist_init2d(f::Any,linfo)
+    return ""
+end
+
 function pattern_match_call_get_sec_since_epoch(f::GlobalRef,linfo)
     if f.mod == HPAT.Checkpointing && f.name==:hpat_get_sec_since_epoch
         return "MPI_Wtime()"
@@ -992,7 +1010,7 @@ function pattern_match_call_data_sink_write(f::GlobalRef, id::Int, hdf5_var, arr
         for i in 1:length(tot_size)
             s*= "dataset_dims_$num[$i-1]=$(ParallelAccelerator.CGen.from_expr(tot_size[i],linfo));\n"
         end
-        s *= "  filespace_$num = H5Screate_simple($num_dims, dataset_dims_$num, NULL);\n" 
+        s *= "  filespace_$num = H5Screate_simple($num_dims, dataset_dims_$num, NULL);\n"
         s *= "  dataset_id_$num = H5Dcreate(file_id_$num, \"$hdf5_var\", $h5_typ, filespace_$num,\n"
         s *=  "     H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);\n"
         s *= " H5Sclose(filespace_$num);\n"
@@ -1036,6 +1054,7 @@ function pattern_match_call(ast::Array{Any, 1}, linfo)
   if length(ast)==1
     @dprintln(3,"ast1_typ = ", typeof(ast[1]))
     s *= pattern_match_call_dist_init(ast[1], linfo)
+    s *= pattern_match_call_dist_init2d(ast[1], linfo)
     s *= pattern_match_call_get_sec_since_epoch(ast[1], linfo)
   elseif length(ast)==2
     @dprintln(3,"ast1_typ = ", typeof(ast[1]), " ast2_typ = ", typeof(ast[2]))
@@ -1100,10 +1119,26 @@ function from_assignment_match_dist(lhs::RHSVar, rhs::Expr, linfo)
         @dprintln(3, "num_pes call")
         c_lhs = ParallelAccelerator.CGen.from_expr(lhs, linfo)
         return "MPI_Comm_size(MPI_COMM_WORLD,&$c_lhs);"
+    elseif rhs.head==:call && length(rhs.args)==1 && rhs.args[1]==GlobalRef(HPAT.API,:hpat_dist_num_pes_x)
+          @dprintln(3, "num_pes_x call")
+          c_lhs = ParallelAccelerator.CGen.from_expr(lhs, linfo)
+          return "c_lhs = __hpat_2d_dims[0];"
+    elseif rhs.head==:call && length(rhs.args)==1 && rhs.args[1]==GlobalRef(HPAT.API,:hpat_dist_num_pes_y)
+          @dprintln(3, "num_pes_x call")
+          c_lhs = ParallelAccelerator.CGen.from_expr(lhs, linfo)
+          return """c_lhs = __hpat_2d_dims[1];\n // create row-major 2D grid
+                    blacs_gridinit_( &ictxt, "R", &__hpat_num_pes_x, &__hpat_num_pes_y );
+                """
     elseif rhs.head==:call && length(rhs.args)==1 && rhs.args[1]==GlobalRef(HPAT.API,:hpat_dist_node_id)
         @dprintln(3, "node_id call")
         c_lhs = ParallelAccelerator.CGen.from_expr(lhs, linfo)
         return "MPI_Comm_rank(MPI_COMM_WORLD,&$c_lhs);"
+    elseif rhs.head==:call && length(rhs.args)==1 && rhs.args[1]==GlobalRef(HPAT.API,:hpat_dist_node_id_x)
+          @dprintln(3, "node_id_x call")
+          c_lhs = ParallelAccelerator.CGen.from_expr(lhs, linfo)
+          return "blacs_gridinfo_( &ictxt, &__hpat_num_pes_x, &__hpat_num_pes_y, &__hpat_node_id_x, &__hpat_node_id_y );"
+    elseif rhs.head==:call && length(rhs.args)==1 && rhs.args[1]==GlobalRef(HPAT.API,:hpat_dist_node_id_y)
+      return ";"
     elseif rhs.head==:call && length(rhs.args)==1 && isExpr(rhs.args[1])
         @dprintln(3, "one arg call to an Expr")
         expr = rhs.args[1]
