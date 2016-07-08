@@ -136,12 +136,14 @@ type ArrDistInfo
     counts::Array{LHSVar}
     strides::Array{LHSVar}
     blocks::Array{LHSVar}
+    local_sizes::Array{LHSVar}
 
     function ArrDistInfo(num_dims::Int)
         # one dimensional partitioning is default
         new(ONE_D, zeros(Int64,num_dims),0,
         Array(LHSVar,num_dims), Array(LHSVar,num_dims),
-        Array(LHSVar,num_dims), Array(LHSVar,num_dims))
+        Array(LHSVar,num_dims), Array(LHSVar,num_dims),
+        Array(LHSVar,num_dims))
     end
 end
 
@@ -432,9 +434,24 @@ function from_assignment_alloc_2d(node::Expr, state::DistPassState, arr::LHSVar,
   state.arrs_dist_info[arr].counts[end-1] = blocks_per_pe_x_var
   state.arrs_dist_info[arr].counts[end] = blocks_per_pe_y_var
 
+  # local sizes
+  loc_size_x_var = symbol("__hpat_dist_arr_2d_loc_size_x_"*string(arr_id))
+  loc_size_y_var = symbol("__hpat_dist_arr_2d_loc_size_y_"*string(arr_id))
+  CompilerTools.LambdaHandling.addLocalVariable(loc_size_x_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+  CompilerTools.LambdaHandling.addLocalVariable(loc_size_y_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+  loc_size_x_expr = Expr(:(=), loc_size_x_var, mk_mult_int_expr([blocks_per_pe_x_var,block_size_var]))
+  loc_size_y_expr = Expr(:(=), loc_size_y_var, mk_mult_int_expr([blocks_per_pe_y_var,block_size_var]))
+  state.arrs_dist_info[arr].local_sizes[end-1] = loc_size_x_var
+  state.arrs_dist_info[arr].local_sizes[end] = loc_size_y_var
+
+  # set new divided allocation size
+  rhs.args[end-1] = loc_size_y_var
+  rhs.args[end-3] = loc_size_x_var
+
   # TODO: handle extra blocks and partial block
   res = [block_size_expr; start_x_expr; start_y_expr; stride_x_expr; stride_y_expr;
-            nb_x_div_expr; nb_y_div_expr; bppx_div_expr; bppy_div_expr; node]
+            nb_x_div_expr; nb_y_div_expr; bppx_div_expr; bppy_div_expr;
+            loc_size_x_expr; loc_size_y_expr; node]
   #debug_size_print = :(println("size ",$darr_count_var))
   #push!(res,debug_size_print)
   return res
