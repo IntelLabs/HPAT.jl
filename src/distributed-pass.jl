@@ -157,6 +157,7 @@ type DistPassState
     # information about all arrays
     arrs_dist_info::Dict{LHSVar,ArrDistInfo}
     parfor_partitioning::Dict{Int,Partitioning}
+    parfor_arrays::Dict{Int,Vector{LHSVar}}
     LambdaVarInfo::LambdaVarInfo
     uniqueId::Int
     lives  :: CompilerTools.LivenessAnalysis.BlockLiveness
@@ -166,7 +167,7 @@ type DistPassState
     user_partitionings::Dict{Symbol,Partitioning}
 
     function DistPassState(linfo, lives, user_partitionings)
-        new(Dict{LHSVar, Array{ArrDistInfo,1}}(), Dict{Int,Partitioning}(), linfo,0, lives,
+        new(Dict{LHSVar, Array{ArrDistInfo,1}}(), Dict{Int,Partitioning}(), Dict{Int,Vector{LHSVar}}(), linfo,0, lives,
              Dict{LHSVar,Array{Union{LHSVar,Int},1}}(),0,user_partitionings)
     end
 end
@@ -610,56 +611,9 @@ function from_parfor(node::Expr, state)
     parfor.body = from_nested_body(parfor.body, state)
 
     if state.parfor_partitioning[parfor.unique_id]==ONE_D
-        @dprintln(3,"DistPass translating parfor: ", parfor.unique_id)
-        # TODO: assuming 1st loop nest is the last dimension
-        loopnest = parfor.loopNests[1]
-        # TODO: build a constant table and check the loop variables at this stage
-        # @assert loopnest.lower==1 && loopnest.step==1 "DistPass only simple PIR loops supported now"
-
-        loop_start_var = symbol("__hpat_loop_start_"*string(parfor.unique_id))
-        loop_end_var = symbol("__hpat_loop_end_"*string(parfor.unique_id))
-        loop_div_var = symbol("__hpat_loop_div_"*string(parfor.unique_id))
-
-        CompilerTools.LambdaHandling.addLocalVariable(loop_start_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-        CompilerTools.LambdaHandling.addLocalVariable(loop_end_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-        CompilerTools.LambdaHandling.addLocalVariable(loop_div_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-
-        #first_arr = state.parfor_info[parfor.unique_id][1];
-        #@dprintln(3,"DistPass parfor first array ", first_arr)
-        #global_size = state.arrs_dist_info[first_arr].dim_sizes[1]
-
-        # some parfors have no arrays
-        global_size = loopnest.upper
-
-        loop_div_expr = Expr(:(=),loop_div_var, mk_div_int_expr(global_size,:__hpat_num_pes))
-        loop_start_expr = Expr(:(=), loop_start_var, mk_add_int_expr(mk_mult_int_expr([:__hpat_node_id,loop_div_var]),1))
-        #loop_end_expr = :($loop_end_var = __hpat_node_id==__hpat_num_pes-1 ?$(global_size):(__hpat_node_id+1)*$loop_div_var)
-        loop_end_expr = Expr(:(=), loop_end_var, mk_call(GlobalRef(HPAT.API,:__hpat_get_node_end),[global_size, loop_div_var, :__hpat_num_pes, :__hpat_node_id]))
-
-        loopnest.lower = loop_start_var
-        loopnest.upper = loop_end_var
-
-        for stmt in parfor.body
-            #adjust_arrayrefs(stmt, loop_start_var)
-            ParallelIR.AstWalk(stmt, adjust_arrayrefs, loopnest)
-        end
-        res = [loop_div_expr; loop_start_expr; loop_end_expr; node]
-
-        dist_reductions = gen_dist_reductions(parfor.reductions, state)
-        append!(res, dist_reductions)
-
-        #debug_start_print = :(println("parfor start", $loop_start_var))
-        #debug_end_print = :(println("parfor end", $loop_end_var))
-        #push!(res,debug_start_print)
-        #push!(res,debug_end_print)
-
-        #debug_div_print = :(println("parfor div ", $loop_div_var))
-        #push!(res,debug_div_print)
-        #debug_pes_print = :(println("parfor pes ", __hpat_num_pes))
-        #push!(res,debug_pes_print)
-        #debug_rank_print = :(println("parfor rank ", __hpat_node_id))
-        #push!(res,debug_rank_print)
-        return res
+      return from_parfor_1d(node, state, parfor)
+    elseif state.parfor_partitioning[parfor.unique_id]==TWO_D
+      return from_parfor_2d(node, state, parfor)
     else
         # broadcast results of sequential parfors if rand() is used
         has_rand = false
@@ -691,6 +645,78 @@ function from_parfor(node::Expr, state)
         end
     end
     return [node]
+end
+
+function from_parfor_1d(node::Expr, state, parfor)
+  @dprintln(3,"DistPass translating 1d parfor: ", parfor.unique_id)
+  # TODO: assuming 1st loop nest is the last dimension
+  loopnest = parfor.loopNests[1]
+  # TODO: build a constant table and check the loop variables at this stage
+  # @assert loopnest.lower==1 && loopnest.step==1 "DistPass only simple PIR loops supported now"
+
+  loop_start_var = symbol("__hpat_loop_start_"*string(parfor.unique_id))
+  loop_end_var = symbol("__hpat_loop_end_"*string(parfor.unique_id))
+  loop_div_var = symbol("__hpat_loop_div_"*string(parfor.unique_id))
+
+  CompilerTools.LambdaHandling.addLocalVariable(loop_start_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+  CompilerTools.LambdaHandling.addLocalVariable(loop_end_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+  CompilerTools.LambdaHandling.addLocalVariable(loop_div_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+
+  #first_arr = state.parfor_info[parfor.unique_id][1];
+  #@dprintln(3,"DistPass parfor first array ", first_arr)
+  #global_size = state.arrs_dist_info[first_arr].dim_sizes[1]
+
+  # some parfors have no arrays
+  global_size = loopnest.upper
+
+  loop_div_expr = Expr(:(=),loop_div_var, mk_div_int_expr(global_size,:__hpat_num_pes))
+  loop_start_expr = Expr(:(=), loop_start_var, mk_add_int_expr(mk_mult_int_expr([:__hpat_node_id,loop_div_var]),1))
+  #loop_end_expr = :($loop_end_var = __hpat_node_id==__hpat_num_pes-1 ?$(global_size):(__hpat_node_id+1)*$loop_div_var)
+  loop_end_expr = Expr(:(=), loop_end_var, mk_call(GlobalRef(HPAT.API,:__hpat_get_node_end),[global_size, loop_div_var, :__hpat_num_pes, :__hpat_node_id]))
+
+  loopnest.lower = loop_start_var
+  loopnest.upper = loop_end_var
+
+  for stmt in parfor.body
+      #adjust_arrayrefs(stmt, loop_start_var)
+      ParallelIR.AstWalk(stmt, adjust_arrayrefs, loopnest)
+  end
+  res = [loop_div_expr; loop_start_expr; loop_end_expr; node]
+
+  dist_reductions = gen_dist_reductions(parfor.reductions, state)
+  append!(res, dist_reductions)
+
+  #debug_start_print = :(println("parfor start", $loop_start_var))
+  #debug_end_print = :(println("parfor end", $loop_end_var))
+  #push!(res,debug_start_print)
+  #push!(res,debug_end_print)
+
+  #debug_div_print = :(println("parfor div ", $loop_div_var))
+  #push!(res,debug_div_print)
+  #debug_pes_print = :(println("parfor pes ", __hpat_num_pes))
+  #push!(res,debug_pes_print)
+  #debug_rank_print = :(println("parfor rank ", __hpat_node_id))
+  #push!(res,debug_rank_print)
+  return res
+end
+
+using Debug
+@debug function from_parfor_2d(node::Expr, state, parfor)
+  @dprintln(3,"DistPass translating 2d parfor: ", parfor.unique_id)
+
+  # TODO: assuming parfor has an array
+  # TODO: using parfor index (e.g. comprehension) is not supported yet
+  first_arr = state.parfor_arrays[parfor.unique_id][1]
+  # assuming 1st loop nest is the last dimension
+  parfor.loopNests[1].upper = state.arrs_dist_info[first_arr].local_sizes[end]
+  parfor.loopNests[2].upper = state.arrs_dist_info[first_arr].local_sizes[end-1]
+
+  res = [node]
+
+  dist_reductions = gen_dist_reductions(parfor.reductions, state)
+  append!(res, dist_reductions)
+
+  return res
 end
 
 function next_label(state)

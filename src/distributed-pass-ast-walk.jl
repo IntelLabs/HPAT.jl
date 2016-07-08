@@ -194,6 +194,7 @@ function get_arr_dist_info_parfor(node, state, top_level_number, parfor)
   end
   # parfor and all its arrays have same partitioning
   state.parfor_partitioning[parfor.unique_id] = partitioning
+  state.parfor_arrays[parfor.unique_id] = myArrs
   for arr in myArrs
       setArrayPartitioning(arr,partitioning,state)
   end
