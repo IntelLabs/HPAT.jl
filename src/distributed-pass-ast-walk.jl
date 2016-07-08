@@ -47,7 +47,8 @@ function getArrayDistributionInfo(ast, state)
     end
 
     # if all parfors are sequential
-    if HPAT.force_parallel && all([state.parfor_partitioning[parfor_id]==SEQ for parfor_id in keys(state.parfor_partitioning)])
+    if HPAT.force_parallel && all([state.parfor_partitioning[parfor_id]==SEQ for parfor_id in keys(state.parfor_partitioning)]) &&
+          all([state.arrs_dist_info[arr].partitioning==SEQ for arr in keys(state.arrs_dist_info)])
         error("HPAT failed to parallelize! Fix the parallelism problem or use \"HPAT.setForceParallel(false)\" to run sequentially.")
     end
 end
