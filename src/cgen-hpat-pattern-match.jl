@@ -51,7 +51,7 @@ function pattern_match_call_dist_init(f::Any,linfo)
 end
 
 function pattern_match_call_dist_init2d(f::GlobalRef,linfo)
-    if f.name==:hpat_dist_init
+    if f.name==:hpat_dist_2d_init
         return """    blacs_setup_( &__hpat_node_id, &__hpat_num_pes);
                       // get default context
                       int i_zero=0, i_one=1, i_negone=-1, ictxt=-1;
@@ -981,7 +981,7 @@ end
 
 
 function pattern_match_call_data_src_read_2d(f::GlobalRef, id::Int, arr::RHSVar,
-              start_x::LHSVar, start_y::LHSVar, stride_x::LHSVar, stride_x::LHSVar,
+              start_x::LHSVar, start_y::LHSVar, stride_x::LHSVar, stride_y::LHSVar,
               count_x::LHSVar, count_y::LHSVar, block_x::LHSVar, block_y::LHSVar,
               local_size_x::LHSVar, local_size_y::LHSVar, linfo)
     s = ""
@@ -1051,7 +1051,7 @@ function pattern_match_call_data_src_read_2d(f::GlobalRef, id::Int, arr::RHSVar,
 end
 
 function pattern_match_call_data_src_read_2d(f::ANY, id::ANY, arr::ANY,
-              start_x::ANY, start_y::ANY, stride_x::ANY, stride_x::ANY,
+              start_x::ANY, start_y::ANY, stride_x::ANY, stride_y::ANY,
               count_x::ANY, count_y::ANY, block_x::ANY, block_y::ANY,
               local_size_x::ANY, local_size_y::ANY, linfo)
   return ""
@@ -1201,11 +1201,11 @@ function from_assignment_match_dist(lhs::RHSVar, rhs::Expr, linfo)
     elseif rhs.head==:call && length(rhs.args)==1 && rhs.args[1]==GlobalRef(HPAT.API,:hpat_dist_num_pes_x)
           @dprintln(3, "num_pes_x call")
           c_lhs = ParallelAccelerator.CGen.from_expr(lhs, linfo)
-          return "c_lhs = __hpat_2d_dims[0];"
+          return "$c_lhs = __hpat_2d_dims[0];"
     elseif rhs.head==:call && length(rhs.args)==1 && rhs.args[1]==GlobalRef(HPAT.API,:hpat_dist_num_pes_y)
           @dprintln(3, "num_pes_x call")
           c_lhs = ParallelAccelerator.CGen.from_expr(lhs, linfo)
-          return """c_lhs = __hpat_2d_dims[1];\n // create row-major 2D grid
+          return """$c_lhs = __hpat_2d_dims[1];\n // create row-major 2D grid
                     blacs_gridinit_( &ictxt, "R", &__hpat_num_pes_x, &__hpat_num_pes_y );
                 """
     elseif rhs.head==:call && length(rhs.args)==1 && rhs.args[1]==GlobalRef(HPAT.API,:hpat_dist_node_id)

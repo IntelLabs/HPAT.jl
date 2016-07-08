@@ -62,6 +62,13 @@ function setForceParallel(v::Bool)
   global force_parallel=v
 end
 
+# constant block size for 2D partitioning
+BLOCK_SIZE = 128
+
+function setBlockSize(v::Int)
+  global BLOCK_SIZE=v
+end
+
 # smaller value means higher precedence
 @enum Partitioning SEQ=1 TWO_D=2 ONE_D=3
 
@@ -95,6 +102,10 @@ HPAT_path = joinpath(dirname(@__FILE__), "..")
 
 HPAT_includes = string("#include <ctime>\n#include <unordered_map>\n#include \"", HPAT_path, "/deps/include/hpat.h\"\n")
 ParallelAccelerator.CGen.addCgenUserOptions(ParallelAccelerator.CGen.CgenUserOptions(HPAT_includes))
+
+function addHpatInclude(stmts)
+  ParallelAccelerator.CGen.addCgenUserOptions(ParallelAccelerator.CGen.CgenUserOptions(stmts))
+end
 
 function ns_to_sec(x)
   x / 1000000000.0

@@ -294,6 +294,15 @@ function genDistributedInit(state::DistPassState)
     if any([state.arrs_dist_info[arr].partitioning==TWO_D for arr in keys(state.arrs_dist_info)]) ||
         any([state.parfor_partitioning[parfor_id]==TWO_D for parfor_id in keys(state.parfor_partitioning)])
       @dprintln(3,"DistPass generating 2D init")
+      extra_2D_includes = """#include <mkl_blacs.h>
+                            #include <mkl_scalapack.h>
+                            #include <mkl_pblas.h>
+                            extern "C" {
+                            void descinit_(int*,int*,int*,int*,int*,int*,int*,int*,int*,int*);
+                            int numroc_(const int*,const int*,const int*,const int*,const int*);
+                            }
+                            """
+      HPAT.addHpatInclude(extra_2D_includes)
       initCall2d = Expr(:call, GlobalRef(HPAT.API,:hpat_dist_2d_init))
       CompilerTools.LambdaHandling.addLocalVariable(symbol("__hpat_num_pes_x"), Int32, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
       CompilerTools.LambdaHandling.addLocalVariable(symbol("__hpat_num_pes_y"), Int32, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
@@ -387,7 +396,7 @@ function from_assignment_alloc_2d(node::Expr, state::DistPassState, arr::LHSVar,
   arr_tot_size_y = dim_sizes[end]
 
   # constant block size for block-cyclic partitioning
-  BLOCK_SIZE = 100
+  BLOCK_SIZE = HPAT.BLOCK_SIZE
   block_size_var = symbol("__hpat_dist_arr_2d_block_size_"*string(arr_id))
   CompilerTools.LambdaHandling.addLocalVariable(block_size_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
   # same block size for both dimensions
@@ -700,7 +709,7 @@ function from_call(node::Expr, state)
           # 1D read, add start and count indices of last dimension
           push!(node.args, state.arrs_dist_info[arr].starts[end], state.arrs_dist_info[arr].counts[end])
         elseif isTWO_D(arr,state)
-          push!(node.args, state.arrs_dist_info[arr].starts[end-1], state.arrs_dist_info[arr].starts[end]
+          push!(node.args, state.arrs_dist_info[arr].starts[end-1], state.arrs_dist_info[arr].starts[end],
            state.arrs_dist_info[arr].strides[end-1], state.arrs_dist_info[arr].strides[end],
            state.arrs_dist_info[arr].counts[end-1], state.arrs_dist_info[arr].counts[end],
            state.arrs_dist_info[arr].blocks[end-1], state.arrs_dist_info[arr].blocks[end],
