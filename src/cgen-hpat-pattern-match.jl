@@ -1314,6 +1314,101 @@ function pattern_match_call_data_sink_write(f::ANY, id::ANY, hdf5_var, arr::ANY,
     return ""
 end
 
+function pattern_match_call_data_sink_write_2d(f::GlobalRef, id::Int, hdf5_var, arr::RHSVar,
+            start_x::LHSVar, start_y::LHSVar, stride_x::LHSVar, stride_y::LHSVar,
+            count_x::LHSVar, count_y::LHSVar, block_x::LHSVar, block_y::LHSVar,
+            local_size_x::LHSVar, local_size_y::LHSVar,tot_size,linfo)
+    s = ""
+    num::AbstractString = string(id)
+
+    if f.name==:__hpat_data_sink_HDF5_write
+        arr_typ = ParallelAccelerator.CGen.getSymType(arr, linfo)
+        num_dims = ndims(arr_typ)
+        data_typ = eltype(arr_typ)
+        h5_typ = ""
+        carr = ParallelAccelerator.CGen.from_expr(toLHSVar(arr), linfo)
+        if data_typ==Float64
+            h5_typ = "H5T_NATIVE_DOUBLE"
+        elseif data_typ==Float32
+            h5_typ = "H5T_NATIVE_FLOAT"
+        elseif data_typ==Int32
+            h5_typ = "H5T_NATIVE_INT"
+        elseif data_typ==Int64
+            h5_typ = "H5T_NATIVE_LLONG"
+        else
+            println("g5 data type ", data_typ)
+            throw("CGen unsupported HDF5 data type")
+        end
+
+        # create dataset
+        s *= " hid_t dataset_id_$num;\n"
+        s *= " hid_t  filespace_$num, memspace_$num;\n"
+        s *= " hsize_t  dataset_dims_$num[$num_dims];\n"
+        #s *= " for(int i=0; i<$num_dims; i++) dataset_dims_$num[i]=$(ParallelAccelerator.CGen.from_expr(tot_size[i],linfo));\n"
+        for i in 1:length(tot_size)
+            s*= "dataset_dims_$num[$i-1]=$(ParallelAccelerator.CGen.from_expr(tot_size[i],linfo));\n"
+        end
+        s *= "  filespace_$num = H5Screate_simple($num_dims, dataset_dims_$num, NULL);\n"
+        s *= "  dataset_id_$num = H5Dcreate(file_id_$num, \"$hdf5_var\", $h5_typ, filespace_$num,\n"
+        s *=  "     H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);\n"
+        s *= " H5Sclose(filespace_$num);\n"
+
+        # assuming 1st and 2nd dimensions are partitined
+        # hyperslab call input variables
+        s *=  "hsize_t CGen_HDF5_start_$num[$num_dims];\n"
+        s *=  "hsize_t CGen_HDF5_stride_$num[$num_dims];\n"
+        s *= "hsize_t CGen_HDF5_count_$num[$num_dims];\n"
+        s *=  "hsize_t CGen_HDF5_block_$num[$num_dims];\n"
+        # last 2 dimensions are set using distributed-pass data
+        s *= "CGen_HDF5_start_$num[0] = $start_y;\n"
+        s *= "CGen_HDF5_start_$num[1] = $start_x;\n"
+        s *= "CGen_HDF5_stride_$num[0] = $stride_y;\n"
+        s *= "CGen_HDF5_stride_$num[1] = $stride_x;\n"
+        s *= "CGen_HDF5_count_$num[0] = $count_y;\n"
+        s *= "CGen_HDF5_count_$num[1] = $count_x;\n"
+        s *= "CGen_HDF5_block_$num[0] = $block_y;\n"
+        s *= "CGen_HDF5_block_$num[1] = $block_x;\n"
+
+        #s *= "for(int i_CGen_dim=1; i_CGen_dim<$num_dims; i_CGen_dim++) {\n"
+        for i in 2:length(tot_size)-1
+            s *= "  CGen_HDF5_start_$num[$i] = 0;\n"
+            s *= "  CGen_HDF5_stride_$num[$i] = 1;\n"
+            s *= "  CGen_HDF5_count_$num[$i] = $(ParallelAccelerator.CGen.from_expr(tot_size[i],linfo));\n"
+            s *= "  CGen_HDF5_block_$num[$i] = 1;\n"
+        end
+        #s *= "}\n"
+        #s *= "std::cout<<\"read size \"<<CGen_HDF5_start_$num[0]<<\" \"<<CGen_HDF5_count_$num[0]<<\" \"<<CGen_HDF5_start_$num[1]<<\" \"<<CGen_HDF5_count_$num[1]<<std::endl;\n"
+        s *= "filespace_$num = H5Dget_space(dataset_id_$num);\n"
+        s *= """ret_$num = H5Sselect_hyperslab(filespace_$num, H5S_SELECT_SET,
+                 CGen_HDF5_start_$num, CGen_HDF5_stride_$num, CGen_HDF5_count_$num, CGen_HDF5_block_$num);\n"""
+        s *= "assert(ret_$num != -1);\n"
+
+        # size of memory to read to
+        s *=  "hsize_t CGen_HDF5_memsize_$num[$num_dims];\n"
+        s *= "CGen_HDF5_memsize_$num[0] = $local_size_y;\n"
+        s *= "CGen_HDF5_memsize_$num[1] = $local_size_x;\n"
+
+        s *= "hid_t mem_dataspace_$num = H5Screate_simple ($num_dims, CGen_HDF5_memsize_$num, NULL);\n"
+        s *= "assert (mem_dataspace_$num != -1);\n"
+        s *= "hid_t xfer_plist_$num = H5Pcreate (H5P_DATASET_XFER);\n"
+        s *= "assert(xfer_plist_$num != -1);\n"
+        s *= "double h5_read_start_$num = MPI_Wtime();\n"
+        s *= "H5Pset_dxpl_mpio(xfer_plist_$num, H5FD_MPIO_COLLECTIVE);\n"
+        s *= "ret_$num = H5Dwrite(dataset_id_$num, $h5_typ, mem_dataspace_$num, filespace_$num, xfer_plist_$num, $carr.getData());\n"
+        s *= "assert(ret_$num != -1);\n"
+        #s*="if(__hpat_node_id==__hpat_num_pes/2) printf(\"h5 read %lf\\n\", MPI_Wtime()-h5_read_start_$num);\n"
+        s *= ";\n"
+    end
+    return s
+end
+
+function pattern_match_call_data_sink_write_2d(f::ANY, id::ANY, hdf5_var::ANY, arr::ANY,
+            start_x::ANY, start_y::ANY, stride_x::ANY, stride_y::ANY,
+            count_x::ANY, count_y::ANY, block_x::ANY, block_y::ANY,
+            local_size_x::ANY, local_size_y::ANY,tot_size,linfo)
+    return ""
+end
+
 function pattern_match_call(ast::Array{Any, 1}, linfo)
 
   @dprintln(3,"hpat pattern matching ",ast)
@@ -1359,6 +1454,8 @@ function pattern_match_call(ast::Array{Any, 1}, linfo)
   elseif length(ast)==13
     s *= pattern_match_call_naive_bayes(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8],ast[9],ast[10],ast[11],ast[12],ast[13], linfo)
     s *= pattern_match_call_data_src_read_2d(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8],ast[9],ast[10],ast[11],ast[12],ast[13], linfo)
+  elseif length(ast)==15
+    s *= pattern_match_call_data_sink_write_2d(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8],ast[9],ast[10],ast[11],ast[12],ast[13],ast[14],ast[15], linfo)
   end
   if length(ast)>=4
     s *= pattern_match_call_filter_seq(linfo, ast[1], ast[2], ast[3], ast[4:end])
