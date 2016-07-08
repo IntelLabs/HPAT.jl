@@ -693,12 +693,19 @@ function from_call(node::Expr, state)
     @dprintln(2,"DistPass from_call ", node)
 
     func = node.args[1]
-    if (func==GlobalRef(HPAT.API,:__hpat_data_source_HDF5_read) || func==GlobalRef(HPAT.API,:__hpat_data_source_TXT_read)) && isONE_D(toLHSVar(node.args[3]),state)
+    if (func==GlobalRef(HPAT.API,:__hpat_data_source_HDF5_read) || func==GlobalRef(HPAT.API,:__hpat_data_source_TXT_read))
         arr = toLHSVar(node.args[3])
         @dprintln(3,"DistPass data source for array: ", arr)
-
-        # 1D read, add start and count indices of last dimension
-        push!(node.args, state.arrs_dist_info[arr].starts[end], state.arrs_dist_info[arr].counts[end])
+        if isONE_D(arr,state)
+          # 1D read, add start and count indices of last dimension
+          push!(node.args, state.arrs_dist_info[arr].starts[end], state.arrs_dist_info[arr].counts[end])
+        elseif isTWO_D(arr,state)
+          push!(node.args, state.arrs_dist_info[arr].starts[end-1], state.arrs_dist_info[arr].starts[end]
+           state.arrs_dist_info[arr].strides[end-1], state.arrs_dist_info[arr].strides[end],
+           state.arrs_dist_info[arr].counts[end-1], state.arrs_dist_info[arr].counts[end],
+           state.arrs_dist_info[arr].blocks[end-1], state.arrs_dist_info[arr].blocks[end],
+           state.arrs_dist_info[arr].local_sizes[end-1], state.arrs_dist_info[arr].local_sizes[end])
+        end
         return [node]
     elseif func==GlobalRef(HPAT.API,:__hpat_data_sink_HDF5_write)  && isONE_D(toLHSVar(node.args[4]),state)
         arr = toLHSVar(node.args[4])
