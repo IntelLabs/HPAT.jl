@@ -314,7 +314,7 @@ function genDistributedInit(state::DistPassState)
       nodeIdCallx = Expr(:call, GlobalRef(HPAT.API,:hpat_dist_node_id_x))
       nodeIdCally = Expr(:call, GlobalRef(HPAT.API,:hpat_dist_node_id_y))
       num_pes_assign_x = Expr(:(=), :__hpat_num_pes_x, numPesCallx)
-      num_pes_assign_y = Expr(:(=), :__hpat_num_pes_x, numPesCally)
+      num_pes_assign_y = Expr(:(=), :__hpat_num_pes_y, numPesCally)
       node_id_assign_x = Expr(:(=), :__hpat_node_id_x, nodeIdCallx)
       node_id_assign_y = Expr(:(=), :__hpat_node_id_y, nodeIdCally)
       res2 = Any[initCall2d; num_pes_assign_x; num_pes_assign_y; node_id_assign_x; node_id_assign_y]

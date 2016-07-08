@@ -57,6 +57,7 @@ function pattern_match_call_dist_init2d(f::GlobalRef,linfo)
                       int i_zero=0, i_one=1, i_negone=-1, ictxt=-1;
                       blacs_get_( &i_negone, &i_zero, &ictxt );
                       int __hpat_2d_dims[2];
+                      __hpat_2d_dims[0] = __hpat_2d_dims[1] = 0;
                       MPI_Dims_create(__hpat_num_pes, 2, __hpat_2d_dims)
               """
     else
