@@ -1445,6 +1445,10 @@ function pattern_match_call(ast::Array{Any, 1}, linfo)
     s *= pattern_match_call_dist_allreduce(ast[1],ast[2],ast[3], ast[4], ast[5], linfo)
     s *= pattern_match_call_dist_portion(ast[1],ast[2],ast[3], ast[4], ast[5], linfo)
     s *= pattern_match_call_dist_node_end(ast[1],ast[2],ast[3], ast[4], ast[5], linfo)
+  elseif length(ast)==24
+    s *= pattern_match_call_gemm_2d(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],
+          ast[7],ast[8],ast[9],ast[10],ast[11],ast[12],ast[13],ast[14],ast[15],
+          ast[16],ast[17],ast[18],ast[19],ast[20],ast[21],ast[22],ast[23],ast[24],linfo)
   elseif length(ast)==7
     s *= pattern_match_call_data_sink_write(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7], linfo)
   elseif length(ast)==8
@@ -1467,6 +1471,75 @@ function pattern_match_call(ast::Array{Any, 1}, linfo)
   return s
 end
 
+function pattern_match_call_gemm_2d(fun::GlobalRef, C::RHSVar, tA::Char, tB::Char, A::RHSVar, B::RHSVar,
+                C_total_size_x::LHSVar, C_total_size_y::LHSVar,
+                C_block_x::LHSVar, C_block_y::LHSVar,
+                C_local_size_x::LHSVar, C_local_size_y::LHSVar,
+                A_total_size_x::LHSVar, A_total_size_y::LHSVar,
+                A_block_x::LHSVar, A_block_y::LHSVar,
+                A_local_size_x::LHSVar, A_local_size_y::LHSVar,
+                B_total_size_x::LHSVar, B_total_size_y::LHSVar,
+                B_block_x::LHSVar, B_block_y::LHSVar,
+                B_local_size_x::LHSVar, B_local_size_y::LHSVar,
+                 linfo)
+    if fun.mod!=HPAT.API || fun.name!=:__hpat_gemm_2d
+        return ""
+    end
+    cblas_fun = ""
+    typ = ParallelAccelerator.CGen.getSymType(A, linfo)
+    if ParallelAccelerator.CGen.getSymType(B, linfo) != typ || ParallelAccelerator.CGen.getSymType(C, linfo) != typ
+        return ""
+    end
+    if typ==Array{Float32,2}
+        cblas_fun = "psgemm_"
+    elseif typ==Array{Float64,2}
+        cblas_fun = "pdgemm_"
+    else
+        return ""
+    end
+
+    lda = ParallelAccelerator.CGen.from_arraysize(A,1,linfo)
+    ldb = ParallelAccelerator.CGen.from_arraysize(B,1,linfo)
+    ldc = ParallelAccelerator.CGen.from_arraysize(C,1,linfo)
+
+    s = ""
+    s *= "$(ParallelAccelerator.CGen.from_expr(C,linfo));\n"
+    s *= "int desc_$C[9], desc_$A[9], desc_$B[9], info=0;\n"
+    s *= "descinit_( desc_$A, &$A_total_size_y, &$A_total_size_x, &$A_block_y, &$A_block_y, &i_zero, &i_zero, &ictxt, &$A_local_size_x, &info );"
+    s *= "descinit_( desc_$B, &$B_total_size_y, &$B_total_size_x, &$B_block_y, &$B_block_y, &i_zero, &i_zero, &ictxt, &$B_local_size_x, &info );"
+    s *= "descinit_( desc_$C, &$C_total_size_y, &$C_total_size_x, &$C_block_y, &$C_block_y, &i_zero, &i_zero, &ictxt, &$C_local_size_x, &info );"
+
+    # GEMM wants dimensions after possible transpose
+    m = (tA == 'N') ? A_total_size_y : A_total_size_x
+    k = (tA == 'N') ? A_total_size_x : A_total_size_y
+    n = (tB == 'N') ? B_total_size_x : B_total_size_y
+
+
+    _tA = tA == 'N' ? "\"N\"" : "\"T\""
+    _tB = tB == 'N' ? "\"N\"" : "\"T\""
+
+
+
+    s *= """$(cblas_fun)($(_tA),$(_tB),$m,$n,$k,&one,
+        $(ParallelAccelerator.CGen.from_expr(A,linfo)).data, &i_one, &i_one, desc_$A, $(ParallelAccelerator.CGen.from_expr(B,linfo)).data, &i_one, &i_one, desc_$B,
+         &zero, $(ParallelAccelerator.CGen.from_expr(C,linfo)).data, &i_one, &i_one, desc_$C)"""
+
+
+    return s
+end
+
+function pattern_match_call_gemm_2d(fun::ANY, C::ANY, tA::ANY, tB::ANY, A::ANY, B::ANY,
+            C_total_size_x::ANY, C_total_size_y::ANY,
+            C_block_x::ANY, C_block_y::ANY,
+            C_local_size_x::ANY, C_local_size_y::ANY,
+            A_total_size_x::ANY, A_total_size_y::ANY,
+            A_block_x::ANY, A_block_y::ANY,
+            A_local_size_x::ANY, A_local_size_y::ANY,
+            B_total_size_x::ANY, B_total_size_y::ANY,
+            B_block_x::ANY, B_block_y::ANY,
+            B_local_size_x::ANY, B_local_size_y::ANY,linfo)
+    return ""
+end
 
 function from_assignment_match_dist(lhs::RHSVar, rhs::Expr, linfo)
     @dprintln(3, "assignment pattern match dist2: ",lhs," = ",rhs)

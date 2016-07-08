@@ -243,6 +243,12 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
   rhs = toLHSVar(rhs)
   if haskey(state.arrs_dist_info, rhs)
     state.arrs_dist_info[lhs].dim_sizes = state.arrs_dist_info[rhs].dim_sizes
+    state.arrs_dist_info[lhs].starts = state.arrs_dist_info[rhs].starts
+    state.arrs_dist_info[lhs].counts = state.arrs_dist_info[rhs].counts
+    state.arrs_dist_info[lhs].strides = state.arrs_dist_info[rhs].strides
+    state.arrs_dist_info[lhs].blocks = state.arrs_dist_info[rhs].blocks
+    state.arrs_dist_info[lhs].local_sizes = state.arrs_dist_info[rhs].local_sizes
+
     # lhs and rhs are sequential if either is sequential
     # partitioning based on precedence, SEQ has highest precedence
     partitioning = min(state.arrs_dist_info[lhs].partitioning, state.arrs_dist_info[rhs].partitioning)
@@ -274,6 +280,12 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
             # only reshape() with constant tuples handled
             if haskey(state.tuple_table, rhs.args[3])
                 state.arrs_dist_info[lhs].dim_sizes = state.tuple_table[rhs.args[3]]
+                state.arrs_dist_info[lhs].starts = state.arrs_dist_info[rhs.args[3]].starts
+                state.arrs_dist_info[lhs].counts = state.arrs_dist_info[rhs.args[3]].counts
+                state.arrs_dist_info[lhs].strides = state.arrs_dist_info[rhs.args[3]].strides
+                state.arrs_dist_info[lhs].blocks = state.arrs_dist_info[rhs.args[3]].blocks
+                state.arrs_dist_info[lhs].local_sizes = state.arrs_dist_info[rhs.args[3]].local_sizes
+
                 @dprintln(3,"DistPass arr info dim_sizes update: ", state.arrs_dist_info[lhs].dim_sizes)
                 # lhs and rhs are sequential if either is sequential
                 # partitioning based on precedence, SEQ has highest precedence
@@ -322,6 +334,12 @@ get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_level_number,
 function get_arr_dist_info_gemm(node::Expr, state::DistPassState, top_level_number, lhs::LHSVar, rhs::Expr)
   # determine output dimensions
   state.arrs_dist_info[lhs].dim_sizes = state.arrs_dist_info[toLHSVar(rhs.args[2])].dim_sizes
+  state.arrs_dist_info[lhs].starts = state.arrs_dist_info[toLHSVar(rhs.args[2])].starts
+  state.arrs_dist_info[lhs].counts = state.arrs_dist_info[toLHSVar(rhs.args[2])].counts
+  state.arrs_dist_info[lhs].strides = state.arrs_dist_info[toLHSVar(rhs.args[2])].strides
+  state.arrs_dist_info[lhs].blocks = state.arrs_dist_info[toLHSVar(rhs.args[2])].blocks
+  state.arrs_dist_info[lhs].local_sizes = state.arrs_dist_info[toLHSVar(rhs.args[2])].local_sizes
+
   arr1 = toLHSVar(rhs.args[5])
   t1 = (rhs.args[3]=='T')
   arr2 = toLHSVar(rhs.args[6])
@@ -367,6 +385,12 @@ end
 function get_arr_dist_info_gemv(node::Expr, state::DistPassState, top_level_number, lhs::LHSVar, rhs::Expr)
   # determine output dimensions
   state.arrs_dist_info[lhs].dim_sizes = state.arrs_dist_info[toLHSVar(rhs.args[2])].dim_sizes
+  state.arrs_dist_info[lhs].starts = state.arrs_dist_info[toLHSVar(rhs.args[2])].starts
+  state.arrs_dist_info[lhs].counts = state.arrs_dist_info[toLHSVar(rhs.args[2])].counts
+  state.arrs_dist_info[lhs].strides = state.arrs_dist_info[toLHSVar(rhs.args[2])].strides
+  state.arrs_dist_info[lhs].blocks = state.arrs_dist_info[toLHSVar(rhs.args[2])].blocks
+  state.arrs_dist_info[lhs].local_sizes = state.arrs_dist_info[toLHSVar(rhs.args[2])].local_sizes
+
   arr1 = toLHSVar(rhs.args[4])
   t1 = (rhs.args[3]=='T')
   arr2 = toLHSVar(rhs.args[5])

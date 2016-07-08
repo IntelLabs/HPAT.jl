@@ -557,7 +557,25 @@ function from_assignment_gemm(node::Expr, state::DistPassState, lhs::LHSVar, rhs
     #rhs.args[1] = :__hpat_gemm_broadcast
     @dprintln(3,"DistPass translating gemm broadcast: ", node)
     # otherwise, no known pattern found
+  # if any array is 2D, then all arrays should be 2d
+  elseif any([isTWO_D(arr1,state), isTWO_D(arr2,state), isTWO_D(lhs,state)])
+    @assert all([isTWO_D(arr1,state), isTWO_D(arr2,state), isTWO_D(lhs,state)]) "invalid 2d gemm"
+    @dprintln(3,"DistPass translating gemm 2d: ", node)
+    rhs.args[1] = GlobalRef(HPAT.API,:__hpat_gemm_2d)
+
+    push!(rhs.args, state.arrs_dist_info[lhs].dim_sizes[end-1], state.arrs_dist_info[lhs].dim_sizes[end],
+    state.arrs_dist_info[lhs].blocks[end-1], state.arrs_dist_info[lhs].blocks[end],
+    state.arrs_dist_info[lhs].local_sizes[end-1], state.arrs_dist_info[lhs].local_sizes[end])
+
+    push!(rhs.args, state.arrs_dist_info[arr1].dim_sizes[end-1], state.arrs_dist_info[arr1].dim_sizes[end],
+    state.arrs_dist_info[arr1].blocks[end-1], state.arrs_dist_info[arr1].blocks[end],
+    state.arrs_dist_info[arr1].local_sizes[end-1], state.arrs_dist_info[arr1].local_sizes[end])
+
+    push!(rhs.args, state.arrs_dist_info[arr2].dim_sizes[end-1], state.arrs_dist_info[arr2].dim_sizes[end],
+    state.arrs_dist_info[arr2].blocks[end-1], state.arrs_dist_info[arr2].blocks[end],
+    state.arrs_dist_info[arr2].local_sizes[end-1], state.arrs_dist_info[arr2].local_sizes[end])
   end
+
   return [node]
 end
 
@@ -700,8 +718,7 @@ function from_parfor_1d(node::Expr, state, parfor)
   return res
 end
 
-using Debug
-@debug function from_parfor_2d(node::Expr, state, parfor)
+function from_parfor_2d(node::Expr, state, parfor)
   @dprintln(3,"DistPass translating 2d parfor: ", parfor.unique_id)
 
   # TODO: assuming parfor has an array
