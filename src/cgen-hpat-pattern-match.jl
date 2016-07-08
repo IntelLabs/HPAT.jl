@@ -424,6 +424,194 @@ function pattern_match_call_join_seq(linfo, f::Any,table_new_len, table1_len, ta
     return ""
 end
 
+function pattern_match_call_join(linfo, f::GlobalRef,table_new_cols_len, table1_cols_len, table2_cols_len, table_columns...)
+    s = ""
+    if f.name==:__hpat_join
+        # its an array of array. array[2:end] and table_cols... notation does that
+        table_columns = table_columns[1]
+        # extract columns of each table
+        table_new_cols = table_columns[1:table_new_cols_len]
+        table1_cols = table_columns[table_new_cols_len+1:table_new_cols_len+table1_cols_len]
+        table2_cols = table_columns[table_new_cols_len+table1_cols_len+1:end]
+        join_rand = string(convert(Int8, round(rand() * 100)))
+
+        # Sending counts for both tables
+        scount_t1 = "scount_t1_"*join_rand
+        scount_t2 = "scount_t2_"*join_rand
+        s *= "int * $scount_t1;\n"
+        s *= "int * $scount_t2;\n"
+        s *= "$scount_t1 = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
+        s *= "memset ($scount_t1, 0, sizeof(int)*__hpat_num_pes);\n"
+        s *= "$scount_t2 = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
+        s *= "memset ($scount_t2, 0, sizeof(int)*__hpat_num_pes);\n"
+
+        # Receiving counts for both tables
+        rsize_t1 = "rsize_t1_"*join_rand
+        rsize_t2 = "rsize_t2_"*join_rand
+        s *= "int  $rsize_t1 = 0;\n"
+        s *= "int  $rsize_t2 = 0;\n"
+
+        rcount_t1 = "rcount_t1_"*join_rand
+        rcount_t2 = "rcount_t2_"*join_rand
+        s *= "int * $rcount_t1;\n"
+        s *= "int * $rcount_t2;\n"
+        s *= "$rcount_t1 = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
+        s *= "$rcount_t2 = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
+
+        # Displacement arrays for both tables
+        sdis_t1 = "sdis_t1_"*join_rand
+        rdis_t1 = "rdis_t1_"*join_rand
+        s *= "int * $sdis_t1;\n"
+        s *= "int * $rdis_t1;\n"
+        s *= "$sdis_t1 = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
+        s *= "$rdis_t1 = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
+        sdis_t2 = "sdis_t2_"*join_rand
+        rdis_t2 = "rdis_t2_"*join_rand
+        s *= "int * $sdis_t2;\n"
+        s *= "int * $rdis_t2;\n"
+        s *= "$sdis_t2 = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
+        s *= "$rdis_t2 = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
+
+        t1c1_length_join = "t1c1_length_join"*join_rand
+        t2c1_length_join = "t2c1_length_join"*join_rand
+
+        t1_c1_join = ParallelAccelerator.CGen.from_expr(table1_cols[1],linfo)
+        t2_c1_join = ParallelAccelerator.CGen.from_expr(table2_cols[1],linfo)
+        s *= "int $t1c1_length_join = $t1_c1_join.ARRAYLEN() ;\n "
+        s *= "int $t2c1_length_join = $t2_c1_join.ARRAYLEN() ;\n "
+
+        # Sorting data in buffers so that we can distribute using mpi_alltoallv
+        # Sorting is based on hash which will essentially do hash partitioning
+        # TODO optimize this with fast sorting or hashtables
+        s *= "for (int i = 1 ; i <  $t1c1_length_join + 1 ; i++){\n"
+        s *= "for (int j = 1 ; j < $t1c1_length_join ; j++ ){\n"
+        s *= "int hash1 = $t1_c1_join.ARRAYELEM(j) % __hpat_num_pes ;\n"
+        s *= "int hash2 = $t1_c1_join.ARRAYELEM(j+1) % __hpat_num_pes;\n"
+        s *= "if (hash1 > hash2){\n"
+        for (index, col_name) in enumerate(table1_cols)
+            table1_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
+            s *= "int temp_int_$table1_col_name = $table1_col_name.ARRAYELEM(j); \n"
+            s *= "$table1_col_name.ARRAYELEM(j) = $table1_col_name.ARRAYELEM(j+1);\n"
+            s *= "$table1_col_name.ARRAYELEM(j+1) = temp_int_$table1_col_name;\n"
+        end
+        s *="}}};\n"
+
+        s *= "for (int i = 1 ; i <  $t2c1_length_join + 1 ; i++){\n"
+        s *= "for (int j = 1 ; j < $t2c1_length_join ; j++ ){\n"
+        s *= "int hash1 = $t2_c1_join.ARRAYELEM(j) % __hpat_num_pes ;\n"
+        s *= "int hash2 = $t2_c1_join.ARRAYELEM(j+1) % __hpat_num_pes;\n"
+        s *= "if (hash1 > hash2){\n"
+        for (index, col_name) in enumerate(table2_cols)
+            table2_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
+            s *= "int temp_int_$table2_col_name = $table2_col_name.ARRAYELEM(j); \n"
+            s *= "$table2_col_name.ARRAYELEM(j) = $table2_col_name.ARRAYELEM(j+1);\n"
+            s *= "$table2_col_name.ARRAYELEM(j+1) = temp_int_$table2_col_name;\n"
+        end
+        s *="}}};\n"
+
+        s *= "for (int i = 1 ; i <  $t1c1_length_join + 1 ; i++){\n"
+        s *= "int node_id = $t1_c1_join.ARRAYELEM(i) % __hpat_num_pes ;\n"
+        s *= "$scount_t1[node_id]++;\n"
+        s *= "}\n"
+
+        s *= "for (int i = 1 ; i <  $t2c1_length_join + 1 ; i++){\n"
+        s *= "int node_id = $t2_c1_join.ARRAYELEM(i) % __hpat_num_pes ;\n"
+        s *= "$scount_t2[node_id]++;\n"
+        s *= "}\n"
+
+        s *= "MPI_Alltoall($scount_t1,1,MPI_INT,$rcount_t1,1,MPI_INT,MPI_COMM_WORLD);\n"
+        s *= "MPI_Alltoall($scount_t2,1,MPI_INT,$rcount_t2,1,MPI_INT,MPI_COMM_WORLD);\n"
+
+        # Caculating displacements for both tables
+        s *= """
+              $sdis_t1[0]=0;
+              $rdis_t1[0]=0;
+              $sdis_t2[0]=0;
+              $rdis_t2[0]=0;
+              for(int i=1;i < __hpat_num_pes;i++){
+                  $sdis_t1[i]=$scount_t1[i-1] + $sdis_t1[i-1];
+                  $rdis_t1[i]=$rcount_t1[i-1] + $rdis_t1[i-1];
+                  $sdis_t2[i]=$scount_t2[i-1] + $sdis_t2[i-1];
+                  $rdis_t2[i]=$rcount_t2[i-1] + $rdis_t2[i-1];
+              }
+        """
+
+        # Summing receiving counts
+        s *= """
+            for(int i=0;i<__hpat_num_pes;i++){
+                $rsize_t1=$rsize_t1 + $rcount_t1[i];
+                $rsize_t2=$rsize_t2 + $rcount_t2[i];
+              }
+        """
+
+        for (index, col_name) in enumerate(table1_cols)
+            table1_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
+            s *= " j2c_array< int64_t > rbuf_$table1_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $rsize_t1);\n"
+            s *= """ MPI_Alltoallv($table1_col_name.getData(), $scount_t1, $sdis_t1, MPI_INT64_T,
+                                 rbuf_$table1_col_name.getData(), $rcount_t1, $rdis_t1, MPI_INT64_T, MPI_COMM_WORLD);
+                 """
+            s *= " $table1_col_name = rbuf_$table1_col_name; \n"
+        end
+
+        for (index, col_name) in enumerate(table2_cols)
+            table2_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
+            s *= " j2c_array< int64_t > rbuf_$table2_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $rsize_t2);\n"
+            s *= """ MPI_Alltoallv($table2_col_name.getData(), $scount_t2, $sdis_t2, MPI_INT64_T,
+                                 rbuf_$table2_col_name.getData(), $rcount_t2, $rdis_t2, MPI_INT64_T, MPI_COMM_WORLD);
+                 """
+            s *= " $table2_col_name = rbuf_$table2_col_name; \n"
+        end
+
+        table_new_counter_join = "table_new_counter_join" *join_rand
+        s *= "int $table_new_counter_join = 1 ; \n"
+        count = 0;
+        # Initiatilizing new table arrays
+        for (index, col_name) in enumerate(table1_cols)
+            table_new_col_name = ParallelAccelerator.CGen.from_expr(table_new_cols[index],linfo)
+            s *= "$table_new_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $rsize_t1 + $rsize_t2);\n"
+            count = count + 1
+        end
+        for (index, col_name) in enumerate(table2_cols)
+            if index == 1
+                continue
+            end
+            table_new_col_name = ParallelAccelerator.CGen.from_expr(table_new_cols[index+count-1],linfo)
+            s *= "$table_new_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $rsize_t1 + $rsize_t2);\n"
+        end
+        s *= "for(int i=1 ;i< $rsize_t1 + 1; i++){\n"
+        s *= "for(int j=1 ;j < $rsize_t2 + 1; j++){\n"
+        s *= "if($t1_c1_join.ARRAYELEM(i) == $t2_c1_join.ARRAYELEM(j)){\n"
+        # For debugging
+        s *= "printf(\"MATCHED %ld \\n\", $t1_c1_join.ARRAYELEM(i));\n"
+        count = 0
+        for (index, col_name) in enumerate(table1_cols)
+            table_new_col_name = ParallelAccelerator.CGen.from_expr(table_new_cols[index],linfo)
+            table1_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
+            s *= "$table_new_col_name.ARRAYELEM($table_new_counter_join) = $table1_col_name.ARRAYELEM(i); \n"
+            count = count + 1
+        end
+        for (index, col_name) in enumerate(table2_cols)
+            if index == 1
+                continue
+            end
+            table_new_col_name = ParallelAccelerator.CGen.from_expr(table_new_cols[index+count-1],linfo)
+            table2_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
+            s *= "$table_new_col_name.ARRAYELEM($table_new_counter_join) =  $table2_col_name.ARRAYELEM(j); \n"
+        end
+        s *= "$table_new_counter_join++;\n"
+        s *= "}}}\n"
+        for col_name in table_new_cols
+            table_new_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
+            s *= "$table_new_col_name.dims[0] = $table_new_counter_join - 1;\n"
+        end
+    end
+    return s
+end
+
+function pattern_match_call_join(linfo, f::Any,table_new_len, table1_len, table2_len, table_columns...)
+    return ""
+end
+
 function pattern_match_call_agg_seq(linfo, f::GlobalRef, groupby_key, num_exprs, expr_func_output_list...)
   s = ""
   if f.name==:__hpat_aggregate
@@ -1176,7 +1364,7 @@ function pattern_match_call(ast::Array{Any, 1}, linfo)
     s *= pattern_match_call_agg_seq(linfo, ast[1], ast[2], ast[3], ast[4:end])
   end
   if length(ast)>=5
-    s *= pattern_match_call_join_seq(linfo, ast[1], ast[2], ast[3], ast[4],ast[5:end])
+    s *= pattern_match_call_join(linfo, ast[1], ast[2], ast[3], ast[4],ast[5:end])
   end
   return s
 end
