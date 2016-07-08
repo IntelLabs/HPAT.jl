@@ -1195,10 +1195,10 @@ function pattern_match_call_data_src_read_2d(f::GlobalRef, id::Int, arr::RHSVar,
 
         # assuming 1st and 2nd dimensions are partitined
         # hyperslab call input variables
-        s =  "hsize_t CGen_HDF5_start_$num[data_ndim_$num];\n"
-        s =  "hsize_t CGen_HDF5_stride_$num[data_ndim_$num];\n"
+        s *=  "hsize_t CGen_HDF5_start_$num[data_ndim_$num];\n"
+        s *=  "hsize_t CGen_HDF5_stride_$num[data_ndim_$num];\n"
         s *= "hsize_t CGen_HDF5_count_$num[data_ndim_$num];\n"
-        s =  "hsize_t CGen_HDF5_block_$num[data_ndim_$num];\n"
+        s *=  "hsize_t CGen_HDF5_block_$num[data_ndim_$num];\n"
         # last 2 dimensions are set using distributed-pass data
         s *= "CGen_HDF5_start_$num[0] = $start_y;\n"
         s *= "CGen_HDF5_start_$num[1] = $start_x;\n"
@@ -1217,12 +1217,12 @@ function pattern_match_call_data_src_read_2d(f::GlobalRef, id::Int, arr::RHSVar,
         s *= "  CGen_HDF5_block_$num[i_CGen_dim] = 1;\n"
         s *= "}\n"
         #s *= "std::cout<<\"read size \"<<CGen_HDF5_start_$num[0]<<\" \"<<CGen_HDF5_count_$num[0]<<\" \"<<CGen_HDF5_start_$num[1]<<\" \"<<CGen_HDF5_count_$num[1]<<std::endl;\n"
-        s *= "ret_$num = H5Sselect_hyperslab(space_id_$num, H5S_SELECT_SET, CGen_HDF5_start_$num,
-                         CGen_HDF5_stride_$num, CGen_HDF5_count_$num, CGen_HDF5_block_$num);\n"
+        s *= """ret_$num = H5Sselect_hyperslab(space_id_$num, H5S_SELECT_SET, CGen_HDF5_start_$num,
+                         CGen_HDF5_stride_$num, CGen_HDF5_count_$num, CGen_HDF5_block_$num);\n"""
         s *= "assert(ret_$num != -1);\n"
 
         # size of memory to read to
-        s =  "hsize_t CGen_HDF5_memsize_$num[data_ndim_$num];\n"
+        s *=  "hsize_t CGen_HDF5_memsize_$num[data_ndim_$num];\n"
         s *= "CGen_HDF5_memsize_$num[0] = $local_size_y;\n"
         s *= "CGen_HDF5_memsize_$num[1] = $local_size_x;\n"
 
