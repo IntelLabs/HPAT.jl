@@ -54,7 +54,9 @@ function pattern_match_call_dist_init2d(f::GlobalRef,linfo)
     if f.name==:hpat_dist_2d_init
         return """    blacs_setup_( &__hpat_node_id, &__hpat_num_pes);
                       // get default context
-                      int i_zero=0, i_one=1, i_negone=-1, ictxt=-1;
+                      double  zero = 0.0E+0, one = 1.0E+0, two = 2.0E+0, negone = -1.0E+0;
+                      int i_zero = 0, i_one = 1, i_four = 4, i_negone = -1;
+                      int ictxt=-1;
                       blacs_get_( &i_negone, &i_zero, &ictxt );
                       int __hpat_2d_dims[2];
                       __hpat_2d_dims[0] = __hpat_2d_dims[1] = 0;
@@ -1643,12 +1645,37 @@ function pattern_match_call_gemm_2d(fun::GlobalRef, C::RHSVar, tA::Char, tB::Cha
     ldb = ParallelAccelerator.CGen.from_arraysize(B,1,linfo)
     ldc = ParallelAccelerator.CGen.from_arraysize(C,1,linfo)
 
+    c_C = ParallelAccelerator.CGen.from_expr(C,linfo)
+    c_A = ParallelAccelerator.CGen.from_expr(A,linfo)
+    c_B = ParallelAccelerator.CGen.from_expr(B,linfo)
+
+    c_C_total_size_x = ParallelAccelerator.CGen.from_expr(C_total_size_x,linfo)
+    c_C_total_size_y = ParallelAccelerator.CGen.from_expr(C_total_size_y,linfo)
+    c_C_block_x = ParallelAccelerator.CGen.from_expr(C_block_x,linfo)
+    c_C_block_y = ParallelAccelerator.CGen.from_expr(C_block_y,linfo)
+    c_C_local_size_x = ParallelAccelerator.CGen.from_expr(C_local_size_x,linfo)
+    c_C_local_size_y = ParallelAccelerator.CGen.from_expr(C_local_size_y,linfo)
+
+    c_A_total_size_x = ParallelAccelerator.CGen.from_expr(A_total_size_x,linfo)
+    c_A_total_size_y = ParallelAccelerator.CGen.from_expr(A_total_size_y,linfo)
+    c_A_block_x = ParallelAccelerator.CGen.from_expr(A_block_x,linfo)
+    c_A_block_y = ParallelAccelerator.CGen.from_expr(A_block_y,linfo)
+    c_A_local_size_x = ParallelAccelerator.CGen.from_expr(A_local_size_x,linfo)
+    c_A_local_size_y = ParallelAccelerator.CGen.from_expr(A_local_size_y,linfo)
+
+    c_B_total_size_x = ParallelAccelerator.CGen.from_expr(B_total_size_x,linfo)
+    c_B_total_size_y = ParallelAccelerator.CGen.from_expr(B_total_size_y,linfo)
+    c_B_block_x = ParallelAccelerator.CGen.from_expr(B_block_x,linfo)
+    c_B_block_y = ParallelAccelerator.CGen.from_expr(B_block_y,linfo)
+    c_B_local_size_x = ParallelAccelerator.CGen.from_expr(B_local_size_x,linfo)
+    c_B_local_size_y = ParallelAccelerator.CGen.from_expr(B_local_size_y,linfo)
+
     s = ""
-    s *= "$(ParallelAccelerator.CGen.from_expr(C,linfo));\n"
-    s *= "int desc_$C[9], desc_$A[9], desc_$B[9], info=0;\n"
-    s *= "descinit_( desc_$A, &$A_total_size_y, &$A_total_size_x, &$A_block_y, &$A_block_y, &i_zero, &i_zero, &ictxt, &$A_local_size_x, &info );"
-    s *= "descinit_( desc_$B, &$B_total_size_y, &$B_total_size_x, &$B_block_y, &$B_block_y, &i_zero, &i_zero, &ictxt, &$B_local_size_x, &info );"
-    s *= "descinit_( desc_$C, &$C_total_size_y, &$C_total_size_x, &$C_block_y, &$C_block_y, &i_zero, &i_zero, &ictxt, &$C_local_size_x, &info );"
+    s *= "$c_C;\n"
+    s *= "int desc_$c_C[9], desc_$c_A[9], desc_$c_B[9], info=0;\n"
+    s *= "descinit_( desc_$c_A, &$c_A_total_size_y, &$c_A_total_size_x, &$c_A_block_y, &$c_A_block_y, &i_zero, &i_zero, &ictxt, &$c_A_local_size_x, &info );"
+    s *= "descinit_( desc_$c_B, &$c_B_total_size_y, &$c_B_total_size_x, &$c_B_block_y, &$c_B_block_y, &i_zero, &i_zero, &ictxt, &$c_B_local_size_x, &info );"
+    s *= "descinit_( desc_$c_C, &$c_C_total_size_y, &$c_C_total_size_x, &$c_C_block_y, &$c_C_block_y, &i_zero, &i_zero, &ictxt, &$c_C_local_size_x, &info );"
 
     # GEMM wants dimensions after possible transpose
     m = (tA == 'N') ? A_total_size_y : A_total_size_x
@@ -1662,8 +1689,8 @@ function pattern_match_call_gemm_2d(fun::GlobalRef, C::RHSVar, tA::Char, tB::Cha
 
 
     s *= """$(cblas_fun)($(_tA),$(_tB),$m,$n,$k,&one,
-        $(ParallelAccelerator.CGen.from_expr(A,linfo)).data, &i_one, &i_one, desc_$A, $(ParallelAccelerator.CGen.from_expr(B,linfo)).data, &i_one, &i_one, desc_$B,
-         &zero, $(ParallelAccelerator.CGen.from_expr(C,linfo)).data, &i_one, &i_one, desc_$C)"""
+        $c_A.data, &i_one, &i_one, desc_$c_A, $c_B.data, &i_one, &i_one, desc_$c_B,
+         &zero, $c_C.data, &i_one, &i_one, desc_$c_C)"""
 
 
     return s
