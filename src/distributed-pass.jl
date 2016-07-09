@@ -804,14 +804,15 @@ function from_call(node::Expr, state)
         push!(node.args, state.arrs_dist_info[arr2].starts[end], state.arrs_dist_info[arr2].counts[end],
                 state.arrs_dist_info[arr2].dim_sizes[1], state.arrs_dist_info[arr2].dim_sizes[end])
         return [node]
-    elseif isBaseFunc(func, :arraysize) && isONE_D(toLHSVar(node.args[2]),state)
+    elseif isBaseFunc(func, :arraysize) && (isONE_D(toLHSVar(node.args[2]),state) || isTWO_D(toLHSVar(node.args[2]),state))
         arr = toLHSVar(node.args[2])
         @dprintln(3,"found arraysize on dist array: ",node," ",arr)
         # replace last dimension size queries since it is partitioned
-        if node.args[3]==length(state.arrs_dist_info[arr].dim_sizes)
-            return [state.arrs_dist_info[arr].dim_sizes[end]]
-        end
-    elseif isBaseFunc(func,:arraylen) && isONE_D(toLHSVar(node.args[2]), state)
+        #if node.args[3]==length(state.arrs_dist_info[arr].dim_sizes)
+        #    return [state.arrs_dist_info[arr].dim_sizes[end]]
+        #end
+        return [state.arrs_dist_info[arr].dim_sizes[node.args[3]]]
+    elseif isBaseFunc(func,:arraylen) && (isONE_D(toLHSVar(node.args[2]), state) || isTWO_D(toLHSVar(node.args[2]),state))
         arr = toLHSVar(node.args[2])
         #len = parse(foldl((a,b)->"$a*$b", "1",state.arrs_dist_info[arr].dim_sizes))
         len = mk_mult_int_expr(state.arrs_dist_info[arr].dim_sizes)
