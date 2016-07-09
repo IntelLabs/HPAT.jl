@@ -67,8 +67,38 @@ function pattern_match_call_dist_init2d(f::GlobalRef,linfo)
     end
 end
 
-function pattern_match_call_dist_init2d(f::Any,linfo)
+function pattern_match_call_dist_init2d(f::ANY,linfo)
     return ""
+end
+
+function pattern_match_call_dist_add_extra_block(f::GlobalRef, local_blocks::LHSVar,
+      total_blocks::LHSVar, node_id::LHSVar, num_pes::LHSVar, linfo)
+  s = ""
+  if f==GlobalRef(HPAT.API,:__hpat_add_extra_block)
+    # similar to numroc.f
+    s *= "$local_blocks += ($node_id<($total_blocks%$num_pes)?1:0);\n"
+  end
+  return s
+end
+
+function pattern_match_call_dist_add_extra_block(f::ANY, local_blocks::ANY,
+      total_blocks::ANY, node_id::ANY, num_pes::ANY, linfo)
+  return ""
+end
+
+function pattern_match_call_dist_get_leftovers(f::GlobalRef,
+      total_blocks::LHSVar, node_id::LHSVar, num_pes::LHSVar, total_data_size::LHSVar, block_size::LHSVar, linfo)
+  s = ""
+  if f==GlobalRef(HPAT.API,:__hpat_get_leftovers)
+    # similar to numroc.f
+    s *= "(($node_id==($total_blocks%$num_pes))? ($total_data_size%$block_size):0)"
+  end
+  return s
+end
+
+function pattern_match_call_dist_get_leftovers(f::ANY,
+      total_blocks::ANY, node_id::ANY, num_pes::ANY,total_data_size::ANY,block_size::ANY, linfo)
+  return ""
 end
 
 function pattern_match_call_get_sec_since_epoch(f::GlobalRef,linfo)
@@ -1584,6 +1614,9 @@ function pattern_match_call(ast::Array{Any, 1}, linfo)
     s *= pattern_match_call_dist_allreduce(ast[1],ast[2],ast[3], ast[4], ast[5], linfo)
     s *= pattern_match_call_dist_portion(ast[1],ast[2],ast[3], ast[4], ast[5], linfo)
     s *= pattern_match_call_dist_node_end(ast[1],ast[2],ast[3], ast[4], ast[5], linfo)
+    s *= pattern_match_call_dist_add_extra_block(ast[1],ast[2],ast[3], ast[4], ast[5], linfo)
+  elseif length(ast)==6
+    s *= pattern_match_call_dist_get_leftovers(ast[1],ast[2],ast[3], ast[4], ast[5],ast[6], linfo)
   elseif length(ast)==24
     s *= pattern_match_call_gemm_2d(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],
           ast[7],ast[8],ast[9],ast[10],ast[11],ast[12],ast[13],ast[14],ast[15],

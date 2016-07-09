@@ -390,6 +390,10 @@ function from_assignment_alloc(node::Expr, state::DistPassState, arr::LHSVar, rh
   return [node]
 end
 
+""" 2D block cyclic distribution to match ScaLAPACK's interface.
+Keep start, stride, and count to match HDF5's interface.
+Assign extra blocks and leftover rows as well.
+"""
 function from_assignment_alloc_2d(node::Expr, state::DistPassState, arr::LHSVar, rhs::Expr)
   arr_id = getDistNewID(state)
   state.arrs_dist_info[arr].arr_id = arr_id
@@ -427,7 +431,8 @@ function from_assignment_alloc_2d(node::Expr, state::DistPassState, arr::LHSVar,
   state.arrs_dist_info[arr].strides[end-1] = stride_x_var
   state.arrs_dist_info[arr].strides[end] = stride_y_var
 
-  # calculate number of blocks in each dimension
+  # calculate number of blocks in each dimension (excluding leftover rows/columns)
+  # total_size/block_size
   num_blocks_x_var = symbol("__hpat_dist_arr_2d_num_blocks_x_"*string(arr_id))
   num_blocks_y_var = symbol("__hpat_dist_arr_2d_num_blocks_y_"*string(arr_id))
   CompilerTools.LambdaHandling.addLocalVariable(num_blocks_x_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
@@ -435,15 +440,30 @@ function from_assignment_alloc_2d(node::Expr, state::DistPassState, arr::LHSVar,
   nb_x_div_expr = Expr(:(=),num_blocks_x_var, mk_div_int_expr(arr_tot_size_x, block_size_var))
   nb_y_div_expr = Expr(:(=),num_blocks_y_var, mk_div_int_expr(arr_tot_size_y, block_size_var))
 
-  # number of blocks per PE in each dimension
+  # number of blocks per local PE in each dimension
+  # num_blocks/num_pes + possible extra block
   blocks_per_pe_x_var = symbol("__hpat_dist_arr_2d_blocks_per_pe_x_"*string(arr_id))
   blocks_per_pe_y_var = symbol("__hpat_dist_arr_2d_blocks_per_pe_y_"*string(arr_id))
   CompilerTools.LambdaHandling.addLocalVariable(blocks_per_pe_x_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
   CompilerTools.LambdaHandling.addLocalVariable(blocks_per_pe_y_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
   bppx_div_expr = Expr(:(=),blocks_per_pe_x_var, mk_div_int_expr(num_blocks_x_var,:__hpat_num_pes_x))
   bppy_div_expr = Expr(:(=),blocks_per_pe_y_var, mk_div_int_expr(num_blocks_y_var,:__hpat_num_pes_y))
+  extra_block_call_x = mk_call(GlobalRef(HPAT.API,:__hpat_add_extra_block),[blocks_per_pe_x_var, num_blocks_x_var,:__hpat_node_id_x,:__hpat_num_pes_x])
+  extra_block_call_y = mk_call(GlobalRef(HPAT.API,:__hpat_add_extra_block),[blocks_per_pe_y_var, num_blocks_y_var,:__hpat_node_id_y,:__hpat_num_pes_y])
   state.arrs_dist_info[arr].counts[end-1] = blocks_per_pe_x_var
   state.arrs_dist_info[arr].counts[end] = blocks_per_pe_y_var
+
+  leftovers_x_var = symbol("__hpat_dist_arr_2d_leftovers_x_"*string(arr_id))
+  leftovers_y_var = symbol("__hpat_dist_arr_2d_leftovers_y_"*string(arr_id))
+  CompilerTools.LambdaHandling.addLocalVariable(leftovers_x_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+  CompilerTools.LambdaHandling.addLocalVariable(leftovers_y_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+  leftovers_x_expr = Expr(:(=), leftovers_x_var, mk_call(GlobalRef(HPAT.API,:__hpat_get_leftovers),
+                                  [num_blocks_x_var,:__hpat_node_id_x,:__hpat_num_pes_x,arr_tot_size_x,block_size_var]))
+  leftovers_y_expr = Expr(:(=), leftovers_y_var, mk_call(GlobalRef(HPAT.API,:__hpat_get_leftovers),
+                                  [num_blocks_y_var,:__hpat_node_id_y,:__hpat_num_pes_y,arr_tot_size_y,block_size_var]))
+  #state.arrs_dist_info[arr].leftovers[end-1] = leftovers_x_var
+  #state.arrs_dist_info[arr].leftovers[end] = leftovers_y_var
+
 
   # local sizes
   loc_size_x_var = symbol("__hpat_dist_arr_2d_loc_size_x_"*string(arr_id))
@@ -462,6 +482,8 @@ function from_assignment_alloc_2d(node::Expr, state::DistPassState, arr::LHSVar,
   # TODO: handle extra blocks and partial block
   res = [block_size_expr; start_x_expr; start_y_expr; stride_x_expr; stride_y_expr;
             nb_x_div_expr; nb_y_div_expr; bppx_div_expr; bppy_div_expr;
+            extra_block_call_x; extra_block_call_y;
+            leftovers_x_expr; leftovers_y_expr;
             loc_size_x_expr; loc_size_y_expr; node]
   #debug_size_print = :(println("size ",$darr_count_var))
   #push!(res,debug_size_print)
