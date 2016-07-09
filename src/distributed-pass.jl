@@ -138,13 +138,14 @@ type ArrDistInfo
     strides::Array{LHSVar}
     blocks::Array{LHSVar}
     local_sizes::Array{LHSVar}
+    leftovers::Array{LHSVar}
 
     function ArrDistInfo(num_dims::Int)
         # one dimensional partitioning is default
         new(ONE_D, zeros(Int64,num_dims),0,
         Array(LHSVar,num_dims), Array(LHSVar,num_dims),
         Array(LHSVar,num_dims), Array(LHSVar,num_dims),
-        Array(LHSVar,num_dims))
+        Array(LHSVar,num_dims),Array(LHSVar,num_dims))
     end
 end
 
@@ -461,8 +462,8 @@ function from_assignment_alloc_2d(node::Expr, state::DistPassState, arr::LHSVar,
                                   [num_blocks_x_var,:__hpat_node_id_x,:__hpat_num_pes_x,arr_tot_size_x,block_size_var]))
   leftovers_y_expr = Expr(:(=), leftovers_y_var, mk_call(GlobalRef(HPAT.API,:__hpat_get_leftovers),
                                   [num_blocks_y_var,:__hpat_node_id_y,:__hpat_num_pes_y,arr_tot_size_y,block_size_var]))
-  #state.arrs_dist_info[arr].leftovers[end-1] = leftovers_x_var
-  #state.arrs_dist_info[arr].leftovers[end] = leftovers_y_var
+  state.arrs_dist_info[arr].leftovers[end-1] = leftovers_x_var
+  state.arrs_dist_info[arr].leftovers[end] = leftovers_y_var
 
 
   # local sizes
@@ -592,6 +593,7 @@ function from_assignment_gemm(node::Expr, state::DistPassState, lhs::LHSVar, rhs
     state.arrs_dist_info[lhs].strides = state.arrs_dist_info[toLHSVar(rhs.args[2])].strides
     state.arrs_dist_info[lhs].blocks = state.arrs_dist_info[toLHSVar(rhs.args[2])].blocks
     state.arrs_dist_info[lhs].local_sizes = state.arrs_dist_info[toLHSVar(rhs.args[2])].local_sizes
+    state.arrs_dist_info[lhs].leftovers = state.arrs_dist_info[toLHSVar(rhs.args[2])].leftovers
 
     push!(rhs.args, state.arrs_dist_info[lhs].dim_sizes[end-1], state.arrs_dist_info[lhs].dim_sizes[end],
     state.arrs_dist_info[lhs].blocks[end-1], state.arrs_dist_info[lhs].blocks[end],
@@ -787,7 +789,8 @@ function from_call(node::Expr, state)
            state.arrs_dist_info[arr].strides[end-1], state.arrs_dist_info[arr].strides[end],
            state.arrs_dist_info[arr].counts[end-1], state.arrs_dist_info[arr].counts[end],
            state.arrs_dist_info[arr].blocks[end-1], state.arrs_dist_info[arr].blocks[end],
-           state.arrs_dist_info[arr].local_sizes[end-1], state.arrs_dist_info[arr].local_sizes[end])
+           state.arrs_dist_info[arr].local_sizes[end-1], state.arrs_dist_info[arr].local_sizes[end],
+           state.arrs_dist_info[arr].leftovers[end-1], state.arrs_dist_info[arr].leftovers[end])
         end
         return [node]
     elseif func==GlobalRef(HPAT.API,:__hpat_data_sink_HDF5_write)
@@ -803,6 +806,7 @@ function from_call(node::Expr, state)
            state.arrs_dist_info[arr].counts[end-1], state.arrs_dist_info[arr].counts[end],
            state.arrs_dist_info[arr].blocks[end-1], state.arrs_dist_info[arr].blocks[end],
            state.arrs_dist_info[arr].local_sizes[end-1], state.arrs_dist_info[arr].local_sizes[end],
+           state.arrs_dist_info[arr].leftovers[end-1], state.arrs_dist_info[arr].leftovers[end],
            state.arrs_dist_info[arr].dim_sizes)
         end
 

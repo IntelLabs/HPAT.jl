@@ -248,6 +248,7 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
     state.arrs_dist_info[lhs].strides = state.arrs_dist_info[rhs].strides
     state.arrs_dist_info[lhs].blocks = state.arrs_dist_info[rhs].blocks
     state.arrs_dist_info[lhs].local_sizes = state.arrs_dist_info[rhs].local_sizes
+    state.arrs_dist_info[lhs].leftovers = state.arrs_dist_info[rhs].leftovers
 
     # lhs and rhs are sequential if either is sequential
     # partitioning based on precedence, SEQ has highest precedence
@@ -285,6 +286,7 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
                 state.arrs_dist_info[lhs].strides = state.arrs_dist_info[rhs.args[3]].strides
                 state.arrs_dist_info[lhs].blocks = state.arrs_dist_info[rhs.args[3]].blocks
                 state.arrs_dist_info[lhs].local_sizes = state.arrs_dist_info[rhs.args[3]].local_sizes
+                state.arrs_dist_info[lhs].leftovers = state.arrs_dist_info[rhs.args[3]].leftovers
 
                 @dprintln(3,"DistPass arr info dim_sizes update: ", state.arrs_dist_info[lhs].dim_sizes)
                 # lhs and rhs are sequential if either is sequential
@@ -339,6 +341,7 @@ function get_arr_dist_info_gemm(node::Expr, state::DistPassState, top_level_numb
   state.arrs_dist_info[lhs].strides = state.arrs_dist_info[toLHSVar(rhs.args[2])].strides
   state.arrs_dist_info[lhs].blocks = state.arrs_dist_info[toLHSVar(rhs.args[2])].blocks
   state.arrs_dist_info[lhs].local_sizes = state.arrs_dist_info[toLHSVar(rhs.args[2])].local_sizes
+  state.arrs_dist_info[lhs].leftovers = state.arrs_dist_info[toLHSVar(rhs.args[2])].leftovers
 
   arr1 = toLHSVar(rhs.args[5])
   t1 = (rhs.args[3]=='T')
@@ -390,6 +393,7 @@ function get_arr_dist_info_gemv(node::Expr, state::DistPassState, top_level_numb
   state.arrs_dist_info[lhs].strides = state.arrs_dist_info[toLHSVar(rhs.args[2])].strides
   state.arrs_dist_info[lhs].blocks = state.arrs_dist_info[toLHSVar(rhs.args[2])].blocks
   state.arrs_dist_info[lhs].local_sizes = state.arrs_dist_info[toLHSVar(rhs.args[2])].local_sizes
+  state.arrs_dist_info[lhs].leftovers = state.arrs_dist_info[toLHSVar(rhs.args[2])].leftovers
 
   arr1 = toLHSVar(rhs.args[4])
   t1 = (rhs.args[3]=='T')

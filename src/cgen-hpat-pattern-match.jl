@@ -1097,7 +1097,7 @@ function pattern_match_call_data_src_read_seq(f::GlobalRef, id::Int, arr::RHSVar
         elseif data_typ==Int64
             h5_typ = "H5T_NATIVE_LLONG"
         else
-            println("g5 data type ", data_typ)
+            println("h5 data type ", data_typ)
             throw("CGen unsupported HDF5 data type")
         end
 
@@ -1342,7 +1342,8 @@ end
 function pattern_match_call_data_src_read_2d(f::GlobalRef, id::Int, arr::RHSVar,
               start_x::LHSVar, start_y::LHSVar, stride_x::LHSVar, stride_y::LHSVar,
               count_x::LHSVar, count_y::LHSVar, block_x::LHSVar, block_y::LHSVar,
-              local_size_x::LHSVar, local_size_y::LHSVar, linfo)
+              local_size_x::LHSVar, local_size_y::LHSVar,
+              leftover_x::LHSVar, leftover_y::LHSVar, linfo)
     s = ""
     num::AbstractString = string(id)
 
@@ -1412,7 +1413,7 @@ end
 function pattern_match_call_data_src_read_2d(f::ANY, id::ANY, arr::ANY,
               start_x::ANY, start_y::ANY, stride_x::ANY, stride_y::ANY,
               count_x::ANY, count_y::ANY, block_x::ANY, block_y::ANY,
-              local_size_x::ANY, local_size_y::ANY, linfo)
+              local_size_x::ANY, local_size_y::ANY,leftover_x::ANY, leftover_y::ANY, linfo)
   return ""
 end
 
@@ -1487,7 +1488,7 @@ end
 function pattern_match_call_data_sink_write_2d(f::GlobalRef, id::Int, hdf5_var, arr::RHSVar,
             start_x::LHSVar, start_y::LHSVar, stride_x::LHSVar, stride_y::LHSVar,
             count_x::LHSVar, count_y::LHSVar, block_x::LHSVar, block_y::LHSVar,
-            local_size_x::LHSVar, local_size_y::LHSVar,tot_size,linfo)
+            local_size_x::LHSVar, local_size_y::LHSVar, leftover_x::LHSVar, leftover_y::LHSVar,tot_size,linfo)
     s = ""
     num::AbstractString = string(id)
 
@@ -1506,7 +1507,7 @@ function pattern_match_call_data_sink_write_2d(f::GlobalRef, id::Int, hdf5_var, 
         elseif data_typ==Int64
             h5_typ = "H5T_NATIVE_LLONG"
         else
-            println("g5 data type ", data_typ)
+            println("h5 data type ", data_typ)
             throw("CGen unsupported HDF5 data type")
         end
 
@@ -1575,7 +1576,7 @@ end
 function pattern_match_call_data_sink_write_2d(f::ANY, id::ANY, hdf5_var::ANY, arr::ANY,
             start_x::ANY, start_y::ANY, stride_x::ANY, stride_y::ANY,
             count_x::ANY, count_y::ANY, block_x::ANY, block_y::ANY,
-            local_size_x::ANY, local_size_y::ANY,tot_size,linfo)
+            local_size_x::ANY, local_size_y::ANY,leftover_x::ANY, leftover_y::ANY,tot_size,linfo)
     return ""
 end
 
@@ -1630,9 +1631,10 @@ function pattern_match_call(ast::Array{Any, 1}, linfo)
     s *= pattern_match_call_linear_regression(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8],ast[9],ast[10],ast[11],ast[12], linfo)
   elseif length(ast)==13
     s *= pattern_match_call_naive_bayes(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8],ast[9],ast[10],ast[11],ast[12],ast[13], linfo)
-    s *= pattern_match_call_data_src_read_2d(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8],ast[9],ast[10],ast[11],ast[12],ast[13], linfo)
   elseif length(ast)==15
-    s *= pattern_match_call_data_sink_write_2d(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8],ast[9],ast[10],ast[11],ast[12],ast[13],ast[14],ast[15], linfo)
+    s *= pattern_match_call_data_src_read_2d(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8],ast[9],ast[10],ast[11],ast[12],ast[13],ast[14],ast[15], linfo)
+  elseif length(ast)==17
+    s *= pattern_match_call_data_sink_write_2d(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8],ast[9],ast[10],ast[11],ast[12],ast[13],ast[14],ast[15],ast[16],ast[17],linfo)
   end
   if length(ast)>=4
     s *= pattern_match_call_filter_seq(linfo, ast[1], ast[2], ast[3], ast[4:end])
