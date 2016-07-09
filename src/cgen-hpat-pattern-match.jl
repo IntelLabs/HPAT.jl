@@ -584,8 +584,6 @@ function pattern_match_call_join(linfo, f::GlobalRef,table_new_cols_len, table1_
         s *= "for(int i=1 ;i< $rsize_t1 + 1; i++){\n"
         s *= "for(int j=1 ;j < $rsize_t2 + 1; j++){\n"
         s *= "if($t1_c1_join.ARRAYELEM(i) == $t2_c1_join.ARRAYELEM(j)){\n"
-        # For debugging
-        s *= "printf(\"MATCHED %ld \\n\", $t1_c1_join.ARRAYELEM(i));\n"
         count = 0
         for (index, col_name) in enumerate(table1_cols)
             table_new_col_name = ParallelAccelerator.CGen.from_expr(table_new_cols[index],linfo)
@@ -720,7 +718,7 @@ function pattern_match_call_agg(linfo, f::GlobalRef, groupby_key, num_exprs, exp
           s *= "$expr_name.ARRAYELEM(j) = $expr_name.ARRAYELEM(j+1);\n"
           s *= "$expr_name.ARRAYELEM(j+1) = temp_int_$expr_name;\n"
       end
-      s *="}}};\n"
+      s *= "}}};\n"
 
       s *= "for (int i = 1 ; i <  $agg_key_col_input_len + 1 ; i++){\n"
       s *= "int node_id = $agg_key_col_input.ARRAYELEM(i) % __hpat_num_pes ;\n"
@@ -797,8 +795,6 @@ function pattern_match_call_agg(linfo, f::GlobalRef, groupby_key, num_exprs, exp
       end
       s *= "$counter_agg++;\n"
       s *= "}\n"
-      # Debugging
-      #s *= "for (int i = 1 ; i < $counter_agg ; i++){ std::cout << pcustomer_i_classpid3.ARRAYELEM(i) << std::endl;}\n"
   end
   return s
 end
