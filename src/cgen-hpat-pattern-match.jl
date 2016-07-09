@@ -1668,23 +1668,46 @@ function pattern_match_call_gemm_2d(fun::GlobalRef, C::RHSVar, tA::Char, tB::Cha
 
     s = ""
     s *= "$c_C;\n"
-    s *= "int desc_$c_C[9], desc_$c_A[9], desc_$c_B[9], info=0;\n"
-    s *= "descinit_( desc_$c_A, &$c_A_total_size_y, &$c_A_total_size_x, &$c_A_block_y, &$c_A_block_y, &i_zero, &i_zero, &ictxt, &$c_A_local_size_x, &info );"
-    s *= "descinit_( desc_$c_B, &$c_B_total_size_y, &$c_B_total_size_x, &$c_B_block_y, &$c_B_block_y, &i_zero, &i_zero, &ictxt, &$c_B_local_size_x, &info );"
-    s *= "descinit_( desc_$c_C, &$c_C_total_size_y, &$c_C_total_size_x, &$c_C_block_y, &$c_C_block_y, &i_zero, &i_zero, &ictxt, &$c_C_local_size_x, &info );"
+    s *= "MKL_INT desc_$c_C[9], desc_$c_A[9], desc_$c_B[9], info=0;\n"
+    s *= "MKL_INT a32_$c_A_total_size_y = $c_A_total_size_y;\n"
+    s *= "MKL_INT a32_$c_A_total_size_x = $c_A_total_size_x;\n"
+    s *= "MKL_INT a32y_$c_A_block_y = $c_A_block_y;\n"
+    s *= "MKL_INT a32_$c_A_block_x = $c_A_block_x;\n"
+    s *= "MKL_INT a32_$c_A_local_size_x = $c_A_local_size_x;\n"
+    s *= "MKL_INT a32_$c_A_local_size_y = $c_A_local_size_y;\n"
+
+    s *= "MKL_INT a32_$c_B_total_size_y = $c_B_total_size_y;\n"
+    s *= "MKL_INT a32_$c_B_total_size_x = $c_B_total_size_x;\n"
+    s *= "MKL_INT a32y_$c_B_block_y = $c_B_block_y;\n"
+    s *= "MKL_INT a32_$c_B_block_x = $c_B_block_x;\n"
+    s *= "MKL_INT a32_$c_B_local_size_x = $c_B_local_size_x;\n"
+    s *= "MKL_INT a32_$c_B_local_size_y = $c_B_local_size_y;\n"
+
+    s *= "MKL_INT a32_$c_C_total_size_y = $c_C_total_size_y;\n"
+    s *= "MKL_INT a32_$c_C_total_size_x = $c_C_total_size_x;\n"
+    s *= "MKL_INT a32y_$c_C_block_y = $c_C_block_y;\n"
+    s *= "MKL_INT a32_$c_C_block_x = $c_C_block_x;\n"
+    s *= "MKL_INT a32_$c_C_local_size_x = $c_C_local_size_x;\n"
+    s *= "MKL_INT a32_$c_C_local_size_y = $c_C_local_size_y;\n"
+
+    s *= "descinit_( desc_$c_A, &a32_$c_A_total_size_y, &a32_$c_A_total_size_x, &a32y_$c_A_block_y, &a32_$c_A_block_x, &i_zero, &i_zero, &ictxt, &a32_$c_A_local_size_x, &info );"
+    s *= "descinit_( desc_$c_B, &a32_$c_B_total_size_y, &a32_$c_B_total_size_x, &a32y_$c_B_block_y, &a32_$c_B_block_x, &i_zero, &i_zero, &ictxt, &a32_$c_B_local_size_x, &info );"
+    s *= "descinit_( desc_$c_C, &a32_$c_C_total_size_y, &a32_$c_C_total_size_x, &a32y_$c_C_block_y, &a32_$c_C_block_x, &i_zero, &i_zero, &ictxt, &a32_$c_C_local_size_x, &info );"
 
     # GEMM wants dimensions after possible transpose
-    m = (tA == 'N') ? A_total_size_y : A_total_size_x
-    k = (tA == 'N') ? A_total_size_x : A_total_size_y
-    n = (tB == 'N') ? B_total_size_x : B_total_size_y
+    m = (tA == 'N') ? c_A_total_size_y : c_A_total_size_x
+    k = (tA == 'N') ? c_A_total_size_x : c_A_total_size_y
+    n = (tB == 'N') ? c_B_total_size_x : c_B_total_size_y
 
 
     _tA = tA == 'N' ? "\"N\"" : "\"T\""
     _tB = tB == 'N' ? "\"N\"" : "\"T\""
 
+    s *= "MKL_INT a32m_$m = $m;\n"
+    s *= "MKL_INT a32n_$n = $n;\n"
+    s *= "MKL_INT a32k_$k = $k;\n"
 
-
-    s *= """$(cblas_fun)($(_tA),$(_tB),$m,$n,$k,&one,
+    s *= """$(cblas_fun)($(_tA), $(_tB), &a32m_$m, &a32n_$n, &a32k_$k,&one,
         $c_A.data, &i_one, &i_one, desc_$c_A, $c_B.data, &i_one, &i_one, desc_$c_B,
          &zero, $c_C.data, &i_one, &i_one, desc_$c_C)"""
 
