@@ -563,6 +563,14 @@ function from_assignment_gemm(node::Expr, state::DistPassState, lhs::LHSVar, rhs
     @dprintln(3,"DistPass translating gemm 2d: ", node)
     rhs.args[1] = GlobalRef(HPAT.API,:__hpat_gemm_2d)
 
+    # result in rhs has partitioning set in alloc, assign to lhs
+    state.arrs_dist_info[lhs].dim_sizes = state.arrs_dist_info[toLHSVar(rhs.args[2])].dim_sizes
+    state.arrs_dist_info[lhs].starts = state.arrs_dist_info[toLHSVar(rhs.args[2])].starts
+    state.arrs_dist_info[lhs].counts = state.arrs_dist_info[toLHSVar(rhs.args[2])].counts
+    state.arrs_dist_info[lhs].strides = state.arrs_dist_info[toLHSVar(rhs.args[2])].strides
+    state.arrs_dist_info[lhs].blocks = state.arrs_dist_info[toLHSVar(rhs.args[2])].blocks
+    state.arrs_dist_info[lhs].local_sizes = state.arrs_dist_info[toLHSVar(rhs.args[2])].local_sizes
+
     push!(rhs.args, state.arrs_dist_info[lhs].dim_sizes[end-1], state.arrs_dist_info[lhs].dim_sizes[end],
     state.arrs_dist_info[lhs].blocks[end-1], state.arrs_dist_info[lhs].blocks[end],
     state.arrs_dist_info[lhs].local_sizes[end-1], state.arrs_dist_info[lhs].local_sizes[end])

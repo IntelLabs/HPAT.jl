@@ -1690,9 +1690,9 @@ function pattern_match_call_gemm_2d(fun::GlobalRef, C::RHSVar, tA::Char, tB::Cha
     s *= "MKL_INT a32_$c_C_local_size_x = $c_C_local_size_x;\n"
     s *= "MKL_INT a32_$c_C_local_size_y = $c_C_local_size_y;\n"
 
-    s *= "descinit_( desc_$c_A, &a32_$c_A_total_size_y, &a32_$c_A_total_size_x, &a32y_$c_A_block_y, &a32_$c_A_block_x, &i_zero, &i_zero, &ictxt, &a32_$c_A_local_size_x, &info );"
-    s *= "descinit_( desc_$c_B, &a32_$c_B_total_size_y, &a32_$c_B_total_size_x, &a32y_$c_B_block_y, &a32_$c_B_block_x, &i_zero, &i_zero, &ictxt, &a32_$c_B_local_size_x, &info );"
-    s *= "descinit_( desc_$c_C, &a32_$c_C_total_size_y, &a32_$c_C_total_size_x, &a32y_$c_C_block_y, &a32_$c_C_block_x, &i_zero, &i_zero, &ictxt, &a32_$c_C_local_size_x, &info );"
+    s *= "descinit_( desc_$c_A, &a32_$c_A_total_size_y, &a32_$c_A_total_size_x, &a32y_$c_A_block_y, &a32_$c_A_block_x, &i_zero, &i_zero, &ictxt, &a32_$c_A_local_size_x, &info );\n"
+    s *= "descinit_( desc_$c_B, &a32_$c_B_total_size_y, &a32_$c_B_total_size_x, &a32y_$c_B_block_y, &a32_$c_B_block_x, &i_zero, &i_zero, &ictxt, &a32_$c_B_local_size_x, &info );\n"
+    s *= "descinit_( desc_$c_C, &a32_$c_C_total_size_y, &a32_$c_C_total_size_x, &a32y_$c_C_block_y, &a32_$c_C_block_x, &i_zero, &i_zero, &ictxt, &a32_$c_C_local_size_x, &info );\n"
 
     # GEMM wants dimensions after possible transpose
     m = (tA == 'N') ? c_A_total_size_y : c_A_total_size_x
