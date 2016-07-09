@@ -90,8 +90,9 @@ function pattern_match_call_dist_get_leftovers(f::GlobalRef,
       total_blocks::LHSVar, node_id::LHSVar, num_pes::LHSVar, total_data_size::LHSVar, block_size::LHSVar, linfo)
   s = ""
   if f==GlobalRef(HPAT.API,:__hpat_get_leftovers)
+    c_total_data_size = ParallelAccelerator.CGen.from_expr(total_data_size, linfo)
     # similar to numroc.f
-    s *= "(($node_id==($total_blocks%$num_pes))? ($total_data_size%$block_size):0)"
+    s *= "(($node_id==($total_blocks%$num_pes))? ($c_total_data_size%$block_size):0)"
   end
   return s
 end

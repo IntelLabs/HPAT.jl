@@ -470,8 +470,8 @@ function from_assignment_alloc_2d(node::Expr, state::DistPassState, arr::LHSVar,
   loc_size_y_var = symbol("__hpat_dist_arr_2d_loc_size_y_"*string(arr_id))
   CompilerTools.LambdaHandling.addLocalVariable(loc_size_x_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
   CompilerTools.LambdaHandling.addLocalVariable(loc_size_y_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-  loc_size_x_expr = Expr(:(=), loc_size_x_var, mk_mult_int_expr([blocks_per_pe_x_var,block_size_var]))
-  loc_size_y_expr = Expr(:(=), loc_size_y_var, mk_mult_int_expr([blocks_per_pe_y_var,block_size_var]))
+  loc_size_x_expr = Expr(:(=), loc_size_x_var, mk_add_int_expr(mk_mult_int_expr([blocks_per_pe_x_var,block_size_var]),leftovers_x_var))
+  loc_size_y_expr = Expr(:(=), loc_size_y_var, mk_add_int_expr(mk_mult_int_expr([blocks_per_pe_y_var,block_size_var]),leftovers_y_var))
   state.arrs_dist_info[arr].local_sizes[end-1] = loc_size_x_var
   state.arrs_dist_info[arr].local_sizes[end] = loc_size_y_var
 
