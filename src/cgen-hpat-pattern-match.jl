@@ -783,8 +783,6 @@ function pattern_match_call_agg(linfo, f::GlobalRef, groupby_key, num_exprs, exp
                          """
       s *= " $agg_key_col_input = rbuf_$agg_key_col_input; \n"
       for (index, col_name) in enumerate(exprs_list)
-          println("Wajih:")
-          println(string(col_name))
           mpi_type = get_mpi_type_from_array(col_name,linfo)
           j2c_type = get_j2c_type_from_array(col_name,linfo)
           expr_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
