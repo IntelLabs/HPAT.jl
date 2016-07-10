@@ -281,13 +281,16 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
             # only reshape() with constant tuples handled
             if haskey(state.tuple_table, rhs.args[3])
                 state.arrs_dist_info[lhs].dim_sizes = state.tuple_table[rhs.args[3]]
-                state.arrs_dist_info[lhs].starts = state.arrs_dist_info[rhs.args[3]].starts
-                state.arrs_dist_info[lhs].counts = state.arrs_dist_info[rhs.args[3]].counts
-                state.arrs_dist_info[lhs].strides = state.arrs_dist_info[rhs.args[3]].strides
-                state.arrs_dist_info[lhs].blocks = state.arrs_dist_info[rhs.args[3]].blocks
-                state.arrs_dist_info[lhs].local_sizes = state.arrs_dist_info[rhs.args[3]].local_sizes
-                state.arrs_dist_info[lhs].leftovers = state.arrs_dist_info[rhs.args[3]].leftovers
-
+                # TODO: are these required?
+                #=
+                state.arrs_dist_info[lhs].starts = state.arrs_dist_info[rhs.args[2]].starts
+                state.arrs_dist_info[lhs].counts = state.arrs_dist_info[rhs.args[2]].counts
+                state.arrs_dist_info[lhs].strides = state.arrs_dist_info[rhs.args[2]].strides
+                state.arrs_dist_info[lhs].blocks = state.arrs_dist_info[rhs.args[2]].blocks
+                state.arrs_dist_info[lhs].local_sizes = state.arrs_dist_info[rhs.args[2]].local_sizes
+                state.arrs_dist_info[lhs].leftovers = state.arrs_dist_info[rhs.args[2]].leftovers
+                =#
+                
                 @dprintln(3,"DistPass arr info dim_sizes update: ", state.arrs_dist_info[lhs].dim_sizes)
                 # lhs and rhs are sequential if either is sequential
                 # partitioning based on precedence, SEQ has highest precedence
