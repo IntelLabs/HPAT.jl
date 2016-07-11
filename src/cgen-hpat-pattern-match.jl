@@ -1397,7 +1397,7 @@ function pattern_match_call_data_src_read_2d(f::GlobalRef, id::Int, arr::RHSVar,
 
         # select leftover y data
         # y dimension is lefover columns, x dimension is as before
-        s *= "CGen_HDF5_start_$num[0] = $start_y+$count_y*$block_y;\n"
+        s *= "CGen_HDF5_start_$num[0] = $start_y+$stride_y*$count_y;\n"
         s *= "CGen_HDF5_start_$num[1] = $start_x;\n"
         s *= "CGen_HDF5_stride_$num[0] = 1;\n"
         s *= "CGen_HDF5_stride_$num[1] = $stride_x;\n"
@@ -1413,7 +1413,7 @@ function pattern_match_call_data_src_read_2d(f::GlobalRef, id::Int, arr::RHSVar,
         # select leftover x data
         # x dimension is lefover columns, y dimension is as before
         s *= "CGen_HDF5_start_$num[0] = $start_y;\n"
-        s *= "CGen_HDF5_start_$num[1] = $start_x+$count_x*$block_x;\n"
+        s *= "CGen_HDF5_start_$num[1] = $start_x+$stride_x*$count_x;\n"
         s *= "CGen_HDF5_stride_$num[0] = $stride_y;\n"
         s *= "CGen_HDF5_stride_$num[1] = 1;\n"
         s *= "CGen_HDF5_count_$num[0] = $count_y;\n"
@@ -1425,8 +1425,8 @@ function pattern_match_call_data_src_read_2d(f::GlobalRef, id::Int, arr::RHSVar,
         s *= "assert(ret_$num != -1);\n"
 
         # intersection of x-y leftovers
-        s *= "CGen_HDF5_start_$num[0] = $start_y+$count_y*$block_y;\n"
-        s *= "CGen_HDF5_start_$num[1] = $start_x+$count_x*$block_x;\n"
+        s *= "CGen_HDF5_start_$num[0] = $start_y+$stride_y*$count_y;\n"
+        s *= "CGen_HDF5_start_$num[1] = $start_x+$stride_x*$count_x;\n"
         s *= "CGen_HDF5_stride_$num[0] = 1;\n"
         s *= "CGen_HDF5_stride_$num[1] = 1;\n"
         s *= "CGen_HDF5_count_$num[0] = $leftover_y;\n"
@@ -1601,7 +1601,7 @@ function pattern_match_call_data_sink_write_2d(f::GlobalRef, id::Int, hdf5_var, 
         s *= "assert(ret_$num != -1);\n"
 
         # y leftovers, x dimension as before
-        s *= "CGen_HDF5_start_$num[0] = $start_y+$count_y*$block_y;\n"
+        s *= "CGen_HDF5_start_$num[0] = $start_y+$stride_y*$count_y;\n"
         s *= "CGen_HDF5_start_$num[1] = $start_x;\n"
         s *= "CGen_HDF5_stride_$num[0] = 1;\n"
         s *= "CGen_HDF5_stride_$num[1] = $stride_x;\n"
@@ -1616,7 +1616,7 @@ function pattern_match_call_data_sink_write_2d(f::GlobalRef, id::Int, hdf5_var, 
 
         # x leftovers, y dimension as before
         s *= "CGen_HDF5_start_$num[0] = $start_y;\n"
-        s *= "CGen_HDF5_start_$num[1] = $start_x+$count_x*$block_x;\n"
+        s *= "CGen_HDF5_start_$num[1] = $start_x+$stride_x*$count_x;\n"
         s *= "CGen_HDF5_stride_$num[0] = $stride_y;\n"
         s *= "CGen_HDF5_stride_$num[1] = 1;\n"
         s *= "CGen_HDF5_count_$num[0] = $count_y;\n"
@@ -1629,8 +1629,8 @@ function pattern_match_call_data_sink_write_2d(f::GlobalRef, id::Int, hdf5_var, 
         s *= "assert(ret_$num != -1);\n"
 
         # both x-y leftovers
-        s *= "CGen_HDF5_start_$num[0] = $start_y+$count_y*$block_y;\n"
-        s *= "CGen_HDF5_start_$num[1] = $start_x+$count_x*$block_x;\n"
+        s *= "CGen_HDF5_start_$num[0] = $start_y+$stride_y*$count_y;\n"
+        s *= "CGen_HDF5_start_$num[1] = $start_x+$stride_x*$count_x;\n"
         s *= "CGen_HDF5_stride_$num[0] = 1;\n"
         s *= "CGen_HDF5_stride_$num[1] = 1;\n"
         s *= "CGen_HDF5_count_$num[0] = $leftover_y;\n"
