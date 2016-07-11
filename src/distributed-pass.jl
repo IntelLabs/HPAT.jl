@@ -301,8 +301,8 @@ function genDistributedInit(state::DistPassState)
                             #include <mkl_scalapack.h>
                             #include <mkl_pblas.h>
                             extern "C" {
-                            void descinit_(int*,int*,int*,int*,int*,int*,int*,int*,int*,int*);
-                            int numroc_(const int*,const int*,const int*,const int*,const int*);
+                            void descinit_(MKL_INT*,MKL_INT*,MKL_INT*,MKL_INT*,MKL_INT*,MKL_INT*,MKL_INT*,MKL_INT*,MKL_INT*,MKL_INT*);
+                            MKL_INT numroc_(const MKL_INT*,const MKL_INT*,const MKL_INT*,const MKL_INT*,const MKL_INT*);
                             }
                             """
       HPAT.addHpatInclude(extra_2D_includes)
@@ -311,15 +311,8 @@ function genDistributedInit(state::DistPassState)
       CompilerTools.LambdaHandling.addLocalVariable(symbol("__hpat_num_pes_y"), Int32, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
       CompilerTools.LambdaHandling.addLocalVariable(symbol("__hpat_node_id_x"), Int32, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
       CompilerTools.LambdaHandling.addLocalVariable(symbol("__hpat_node_id_y"), Int32, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-      numPesCallx = Expr(:call, GlobalRef(HPAT.API,:hpat_dist_num_pes_x))
-      numPesCally = Expr(:call, GlobalRef(HPAT.API,:hpat_dist_num_pes_y))
-      nodeIdCallx = Expr(:call, GlobalRef(HPAT.API,:hpat_dist_node_id_x))
-      nodeIdCally = Expr(:call, GlobalRef(HPAT.API,:hpat_dist_node_id_y))
-      num_pes_assign_x = Expr(:(=), :__hpat_num_pes_x, numPesCallx)
-      num_pes_assign_y = Expr(:(=), :__hpat_num_pes_y, numPesCally)
-      node_id_assign_x = Expr(:(=), :__hpat_node_id_x, nodeIdCallx)
-      node_id_assign_y = Expr(:(=), :__hpat_node_id_y, nodeIdCally)
-      res2 = Any[initCall2d; num_pes_assign_x; num_pes_assign_y; node_id_assign_x; node_id_assign_y]
+
+      res2 = Any[initCall2d]
       res = [res;res2]
     end
 

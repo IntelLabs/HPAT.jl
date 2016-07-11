@@ -55,13 +55,27 @@ function pattern_match_call_dist_init2d(f::GlobalRef,linfo)
         return """    blacs_setup_( &__hpat_node_id, &__hpat_num_pes);
                       // get default context
                       double  zero = 0.0E+0, one = 1.0E+0, two = 2.0E+0, negone = -1.0E+0;
-                      int i_zero = 0, i_one = 1, i_four = 4, i_negone = -1;
-                      int ictxt=-1;
+                      MKL_INT i_zero = 0, i_one = 1, i_four = 4, i_negone = -1;
+                      MKL_INT ictxt=-1;
                       blacs_get_( &i_negone, &i_zero, &ictxt );
                       int __hpat_2d_dims[2];
                       __hpat_2d_dims[0] = __hpat_2d_dims[1] = 0;
-                      MPI_Dims_create(__hpat_num_pes, 2, __hpat_2d_dims)
-              """
+                      MPI_Dims_create(__hpat_num_pes, 2, __hpat_2d_dims);
+                      __hpat_num_pes_x = __hpat_2d_dims[0];
+                      __hpat_num_pes_y = __hpat_2d_dims[1];
+
+                      // create row-major 2D grid
+                      MKL_INT tmp_pes_x=(MKL_INT)__hpat_num_pes_x, tmp_pes_y=(MKL_INT)__hpat_num_pes_y;
+                      MKL_INT tmp_id_x, tmp_id_y; // 32-bit or 64-bit
+                      blacs_gridinit_( &ictxt, "R", &tmp_pes_x, &tmp_pes_y );
+                      blacs_gridinfo_( &ictxt, &tmp_pes_x, &tmp_pes_y, &tmp_id_x, &tmp_id_y);
+
+                      __hpat_num_pes_x = (int)tmp_pes_x;
+                      __hpat_num_pes_y = (int)tmp_pes_y;
+                      __hpat_node_id_x = (int)tmp_id_x;
+                      __hpat_node_id_y = (int)tmp_id_y;
+                      """
+
     else
         return ""
     end
@@ -1892,26 +1906,10 @@ function from_assignment_match_dist(lhs::RHSVar, rhs::Expr, linfo)
         @dprintln(3, "num_pes call")
         c_lhs = ParallelAccelerator.CGen.from_expr(lhs, linfo)
         return "MPI_Comm_size(MPI_COMM_WORLD,&$c_lhs);"
-    elseif rhs.head==:call && length(rhs.args)==1 && rhs.args[1]==GlobalRef(HPAT.API,:hpat_dist_num_pes_x)
-          @dprintln(3, "num_pes_x call")
-          c_lhs = ParallelAccelerator.CGen.from_expr(lhs, linfo)
-          return "$c_lhs = __hpat_2d_dims[0];"
-    elseif rhs.head==:call && length(rhs.args)==1 && rhs.args[1]==GlobalRef(HPAT.API,:hpat_dist_num_pes_y)
-          @dprintln(3, "num_pes_x call")
-          c_lhs = ParallelAccelerator.CGen.from_expr(lhs, linfo)
-          return """$c_lhs = __hpat_2d_dims[1];\n // create row-major 2D grid
-                    blacs_gridinit_( &ictxt, "R", &__hpat_num_pes_x, &__hpat_num_pes_y );
-                """
     elseif rhs.head==:call && length(rhs.args)==1 && rhs.args[1]==GlobalRef(HPAT.API,:hpat_dist_node_id)
         @dprintln(3, "node_id call")
         c_lhs = ParallelAccelerator.CGen.from_expr(lhs, linfo)
         return "MPI_Comm_rank(MPI_COMM_WORLD,&$c_lhs);"
-    elseif rhs.head==:call && length(rhs.args)==1 && rhs.args[1]==GlobalRef(HPAT.API,:hpat_dist_node_id_x)
-          @dprintln(3, "node_id_x call")
-          c_lhs = ParallelAccelerator.CGen.from_expr(lhs, linfo)
-          return "blacs_gridinfo_( &ictxt, &__hpat_num_pes_x, &__hpat_num_pes_y, &__hpat_node_id_x, &__hpat_node_id_y );"
-    elseif rhs.head==:call && length(rhs.args)==1 && rhs.args[1]==GlobalRef(HPAT.API,:hpat_dist_node_id_y)
-      return ";"
     elseif rhs.head==:call && length(rhs.args)==1 && isExpr(rhs.args[1])
         @dprintln(3, "one arg call to an Expr")
         expr = rhs.args[1]
