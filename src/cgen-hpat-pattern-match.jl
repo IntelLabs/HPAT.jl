@@ -1395,20 +1395,47 @@ function pattern_match_call_data_src_read_2d(f::GlobalRef, id::Int, arr::RHSVar,
                          CGen_HDF5_stride_$num, CGen_HDF5_count_$num, CGen_HDF5_block_$num);\n"""
         s *= "assert(ret_$num != -1);\n"
 
-        # select leftover data
-        s *= "hsize_t CGen_HDF5_leftover_start_$num[data_ndim_$num];\n"
-        s *= "hsize_t CGen_HDF5_leftover_count_$num[data_ndim_$num];\n"
-        s *= "CGen_HDF5_leftover_start_$num[0] = $start_y+$count_y*$block_y;\n"
-        s *= "CGen_HDF5_leftover_start_$num[1] = $start_x+$count_x*$block_x;\n"
-        s *= "CGen_HDF5_leftover_count_$num[0] = $leftover_y;\n"
-        s *= "CGen_HDF5_leftover_count_$num[1] = $leftover_x;\n"
-        # rest of dimensions, if any, are not divided
-        s *= "for(int i_CGen_dim=2; i_CGen_dim<data_ndim_$num; i_CGen_dim++) {\n"
-        s *= "  CGen_HDF5_leftover_start_$num[i_CGen_dim] = 0;\n"
-        s *= "  CGen_HDF5_leftover_count_$num[i_CGen_dim] = space_dims_$num[i_CGen_dim];\n"
-        s *= "}\n"
-        s *= """ret_$num = H5Sselect_hyperslab(space_id_$num, H5S_SELECT_OR, CGen_HDF5_leftover_start_$num,
-                         NULL, CGen_HDF5_leftover_count_$num, NULL);\n"""
+        # select leftover y data
+        # y dimension is lefover columns, x dimension is as before
+        s *= "CGen_HDF5_start_$num[0] = $start_y+$count_y*$block_y;\n"
+        s *= "CGen_HDF5_start_$num[1] = $start_x;\n"
+        s *= "CGen_HDF5_stride_$num[0] = 1;\n"
+        s *= "CGen_HDF5_stride_$num[1] = $stride_x;\n"
+        s *= "CGen_HDF5_count_$num[0] = $leftover_y;\n"
+        s *= "CGen_HDF5_count_$num[1] = $count_x;\n"
+        s *= "CGen_HDF5_block_$num[0] = 1;\n"
+        s *= "CGen_HDF5_block_$num[1] = $block_x;\n"
+
+        s *= """ret_$num = H5Sselect_hyperslab(space_id_$num, H5S_SELECT_OR, CGen_HDF5_start_$num,
+                         CGen_HDF5_stride_$num, CGen_HDF5_count_$num, CGen_HDF5_block_$num);\n"""
+        s *= "assert(ret_$num != -1);\n"
+
+        # select leftover x data
+        # x dimension is lefover columns, y dimension is as before
+        s *= "CGen_HDF5_start_$num[0] = $start_y;\n"
+        s *= "CGen_HDF5_start_$num[1] = $start_x+$count_x*$block_x;\n"
+        s *= "CGen_HDF5_stride_$num[0] = $stride_y;\n"
+        s *= "CGen_HDF5_stride_$num[1] = 1;\n"
+        s *= "CGen_HDF5_count_$num[0] = $count_y;\n"
+        s *= "CGen_HDF5_count_$num[1] = $leftover_x;\n"
+        s *= "CGen_HDF5_block_$num[0] = $block_y;\n"
+        s *= "CGen_HDF5_block_$num[1] = 1;\n"
+        s *= """ret_$num = H5Sselect_hyperslab(space_id_$num, H5S_SELECT_OR, CGen_HDF5_start_$num,
+                         CGen_HDF5_stride_$num, CGen_HDF5_count_$num, CGen_HDF5_block_$num);\n"""
+        s *= "assert(ret_$num != -1);\n"
+
+        # intersection of x-y leftovers
+        s *= "CGen_HDF5_start_$num[0] = $start_y+$count_y*$block_y;\n"
+        s *= "CGen_HDF5_start_$num[1] = $start_x+$count_x*$block_x;\n"
+        s *= "CGen_HDF5_stride_$num[0] = 1;\n"
+        s *= "CGen_HDF5_stride_$num[1] = 1;\n"
+        s *= "CGen_HDF5_count_$num[0] = $leftover_y;\n"
+        s *= "CGen_HDF5_count_$num[1] = $leftover_x;\n"
+        s *= "CGen_HDF5_block_$num[0] = 1;\n"
+        s *= "CGen_HDF5_block_$num[1] = 1;\n"
+
+        s *= """ret_$num = H5Sselect_hyperslab(space_id_$num, H5S_SELECT_OR, CGen_HDF5_start_$num,
+                         CGen_HDF5_stride_$num, CGen_HDF5_count_$num, CGen_HDF5_block_$num);\n"""
         s *= "assert(ret_$num != -1);\n"
 
         # size of memory to read to
@@ -1573,21 +1600,46 @@ function pattern_match_call_data_sink_write_2d(f::GlobalRef, id::Int, hdf5_var, 
                  CGen_HDF5_start_$num, CGen_HDF5_stride_$num, CGen_HDF5_count_$num, CGen_HDF5_block_$num);\n"""
         s *= "assert(ret_$num != -1);\n"
 
-        # select leftovers if any
-        s *= "hsize_t CGen_HDF5_leftover_start_$num[$num_dims];\n"
-        s *= "hsize_t CGen_HDF5_leftover_count_$num[$num_dims];\n"
-        s *= "CGen_HDF5_leftover_start_$num[0] = $start_y+$count_y*$block_y;\n"
-        s *= "CGen_HDF5_leftover_start_$num[1] = $start_x+$count_x*$block_x;\n"
-        s *= "CGen_HDF5_leftover_count_$num[0] = $leftover_y;\n"
-        s *= "CGen_HDF5_leftover_count_$num[1] = $leftover_x;\n"
+        # y leftovers, x dimension as before
+        s *= "CGen_HDF5_start_$num[0] = $start_y+$count_y*$block_y;\n"
+        s *= "CGen_HDF5_start_$num[1] = $start_x;\n"
+        s *= "CGen_HDF5_stride_$num[0] = 1;\n"
+        s *= "CGen_HDF5_stride_$num[1] = $stride_x;\n"
+        s *= "CGen_HDF5_count_$num[0] = $leftover_y;\n"
+        s *= "CGen_HDF5_count_$num[1] = $count_x;\n"
+        s *= "CGen_HDF5_block_$num[0] = 1;\n"
+        s *= "CGen_HDF5_block_$num[1] = $block_x;\n"
 
-        #s *= "for(int i_CGen_dim=1; i_CGen_dim<$num_dims; i_CGen_dim++) {\n"
-        for i in 2:length(tot_size)-1
-            s *= "  CGen_HDF5_leftover_start_$num[$i] = 0;\n"
-            s *= "  CGen_HDF5_leftover_count_$num[$i] = $(ParallelAccelerator.CGen.from_expr(tot_size[i],linfo));\n"
-        end
         s *= """ret_$num = H5Sselect_hyperslab(filespace_$num, H5S_SELECT_OR,
-                 CGen_HDF5_leftover_start_$num, NULL, CGen_HDF5_leftover_count_$num, NULL);\n"""
+                 CGen_HDF5_start_$num, CGen_HDF5_stride_$num, CGen_HDF5_count_$num, CGen_HDF5_block_$num);\n"""
+        s *= "assert(ret_$num != -1);\n"
+
+        # x leftovers, y dimension as before
+        s *= "CGen_HDF5_start_$num[0] = $start_y;\n"
+        s *= "CGen_HDF5_start_$num[1] = $start_x+$count_x*$block_x;\n"
+        s *= "CGen_HDF5_stride_$num[0] = $stride_y;\n"
+        s *= "CGen_HDF5_stride_$num[1] = 1;\n"
+        s *= "CGen_HDF5_count_$num[0] = $count_y;\n"
+        s *= "CGen_HDF5_count_$num[1] = $leftover_x;\n"
+        s *= "CGen_HDF5_block_$num[0] = $block_y;\n"
+        s *= "CGen_HDF5_block_$num[1] = 1;\n"
+
+        s *= """ret_$num = H5Sselect_hyperslab(filespace_$num, H5S_SELECT_OR,
+                 CGen_HDF5_start_$num, CGen_HDF5_stride_$num, CGen_HDF5_count_$num, CGen_HDF5_block_$num);\n"""
+        s *= "assert(ret_$num != -1);\n"
+
+        # both x-y leftovers
+        s *= "CGen_HDF5_start_$num[0] = $start_y+$count_y*$block_y;\n"
+        s *= "CGen_HDF5_start_$num[1] = $start_x+$count_x*$block_x;\n"
+        s *= "CGen_HDF5_stride_$num[0] = 1;\n"
+        s *= "CGen_HDF5_stride_$num[1] = 1;\n"
+        s *= "CGen_HDF5_count_$num[0] = $leftover_y;\n"
+        s *= "CGen_HDF5_count_$num[1] = $leftover_x;\n"
+        s *= "CGen_HDF5_block_$num[0] = 1;\n"
+        s *= "CGen_HDF5_block_$num[1] = 1;\n"
+
+        s *= """ret_$num = H5Sselect_hyperslab(filespace_$num, H5S_SELECT_OR,
+                 CGen_HDF5_start_$num, CGen_HDF5_stride_$num, CGen_HDF5_count_$num, CGen_HDF5_block_$num);\n"""
         s *= "assert(ret_$num != -1);\n"
 
         # size of memory to read to
