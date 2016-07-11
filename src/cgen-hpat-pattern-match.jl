@@ -587,7 +587,7 @@ function pattern_match_call_join(linfo, f::GlobalRef,table_new_cols_len, table1_
 
     s *= "MPI_Alltoall($scount_t2,1,MPI_INT,$rcount_t2,1,MPI_INT,MPI_COMM_WORLD);\n"
 
-        # Declaring temporary buffers
+    # Declaring temporary buffers
     for (index, col_name) in enumerate(table2_cols)
         table2_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
         tmp_table2_col_name =  "tmp_" * table2_col_name
@@ -759,6 +759,11 @@ function pattern_match_call_agg(linfo, f::GlobalRef, groupby_key, num_exprs, exp
     s *= "$scount = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
     s *= "memset ($scount, 0, sizeof(int)*__hpat_num_pes);\n"
 
+    scount_tmp = "scount_tmp_"*agg_rand
+    s *= "int * $scount_tmp;\n"
+    s *= "$scount_tmp = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
+    s *= "memset ($scount_tmp, 0, sizeof(int)*__hpat_num_pes);\n"
+
     # Receiving counts
     rsize = "rsize_"*agg_rand
     s *= "int  $rsize = 0;\n"
@@ -774,40 +779,47 @@ function pattern_match_call_agg(linfo, f::GlobalRef, groupby_key, num_exprs, exp
     s *= "$sdis = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
     s *= "$rdis = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
 
-    # Sorting data in buffers so that we can distribute using mpi_alltoallv
-    # Sorting is based on hash which will essentially do hash partitioning
-    # TODO optimize this with fast sorting or hashtables
-    s *= "for (int i = 1 ; i <  $agg_key_col_input_len + 1 ; i++){\n"
-    s *= "for (int j = 1 ; j < $agg_key_col_input_len ; j++ ){\n"
-    s *= "int hash1 = $agg_key_col_input.ARRAYELEM(j) % __hpat_num_pes ;\n"
-    s *= "int hash2 = $agg_key_col_input.ARRAYELEM(j+1) % __hpat_num_pes;\n"
-    s *= "if (hash1 > hash2){\n"
-    # First column is groupbykey which is handled separately
-    s *= "int temp_int_$agg_key_col_input = $agg_key_col_input.ARRAYELEM(j); \n"
-    s *= "$agg_key_col_input.ARRAYELEM(j) = $agg_key_col_input.ARRAYELEM(j+1);\n"
-    s *= "$agg_key_col_input.ARRAYELEM(j+1) = temp_int_$agg_key_col_input;\n"
-
-    for (index, col_name) in enumerate(exprs_list)
-        expr_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
-        s *= "int temp_int_$expr_name = $expr_name.ARRAYELEM(j); \n"
-        s *= "$expr_name.ARRAYELEM(j) = $expr_name.ARRAYELEM(j+1);\n"
-        s *= "$expr_name.ARRAYELEM(j+1) = temp_int_$expr_name;\n"
-    end
-    s *= "}}};\n"
-
+    # Counting displacements for table
     s *= "for (int i = 1 ; i <  $agg_key_col_input_len + 1 ; i++){\n"
     s *= "int node_id = $agg_key_col_input.ARRAYELEM(i) % __hpat_num_pes ;\n"
-    s *= "$scount[node_id]++;\n"
+    s *= "$scount[node_id]++;"
+    s *= "}\n"
+
+    s *= "$sdis[0]=0;\n"
+    s *= "for(int i=1;i < __hpat_num_pes;i++){\n"
+    s *= "$sdis[i]=$scount[i-1] + $sdis[i-1];\n"
     s *= "}\n"
 
     s *= "MPI_Alltoall($scount,1,MPI_INT,$rcount,1,MPI_INT,MPI_COMM_WORLD);\n"
 
-      # Caculating displacements for both tables
+    # First column is groupbykey which is handled separately
+    agg_key_col_input_tmp = agg_key_col_input * "_tmp_agg_" * agg_rand
+    j2c_type = get_j2c_type_from_array(groupby_key,linfo)
+    s *= "j2c_array< $j2c_type > $agg_key_col_input_tmp = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, $agg_key_col_input.ARRAYLEN());\n"
+    s *= "for (int i = 1 ; i <  $agg_key_col_input_len + 1 ; i++){\n"
+    s *= "int node_id =  $agg_key_col_input.ARRAYELEM(i) % __hpat_num_pes;\n"
+    s *= "$agg_key_col_input_tmp.ARRAYELEM($sdis[node_id]+$scount_tmp[node_id]+1) = $agg_key_col_input.ARRAYELEM(i);\n"
+    s *= "$scount_tmp[node_id]++;\n"
+    s *= "}\n"
+    s *= "memset ($scount_tmp, 0, sizeof(int)*__hpat_num_pes);\n"
+    for (index, col_name) in enumerate(exprs_list)
+        expr_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
+        expr_name_tmp = expr_name * "_tmp_agg_" * agg_rand
+        j2c_type = get_j2c_type_from_array(col_name,linfo)
+        s *= "j2c_array< $j2c_type > $expr_name_tmp = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, $expr_name.ARRAYLEN());\n"
+        s *= "for (int i = 1 ; i <  $expr_name.ARRAYLEN() + 1 ; i++){\n"
+        s *= "int node_id =  $agg_key_col_input.ARRAYELEM(i) % __hpat_num_pes;\n"
+        s *= "$expr_name_tmp.ARRAYELEM($sdis[node_id]+$scount_tmp[node_id]+1) = $expr_name.ARRAYELEM(i);\n"
+        s *= "$scount_tmp[node_id]++;\n"
+        s *= "}\n"
+        s *= "memset ($scount_tmp, 0, sizeof(int)*__hpat_num_pes);\n"
+    end
+    #    s *= "}}};\n"
+
+    # Caculating displacements
     s *= """
-                  $sdis[0]=0;
                   $rdis[0]=0;
                   for(int i=1;i < __hpat_num_pes;i++){
-                      $sdis[i]=$scount[i-1] + $sdis[i-1];
                       $rdis[i]=$rcount[i-1] + $rdis[i-1];
                   }
             """
@@ -818,11 +830,11 @@ function pattern_match_call_agg(linfo, f::GlobalRef, groupby_key, num_exprs, exp
                   $rsize = $rsize + $rcount[i];
               }
             """
-      # First column is groupbykey which is handled separately
+    # First column is groupbykey which is handled separately
     mpi_type = get_mpi_type_from_array(groupby_key,linfo)
     j2c_type = get_j2c_type_from_array(groupby_key,linfo)
     s *= " j2c_array< $j2c_type > rbuf_$agg_key_col_input = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, $rsize);\n"
-    s *= """ MPI_Alltoallv($agg_key_col_input.getData(), $scount, $sdis, $mpi_type,
+    s *= """ MPI_Alltoallv($agg_key_col_input_tmp.getData(), $scount, $sdis, $mpi_type,
                                          rbuf_$agg_key_col_input.getData(), $rcount, $rdis, $mpi_type, MPI_COMM_WORLD);
                          """
     s *= " $agg_key_col_input = rbuf_$agg_key_col_input; \n"
@@ -830,8 +842,9 @@ function pattern_match_call_agg(linfo, f::GlobalRef, groupby_key, num_exprs, exp
         mpi_type = get_mpi_type_from_array(col_name,linfo)
         j2c_type = get_j2c_type_from_array(col_name,linfo)
         expr_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
+        expr_name_tmp = expr_name * "_tmp_agg_" * agg_rand
         s *= " j2c_array< $j2c_type > rbuf_$expr_name = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, $rsize);\n"
-        s *= """ MPI_Alltoallv($expr_name.getData(), $scount, $sdis, $mpi_type,
+        s *= """ MPI_Alltoallv($expr_name_tmp.getData(), $scount, $sdis, $mpi_type,
                                          rbuf_$expr_name.getData(), $rcount, $rdis, $mpi_type, MPI_COMM_WORLD);
                          """
         s *= " $expr_name = rbuf_$expr_name; \n"
