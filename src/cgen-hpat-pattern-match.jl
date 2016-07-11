@@ -724,70 +724,72 @@ function pattern_match_call_agg_seq(linfo, f::Any, groupby_key, num_exprs, exprs
 end
 
 function pattern_match_call_agg(linfo, f::GlobalRef, groupby_key, num_exprs, expr_func_output_list...)
-  s = ""
-  if f.name==:__hpat_aggregate
-      expr_func_output_list = expr_func_output_list[1]
-      exprs_list = expr_func_output_list[1:num_exprs]
-      funcs_list = expr_func_output_list[num_exprs+1:(2*num_exprs)]
-      agg_rand = string(convert(Int8, round(rand() * 100)))
-      # first element of output list is the groupbykey column
-      output_cols_list = expr_func_output_list[(2*num_exprs)+1 : end]
-      agg_key_col_input = ParallelAccelerator.CGen.from_expr(groupby_key, linfo)
-      agg_key_col_output = ParallelAccelerator.CGen.from_expr(output_cols_list[1], linfo)
-      agg_key_col_input_len = "agg_key_col_input_len_"*agg_rand
-      s *= "int $agg_key_col_input_len = $agg_key_col_input.ARRAYLEN();\n"
+    s = ""
+    if f.name!=:__hpat_aggregate
+        return s
+    end
+    expr_func_output_list = expr_func_output_list[1]
+    exprs_list = expr_func_output_list[1:num_exprs]
+    funcs_list = expr_func_output_list[num_exprs+1:(2*num_exprs)]
+    agg_rand = string(convert(Int8, round(rand() * 100)))
+    # first element of output list is the groupbykey column
+    output_cols_list = expr_func_output_list[(2*num_exprs)+1 : end]
+    agg_key_col_input = ParallelAccelerator.CGen.from_expr(groupby_key, linfo)
+    agg_key_col_output = ParallelAccelerator.CGen.from_expr(output_cols_list[1], linfo)
+    agg_key_col_input_len = "agg_key_col_input_len_"*agg_rand
+    s *= "int $agg_key_col_input_len = $agg_key_col_input.ARRAYLEN();\n"
 
-      # Sending counts
-      scount = "scount_"*agg_rand
-      s *= "int * $scount;\n"
-      s *= "$scount = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
-      s *= "memset ($scount, 0, sizeof(int)*__hpat_num_pes);\n"
+    # Sending counts
+    scount = "scount_"*agg_rand
+    s *= "int * $scount;\n"
+    s *= "$scount = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
+    s *= "memset ($scount, 0, sizeof(int)*__hpat_num_pes);\n"
 
-      # Receiving counts
-      rsize = "rsize_"*agg_rand
-      s *= "int  $rsize = 0;\n"
-      rcount = "rcount_"*agg_rand
-      s *= "int * $rcount;\n"
-      s *= "$rcount = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
+    # Receiving counts
+    rsize = "rsize_"*agg_rand
+    s *= "int  $rsize = 0;\n"
+    rcount = "rcount_"*agg_rand
+    s *= "int * $rcount;\n"
+    s *= "$rcount = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
 
-      # Displacement arrays for both tables
-      sdis = "sdis_"*agg_rand
-      rdis = "rdis_"*agg_rand
-      s *= "int * $sdis;\n"
-      s *= "int * $rdis;\n"
-      s *= "$sdis = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
-      s *= "$rdis = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
+    # Displacement arrays for both tables
+    sdis = "sdis_"*agg_rand
+    rdis = "rdis_"*agg_rand
+    s *= "int * $sdis;\n"
+    s *= "int * $rdis;\n"
+    s *= "$sdis = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
+    s *= "$rdis = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
 
-      # Sorting data in buffers so that we can distribute using mpi_alltoallv
-      # Sorting is based on hash which will essentially do hash partitioning
-      # TODO optimize this with fast sorting or hashtables
-      s *= "for (int i = 1 ; i <  $agg_key_col_input_len + 1 ; i++){\n"
-      s *= "for (int j = 1 ; j < $agg_key_col_input_len ; j++ ){\n"
-      s *= "int hash1 = $agg_key_col_input.ARRAYELEM(j) % __hpat_num_pes ;\n"
-      s *= "int hash2 = $agg_key_col_input.ARRAYELEM(j+1) % __hpat_num_pes;\n"
-      s *= "if (hash1 > hash2){\n"
-      # First column is groupbykey which is handled separately
-      s *= "int temp_int_$agg_key_col_input = $agg_key_col_input.ARRAYELEM(j); \n"
-      s *= "$agg_key_col_input.ARRAYELEM(j) = $agg_key_col_input.ARRAYELEM(j+1);\n"
-      s *= "$agg_key_col_input.ARRAYELEM(j+1) = temp_int_$agg_key_col_input;\n"
+    # Sorting data in buffers so that we can distribute using mpi_alltoallv
+    # Sorting is based on hash which will essentially do hash partitioning
+    # TODO optimize this with fast sorting or hashtables
+    s *= "for (int i = 1 ; i <  $agg_key_col_input_len + 1 ; i++){\n"
+    s *= "for (int j = 1 ; j < $agg_key_col_input_len ; j++ ){\n"
+    s *= "int hash1 = $agg_key_col_input.ARRAYELEM(j) % __hpat_num_pes ;\n"
+    s *= "int hash2 = $agg_key_col_input.ARRAYELEM(j+1) % __hpat_num_pes;\n"
+    s *= "if (hash1 > hash2){\n"
+    # First column is groupbykey which is handled separately
+    s *= "int temp_int_$agg_key_col_input = $agg_key_col_input.ARRAYELEM(j); \n"
+    s *= "$agg_key_col_input.ARRAYELEM(j) = $agg_key_col_input.ARRAYELEM(j+1);\n"
+    s *= "$agg_key_col_input.ARRAYELEM(j+1) = temp_int_$agg_key_col_input;\n"
 
-      for (index, col_name) in enumerate(exprs_list)
-          expr_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
-          s *= "int temp_int_$expr_name = $expr_name.ARRAYELEM(j); \n"
-          s *= "$expr_name.ARRAYELEM(j) = $expr_name.ARRAYELEM(j+1);\n"
-          s *= "$expr_name.ARRAYELEM(j+1) = temp_int_$expr_name;\n"
-      end
-      s *= "}}};\n"
+    for (index, col_name) in enumerate(exprs_list)
+        expr_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
+        s *= "int temp_int_$expr_name = $expr_name.ARRAYELEM(j); \n"
+        s *= "$expr_name.ARRAYELEM(j) = $expr_name.ARRAYELEM(j+1);\n"
+        s *= "$expr_name.ARRAYELEM(j+1) = temp_int_$expr_name;\n"
+    end
+    s *= "}}};\n"
 
-      s *= "for (int i = 1 ; i <  $agg_key_col_input_len + 1 ; i++){\n"
-      s *= "int node_id = $agg_key_col_input.ARRAYELEM(i) % __hpat_num_pes ;\n"
-      s *= "$scount[node_id]++;\n"
-      s *= "}\n"
+    s *= "for (int i = 1 ; i <  $agg_key_col_input_len + 1 ; i++){\n"
+    s *= "int node_id = $agg_key_col_input.ARRAYELEM(i) % __hpat_num_pes ;\n"
+    s *= "$scount[node_id]++;\n"
+    s *= "}\n"
 
-      s *= "MPI_Alltoall($scount,1,MPI_INT,$rcount,1,MPI_INT,MPI_COMM_WORLD);\n"
+    s *= "MPI_Alltoall($scount,1,MPI_INT,$rcount,1,MPI_INT,MPI_COMM_WORLD);\n"
 
       # Caculating displacements for both tables
-      s *= """
+    s *= """
                   $sdis[0]=0;
                   $rdis[0]=0;
                   for(int i=1;i < __hpat_num_pes;i++){
@@ -796,64 +798,63 @@ function pattern_match_call_agg(linfo, f::GlobalRef, groupby_key, num_exprs, exp
                   }
             """
 
-      # Summing receiving counts
-      s *= """
+    # Summing receiving counts
+    s *= """
               for(int i=0;i<__hpat_num_pes;i++){
                   $rsize = $rsize + $rcount[i];
               }
             """
       # First column is groupbykey which is handled separately
-      mpi_type = get_mpi_type_from_array(groupby_key,linfo)
-      j2c_type = get_j2c_type_from_array(groupby_key,linfo)
-      s *= " j2c_array< $j2c_type > rbuf_$agg_key_col_input = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, $rsize);\n"
-      s *= """ MPI_Alltoallv($agg_key_col_input.getData(), $scount, $sdis, $mpi_type,
+    mpi_type = get_mpi_type_from_array(groupby_key,linfo)
+    j2c_type = get_j2c_type_from_array(groupby_key,linfo)
+    s *= " j2c_array< $j2c_type > rbuf_$agg_key_col_input = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, $rsize);\n"
+    s *= """ MPI_Alltoallv($agg_key_col_input.getData(), $scount, $sdis, $mpi_type,
                                          rbuf_$agg_key_col_input.getData(), $rcount, $rdis, $mpi_type, MPI_COMM_WORLD);
                          """
-      s *= " $agg_key_col_input = rbuf_$agg_key_col_input; \n"
-      for (index, col_name) in enumerate(exprs_list)
-          mpi_type = get_mpi_type_from_array(col_name,linfo)
-          j2c_type = get_j2c_type_from_array(col_name,linfo)
-          expr_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
-          s *= " j2c_array< $j2c_type > rbuf_$expr_name = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, $rsize);\n"
-          s *= """ MPI_Alltoallv($expr_name.getData(), $scount, $sdis, $mpi_type,
-                                     rbuf_$expr_name.getData(), $rcount, $rdis, $mpi_type, MPI_COMM_WORLD);
-                     """
-          s *= " $expr_name = rbuf_$expr_name; \n"
-      end
+    s *= " $agg_key_col_input = rbuf_$agg_key_col_input; \n"
+    for (index, col_name) in enumerate(exprs_list)
+        mpi_type = get_mpi_type_from_array(col_name,linfo)
+        j2c_type = get_j2c_type_from_array(col_name,linfo)
+        expr_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
+        s *= " j2c_array< $j2c_type > rbuf_$expr_name = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, $rsize);\n"
+        s *= """ MPI_Alltoallv($expr_name.getData(), $scount, $sdis, $mpi_type,
+                                         rbuf_$expr_name.getData(), $rcount, $rdis, $mpi_type, MPI_COMM_WORLD);
+                         """
+        s *= " $expr_name = rbuf_$expr_name; \n"
+    end
 
-      # Temporary map for each column
-      for (index, value) in enumerate(output_cols_list)
-          table_new_col_name = ParallelAccelerator.CGen.from_expr(value,linfo)
-          s *= "std::unordered_map<int,int> temp_map_$table_new_col_name ;\n"
-      end
-      agg_key_map_temp = "temp_map_$agg_key_col_output"
-      s *= "for(int i = 1 ; i < $agg_key_col_input.ARRAYLEN() + 1 ; i++){\n"
-      s *= "$agg_key_map_temp[$agg_key_col_input.ARRAYELEM(i)] = $agg_key_col_input.ARRAYELEM(i);\n"
-      for (index, func) in enumerate(funcs_list)
-          column_name = ""
-          expr_name = ParallelAccelerator.CGen.from_expr(exprs_list[index],linfo)
-          map_name = "temp_map_" * ParallelAccelerator.CGen.from_expr(output_cols_list[index+1],linfo)
-          s *= return_reduction_string_with_closure(agg_key_col_input, expr_name, map_name, func)
-      end
-      s *= "}\n"
-      # Initializing new columns
-      for col_name in output_cols_list
-          j2c_type = get_j2c_type_from_array(col_name,linfo)
-          arr_col_name = ParallelAccelerator.CGen.from_expr(col_name, linfo)
-          s *= "$arr_col_name = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, $agg_key_map_temp.size());\n"
-      end
-      # copy back the values from map into arrays
-      counter_agg = "counter_agg$agg_rand"
-      s *= "int $counter_agg = 1;\n"
-      s *= "for(auto i : $agg_key_map_temp){\n"
-      for (index, value) in enumerate(output_cols_list)
-          map_name = ParallelAccelerator.CGen.from_expr(value, linfo)
-          s *= "$map_name.ARRAYELEM($counter_agg) = temp_map_$map_name[i.first];\n"
-      end
-      s *= "$counter_agg++;\n"
-      s *= "}\n"
-  end
-  return s
+    # Temporary map for each column
+    for (index, value) in enumerate(output_cols_list)
+        table_new_col_name = ParallelAccelerator.CGen.from_expr(value,linfo)
+        s *= "std::unordered_map<int,int> temp_map_$table_new_col_name ;\n"
+    end
+    agg_key_map_temp = "temp_map_$agg_key_col_output"
+    s *= "for(int i = 1 ; i < $agg_key_col_input.ARRAYLEN() + 1 ; i++){\n"
+    s *= "$agg_key_map_temp[$agg_key_col_input.ARRAYELEM(i)] = $agg_key_col_input.ARRAYELEM(i);\n"
+    for (index, func) in enumerate(funcs_list)
+        column_name = ""
+        expr_name = ParallelAccelerator.CGen.from_expr(exprs_list[index],linfo)
+        map_name = "temp_map_" * ParallelAccelerator.CGen.from_expr(output_cols_list[index+1],linfo)
+        s *= return_reduction_string_with_closure(agg_key_col_input, expr_name, map_name, func)
+    end
+    s *= "}\n"
+    # Initializing new columns
+    for col_name in output_cols_list
+        j2c_type = get_j2c_type_from_array(col_name,linfo)
+        arr_col_name = ParallelAccelerator.CGen.from_expr(col_name, linfo)
+        s *= "$arr_col_name = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, $agg_key_map_temp.size());\n"
+    end
+    # copy back the values from map into arrays
+    counter_agg = "counter_agg$agg_rand"
+    s *= "int $counter_agg = 1;\n"
+    s *= "for(auto i : $agg_key_map_temp){\n"
+    for (index, value) in enumerate(output_cols_list)
+        map_name = ParallelAccelerator.CGen.from_expr(value, linfo)
+        s *= "$map_name.ARRAYELEM($counter_agg) = temp_map_$map_name[i.first];\n"
+    end
+    s *= "$counter_agg++;\n"
+    s *= "}\n"
+    return s
 end
 
 function pattern_match_call_agg(linfo, f::Any, groupby_key, num_exprs, exprs_func_list...)
