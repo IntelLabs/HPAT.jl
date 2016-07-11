@@ -355,8 +355,10 @@ function pattern_match_call_data_src_close(f::Any, v::Any,linfo)
 end
 
 function pattern_match_call_filter_seq(linfo,f::GlobalRef,cond_e, num_cols,table_cols...)
-  s = ""
-  if f.name==:__hpat_filter
+    s = ""
+    if f.name!=:__hpat_filter
+        return s
+    end
     # its an array of array. array[2:end] and table_cols... notation does that
     table_cols = table_cols[1]
     # For unique counter variables of filter
@@ -372,19 +374,18 @@ function pattern_match_call_filter_seq(linfo,f::GlobalRef,cond_e, num_cols,table
     s *= "if ( $cond_e_arr.ARRAYELEM(index) ){\n"
     # If condition satisfy copy all columns values
     for col_name in table_cols
-      arr_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
-      s *= "$arr_col_name.ARRAYELEM($write_index) =  $arr_col_name.ARRAYELEM(index); \n"
+        arr_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
+        s *= "$arr_col_name.ARRAYELEM($write_index) =  $arr_col_name.ARRAYELEM(index); \n"
     end
     s *= "$write_index = $write_index + 1;\n"
     s *= "};\n" # if condition
     s *= "};\n" # for loop
-    # Change the size of each array
+    # After filtering we need to change the size of each array
     for col_name in table_cols
-      arr_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
-      s *= "$arr_col_name.dims[0] =  $write_index - 1; \n"
+        arr_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
+        s *= "$arr_col_name.dims[0] =  $write_index - 1; \n"
     end
-  end
-  return s
+    return s
 end
 
 function pattern_match_call_filter_seq(linfo,f::Any,cond_e, num_cols,table_cols...)
@@ -392,15 +393,19 @@ function pattern_match_call_filter_seq(linfo,f::Any,cond_e, num_cols,table_cols.
 end
 
 function pattern_match_call_join_seq(linfo, f::GlobalRef,table_new_cols_len, table1_cols_len, table2_cols_len, table_columns...)
-  s = ""
-  if f.name==:__hpat_join
+    s = ""
+    if f.name!=:__hpat_join
+        return s
+    end
     # its an array of array. array[2:end] and table_cols... notation does that
     table_columns = table_columns[1]
     # extract columns of each table
     table_new_cols = table_columns[1:table_new_cols_len]
     table1_cols = table_columns[table_new_cols_len+1:table_new_cols_len+table1_cols_len]
     table2_cols = table_columns[table_new_cols_len+table1_cols_len+1:end]
+    # to assign unique id to each variable
     join_rand = string(convert(Int8, round(rand() * 100)))
+
     # assuming that all columns are of same size in a table
     # Also output table's length would be sum of both table length
     t1c1_length_join = "t1c1_length_join"*join_rand
@@ -411,10 +416,10 @@ function pattern_match_call_join_seq(linfo, f::GlobalRef,table_new_cols_len, tab
     s *= "int $t1c1_length_join = $t1_c1_join.ARRAYLEN() ;\n "
     s *= "int $t2c1_length_join = $t2_c1_join.ARRAYLEN() ;\n "
     s *= "int $joined_table_length = $t2c1_length_join + $t2c1_length_join ;\n "
-    # Instantiation of output table
+    # Instantiation of columns for  output table
     for col_name in table_new_cols
-      arr_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
-      s *= "$arr_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $joined_table_length);\n"
+        arr_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
+        s *= "$arr_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $joined_table_length);\n"
     end
     # Assuming that join is always on the first column of tables
     # Nested for loop implementation of join
@@ -422,22 +427,22 @@ function pattern_match_call_join_seq(linfo, f::GlobalRef,table_new_cols_len, tab
     table_new_counter_join = "table_new_counter_join" *join_rand
     s *= "int $table_new_counter_join = 1 ; \n"
     s *= "for (int table1_index = 1 ; table1_index < $t1c1_length_join+1 ; table1_index++) { \n"
-    s *= "for (int table2_index = 1 ; table2_index < $t2c1_length_join+1 ; table2_index++) { \n" #
+    s *= "for (int table2_index = 1 ; table2_index < $t2c1_length_join+1 ; table2_index++) { \n"
     s *= "if ( $t1_c1_join.ARRAYELEM(table1_index) $c_cond_sym  $t2_c1_join.ARRAYELEM(table2_index) ){\n"
     count = 0;
     for (index, col_name) in enumerate(table1_cols)
-      table_new_col_name = ParallelAccelerator.CGen.from_expr(table_new_cols[index],linfo)
-      table1_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
-      s *= "$table_new_col_name.ARRAYELEM($table_new_counter_join) = $table1_col_name.ARRAYELEM(table1_index); \n"
-      count = count + 1
+        table_new_col_name = ParallelAccelerator.CGen.from_expr(table_new_cols[index],linfo)
+        table1_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
+        s *= "$table_new_col_name.ARRAYELEM($table_new_counter_join) = $table1_col_name.ARRAYELEM(table1_index); \n"
+        count = count + 1
     end
     for (index, col_name) in enumerate(table2_cols)
-      if index == 1
-        continue
-      end
-      table_new_col_name = ParallelAccelerator.CGen.from_expr(table_new_cols[index+count-1],linfo)
-      table2_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
-      s *= "$table_new_col_name.ARRAYELEM($table_new_counter_join) =  $table2_col_name.ARRAYELEM(table2_index); \n"
+        if index == 1
+            continue
+        end
+        table_new_col_name = ParallelAccelerator.CGen.from_expr(table_new_cols[index+count-1],linfo)
+        table2_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
+        s *= "$table_new_col_name.ARRAYELEM($table_new_counter_join) =  $table2_col_name.ARRAYELEM(table2_index); \n"
     end
     s *= "$table_new_counter_join++;\n"
     s *= "};\n" # join if condition
@@ -445,13 +450,12 @@ function pattern_match_call_join_seq(linfo, f::GlobalRef,table_new_cols_len, tab
     s *= "};\n" # outer for loop
     # Change the size of each output array
     for col_name in table_new_cols
-      arr_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
-      s *= "$arr_col_name.dims[0] =  $table_new_counter_join - 1; \n"
+        arr_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
+        s *= "$arr_col_name.dims[0] =  $table_new_counter_join - 1; \n"
     end
     # For debugging
     #s *= "for (int i = 1 ; i < $table_new_counter_join ; i++){ std::cout << psale_itemspss_item_sk.ARRAYELEM(i) << std::endl;}\n"
-  end
-  return s
+    return s
 end
 
 function pattern_match_call_join_seq(linfo, f::Any,table_new_len, table1_len, table2_len, table_columns...)
@@ -645,8 +649,10 @@ function pattern_match_call_join(linfo, f::Any,table_new_len, table1_len, table2
 end
 
 function pattern_match_call_agg_seq(linfo, f::GlobalRef, groupby_key, num_exprs, expr_func_output_list...)
-  s = ""
-  if f.name==:__hpat_aggregate
+    s = ""
+    if f.name!=:__hpat_aggregate
+        return s
+    end
     expr_func_output_list = expr_func_output_list[1]
     exprs_list = expr_func_output_list[1:num_exprs]
     funcs_list = expr_func_output_list[num_exprs+1:(2*num_exprs)]
@@ -657,38 +663,37 @@ function pattern_match_call_agg_seq(linfo, f::GlobalRef, groupby_key, num_exprs,
     agg_key_col_output = ParallelAccelerator.CGen.from_expr(output_cols_list[1], linfo)
     # Temporaty map for each column
     for (index, value) in enumerate(output_cols_list)
-      table_new_col_name = ParallelAccelerator.CGen.from_expr(value,linfo)
-      s *= "std::unordered_map<int,int> temp_map_$table_new_col_name ;\n"
+        table_new_col_name = ParallelAccelerator.CGen.from_expr(value,linfo)
+        s *= "std::unordered_map<int,int> temp_map_$table_new_col_name ;\n"
     end
     agg_key_map_temp = "temp_map_$agg_key_col_output"
     s *= "for(int i = 1 ; i < $agg_key_col_input.ARRAYLEN() + 1 ; i++){\n"
     s *= "$agg_key_map_temp[$agg_key_col_input.ARRAYELEM(i)] = $agg_key_col_input.ARRAYELEM(i);\n"
     for (index, func) in enumerate(funcs_list)
-      column_name = ""
-      expr_name = ParallelAccelerator.CGen.from_expr(exprs_list[index],linfo)
-      map_name = "temp_map_" * ParallelAccelerator.CGen.from_expr(output_cols_list[index+1],linfo)
-      s *= return_reduction_string_with_closure(agg_key_col_input, expr_name, map_name, func)
+        column_name = ""
+        expr_name = ParallelAccelerator.CGen.from_expr(exprs_list[index],linfo)
+        map_name = "temp_map_" * ParallelAccelerator.CGen.from_expr(output_cols_list[index+1],linfo)
+        s *= return_reduction_string_with_closure(agg_key_col_input, expr_name, map_name, func)
     end
     s *= "}\n"
     # Initializing new columns
     for col_name in output_cols_list
-      arr_col_name = ParallelAccelerator.CGen.from_expr(col_name, linfo)
-      s *= "$arr_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $agg_key_map_temp.size());\n"
+        arr_col_name = ParallelAccelerator.CGen.from_expr(col_name, linfo)
+        s *= "$arr_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $agg_key_map_temp.size());\n"
     end
     # copy back the values from map into arrays
     counter_agg = "counter_agg$agg_rand"
     s *= "int $counter_agg = 1;\n"
     s *= "for(auto i : $agg_key_map_temp){\n"
     for (index, value) in enumerate(output_cols_list)
-      map_name = ParallelAccelerator.CGen.from_expr(value, linfo)
-      s *= "$map_name.ARRAYELEM($counter_agg) = temp_map_$map_name[i.first];\n"
+        map_name = ParallelAccelerator.CGen.from_expr(value, linfo)
+        s *= "$map_name.ARRAYELEM($counter_agg) = temp_map_$map_name[i.first];\n"
     end
     s *= "$counter_agg++;\n"
     s *= "}\n"
     # Debugging
-    # s *= "for (int i = 1 ; i < counter_agg ; i++){ std::cout << pcustomer_i_classpid3.ARRAYELEM(i) << std::endl;}\n"
-  end
-  return s
+    # s *= "for (int i = 1 ; i < $counter_agg ; i++){ std::cout << pcustomer_i_classpid3.ARRAYELEM(i) << std::endl;}\n"
+    return s
 end
 
 function pattern_match_call_agg_seq(linfo, f::Any, groupby_key, num_exprs, exprs_func_list...)
