@@ -629,7 +629,7 @@ function pattern_match_call_join(linfo, f::GlobalRef,table_new_cols_len, table1_
         """
     for (index, col_name) in enumerate(table1_cols)
         table1_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
-        tmp_table1_col_name = "tmp_" *table1_col_name 
+        tmp_table1_col_name = "tmp_" *table1_col_name
         s *= " j2c_array< int64_t > rbuf_$table1_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $rsize_t1);\n"
         s *= """ MPI_Alltoallv($tmp_table1_col_name.getData(), $scount_t1, $sdis_t1, MPI_INT64_T,
                                      rbuf_$table1_col_name.getData(), $rcount_t1, $rdis_t1, MPI_INT64_T, MPI_COMM_WORLD);
@@ -1244,6 +1244,7 @@ function pattern_match_call_data_src_read(f::GlobalRef, id::Int, arr::RHSVar, st
         s *= "hid_t xfer_plist_$num = H5Pcreate (H5P_DATASET_XFER);\n"
         s *= "assert(xfer_plist_$num != -1);\n"
         s *= "double h5_read_start_$num = MPI_Wtime();\n"
+        s *= "H5Pset_dxpl_mpio(xfer_plist_$num, H5FD_MPIO_COLLECTIVE);\n"
         s *= "ret_$num = H5Dread(dataset_id_$num, $h5_typ, mem_dataspace_$num, space_id_$num, xfer_plist_$num, $carr.getData());\n"
         s *= "assert(ret_$num != -1);\n"
         #s*="if(__hpat_node_id==__hpat_num_pes/2) printf(\"h5 read %lf\\n\", MPI_Wtime()-h5_read_start_$num);\n"
@@ -1521,6 +1522,7 @@ function pattern_match_call_data_src_read_2d(f::GlobalRef, id::Int, arr::RHSVar,
         s *= "hid_t xfer_plist_$num = H5Pcreate (H5P_DATASET_XFER);\n"
         s *= "assert(xfer_plist_$num != -1);\n"
         s *= "double h5_read_start_$num = MPI_Wtime();\n"
+        s *= "H5Pset_dxpl_mpio(xfer_plist_$num, H5FD_MPIO_COLLECTIVE);\n"
         s *= "ret_$num = H5Dread(dataset_id_$num, $h5_typ, mem_dataspace_$num, space_id_$num, xfer_plist_$num, $carr.getData());\n"
         s *= "assert(ret_$num != -1);\n"
         #s*="if(__hpat_node_id==__hpat_num_pes/2) printf(\"h5 read %lf\\n\", MPI_Wtime()-h5_read_start_$num);\n"
