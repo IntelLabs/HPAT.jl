@@ -668,14 +668,52 @@ function pattern_match_call_join(linfo, f::GlobalRef,table_new_cols_len, table1_
         table_new_col_name = ParallelAccelerator.CGen.from_expr(table_new_cols[index+count-1],linfo)
         s *= "$table_new_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $rsize_t1 + $rsize_t2);\n"
     end
-    s *= "for(int i=1 ;i< $rsize_t1 + 1; i++){\n"
-    s *= "for(int j=1 ;j < $rsize_t2 + 1; j++){\n"
-    s *= "if($t1_c1_join.ARRAYELEM(i) == $t2_c1_join.ARRAYELEM(j)){\n"
+    # Use any sorting algorithm here before merging
+    # Right now using simple bubble sort
+    # TODO add tim sort here too
+    j2c_type_t1 = get_j2c_type_from_array(table1_cols[1],linfo)
+    j2c_type_t2 = get_j2c_type_from_array(table2_cols[1],linfo)
+    t1_length = length(table1_cols)
+    t2_length = length(table2_cols)
+    t1_all_arrays = "t1_all_arrays" * join_rand
+    t2_all_arrays = "t2_all_arrays" * join_rand
+    s *= "$j2c_type_t1 * $t1_all_arrays[$t1_length - 1];\n"
+    s *= "$j2c_type_t2 * $t2_all_arrays[$t2_length - 1];\n"
+    for (index, col_name) in enumerate(table1_cols)
+        if index == 1
+            continue
+        end
+        arr_index = index - 2
+        table1_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
+        s *= "$t1_all_arrays [$arr_index] = ( $j2c_type_t1 *) $table1_col_name.getData();\n"
+    end
+
+    for (index, col_name) in enumerate(table2_cols)
+        if index == 1
+            continue
+        end
+        arr_index = index - 2
+        table2_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
+        s *= "$t2_all_arrays [$arr_index] = ( $j2c_type_t2 *) $table2_col_name.getData();\n"
+    end
+
+    s *= "__hpat_quicksort($t1_all_arrays,$t1_length - 1, ( $j2c_type_t1 *) $t1_c1_join.getData(), 0, $rsize_t1 - 1);\n"
+    s *= "__hpat_quicksort($t2_all_arrays,$t2_length - 1, ( $j2c_type_t2 *) $t2_c1_join.getData(), 0, $rsize_t2 - 1);\n"
+
+    #s *= "qsort($t2_c1_join.getData(),$rsize_t2, sizeof( $j2c_type_t2 ), __hpat_compare_qsort_$j2c_type_t2);\n"
+    # after the arrays has been sorted merge them
+    # I used algorithm from here www.dcs.ed.ac.uk/home/tz/phd/thesis/node20.htm
+    left = "left_join_table_" * join_rand
+    right = "right_join_table_" * join_rand
+    s *= "int $left = 1;\n"
+    s *= "int $right = 1;\n"
+    s *= "while ( ($left < $rsize_t1 + 1) && ($right < $rsize_t2 + 1) ){\n"
+    s *= "if($t1_c1_join.ARRAYELEM($left) == $t2_c1_join.ARRAYELEM($right)){\n"
     count = 0
     for (index, col_name) in enumerate(table1_cols)
         table_new_col_name = ParallelAccelerator.CGen.from_expr(table_new_cols[index],linfo)
         table1_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
-        s *= "$table_new_col_name.ARRAYELEM($table_new_counter_join) = $table1_col_name.ARRAYELEM(i); \n"
+        s *= "$table_new_col_name.ARRAYELEM($table_new_counter_join) = $table1_col_name.ARRAYELEM($left); \n"
         count = count + 1
     end
     for (index, col_name) in enumerate(table2_cols)
@@ -684,10 +722,62 @@ function pattern_match_call_join(linfo, f::GlobalRef,table_new_cols_len, table1_
         end
         table_new_col_name = ParallelAccelerator.CGen.from_expr(table_new_cols[index+count-1],linfo)
         table2_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
-        s *= "$table_new_col_name.ARRAYELEM($table_new_counter_join) =  $table2_col_name.ARRAYELEM(j); \n"
+        s *= "$table_new_col_name.ARRAYELEM($table_new_counter_join) =  $table2_col_name.ARRAYELEM($right); \n"
     end
     s *= "$table_new_counter_join++;\n"
-    s *= "}}}\n"
+
+    s *= "int tmp_$left = $left + 1 ;\n"
+    s *= "while((tmp_$left < $rsize_t1 + 1) && ($t1_c1_join.ARRAYELEM(tmp_$left) == $t2_c1_join.ARRAYELEM($right))){\n"
+    count = 0
+    for (index, col_name) in enumerate(table1_cols)
+        table_new_col_name = ParallelAccelerator.CGen.from_expr(table_new_cols[index],linfo)
+        table1_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
+        s *= "$table_new_col_name.ARRAYELEM($table_new_counter_join) = $table1_col_name.ARRAYELEM(tmp_$left); \n"
+        count = count + 1
+    end
+    for (index, col_name) in enumerate(table2_cols)
+        if index == 1
+            continue
+        end
+        table_new_col_name = ParallelAccelerator.CGen.from_expr(table_new_cols[index+count-1],linfo)
+        table2_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
+        s *= "$table_new_col_name.ARRAYELEM($table_new_counter_join) =  $table2_col_name.ARRAYELEM($right); \n"
+    end
+    s *= "tmp_$left++;\n"
+    s *= "$table_new_counter_join++;\n"
+    s *= "}\n"
+
+    s *= "int tmp_$right = $right + 1 ;\n"
+    s *= "while((tmp_$right < $rsize_t2 + 1) && ($t1_c1_join.ARRAYELEM($left) == $t2_c1_join.ARRAYELEM(tmp_$right))){\n"
+    count = 0
+    for (index, col_name) in enumerate(table1_cols)
+        table_new_col_name = ParallelAccelerator.CGen.from_expr(table_new_cols[index],linfo)
+        table1_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
+        s *= "$table_new_col_name.ARRAYELEM($table_new_counter_join) = $table1_col_name.ARRAYELEM($left); \n"
+        count = count + 1
+    end
+    for (index, col_name) in enumerate(table2_cols)
+        if index == 1
+            continue
+        end
+        table_new_col_name = ParallelAccelerator.CGen.from_expr(table_new_cols[index+count-1],linfo)
+        table2_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
+        s *= "$table_new_col_name.ARRAYELEM($table_new_counter_join) =  $table2_col_name.ARRAYELEM(tmp_$right); \n"
+    end
+    s *= "tmp_$right++;\n"
+    s *= "$table_new_counter_join++;\n"
+    s *= "}\n"
+
+    s *= "$left++;\n"
+    s *= "$right++;\n"
+    s *= "}\n" # if condition
+    s *= "else if ($t1_c1_join.ARRAYELEM($left) < $t2_c1_join.ARRAYELEM($right))\n"
+    s *= "$left++;\n"
+    s *= "else\n"
+    s *= "$right++;\n"
+    s *= "}\n" # while condition
+
+    # fixing size of arrays after joining
     for col_name in table_new_cols
         table_new_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
         s *= "$table_new_col_name.dims[0] = $table_new_counter_join - 1;\n"
