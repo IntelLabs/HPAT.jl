@@ -338,7 +338,7 @@ function pattern_match_call_data_src_open(f::GlobalRef, id::Int, data_var::Union
       s *= "assert(file_id_$num != -1);\n"
       s *= "ret_$num = H5Pclose(plist_id_$num);\n"
       s *= "assert(ret_$num != -1);\n"
-#      s *= "hid_t dataset_id_$num;\n"
+      #s *= "hid_t dataset_id_$num;\n"
       #s *= "dataset_id_$num = H5Dcreate(file_id_$num, "*ParallelAccelerator.CGen.from_expr(data_var, linfo)*", H5P_DEFAULT);\n"
       #s *= "assert(dataset_id_$num != -1);\n"
     end
@@ -569,13 +569,14 @@ function pattern_match_call_join(linfo, f::GlobalRef,table_new_cols_len, table1_
 
     # Declaring temporary buffers
     # Assuming that all of them have same length
+    # TODO do insertion sort like a combiner in Hadoop
     for (index, col_name) in enumerate(table1_cols)
         table1_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
-        tmp_table1_col_name = "tmp_" * table1_col_name
-        s *= "j2c_array< int64_t > $tmp_table1_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $t1c1_length_join );\n"
+        table1_col_name_tmp = table1_col_name * "_tmp_join_" * join_rand
+        s *= "j2c_array< int64_t > $table1_col_name_tmp = j2c_array<int64_t>::new_j2c_array_1d(NULL, $t1c1_length_join );\n"
         s *= "for (int i = 1 ; i <  $t1c1_length_join + 1 ; i++){\n"
         s *= "int node_id = $t1_c1_hashes[i-1];\n"
-        s *= "$tmp_table1_col_name.ARRAYELEM($sdis_t1[node_id]+$scount_t1_tmp[node_id]+1) = $table1_col_name.ARRAYELEM(i);\n"
+        s *= "$table1_col_name_tmp.ARRAYELEM($sdis_t1[node_id]+$scount_t1_tmp[node_id]+1) = $table1_col_name.ARRAYELEM(i);\n"
         s *= "$scount_t1_tmp[node_id]++;\n"
         s *= "}\n"
         s *= "memset ($scount_t1_tmp, 0, sizeof(int)*__hpat_num_pes);\n"
@@ -600,12 +601,12 @@ function pattern_match_call_join(linfo, f::GlobalRef,table_new_cols_len, table1_
 
     # Declaring temporary buffers
     for (index, col_name) in enumerate(table2_cols)
-        table2_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
-        tmp_table2_col_name =  "tmp_" * table2_col_name
-        s *= "j2c_array< int64_t > $tmp_table2_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $t2c1_length_join);\n"
+        table2_col_name =ParallelAccelerator.CGen.from_expr(col_name,linfo)
+        table2_col_name_tmp =  table2_col_name * "_tmp_join_" * join_rand
+        s *= "j2c_array< int64_t > $table2_col_name_tmp = j2c_array<int64_t>::new_j2c_array_1d(NULL, $t2c1_length_join);\n"
         s *= "for (int i = 1 ; i <   $t2c1_length_join + 1 ; i++){\n"
         s *= "int node_id = $t2_c1_hashes[i-1];\n"
-        s *= "$tmp_table2_col_name.ARRAYELEM($sdis_t2[node_id]+$scount_t2_tmp[node_id]+1) = $table2_col_name.ARRAYELEM(i);\n"
+        s *= "$table2_col_name_tmp.ARRAYELEM($sdis_t2[node_id]+$scount_t2_tmp[node_id]+1) = $table2_col_name.ARRAYELEM(i);\n"
         s *= "$scount_t2_tmp[node_id]++;\n"
         s *= "memset ($scount_t2_tmp, 0, sizeof(int)*__hpat_num_pes);\n"
         s *= "}\n"
@@ -631,9 +632,9 @@ function pattern_match_call_join(linfo, f::GlobalRef,table_new_cols_len, table1_
         """
     for (index, col_name) in enumerate(table1_cols)
         table1_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
-        tmp_table1_col_name = "tmp_" *table1_col_name
+        table1_col_name_tmp = table1_col_name *"_tmp_join_" * join_rand
         s *= " j2c_array< int64_t > rbuf_$table1_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $rsize_t1);\n"
-        s *= """ MPI_Alltoallv($tmp_table1_col_name.getData(), $scount_t1, $sdis_t1, MPI_INT64_T,
+        s *= """ MPI_Alltoallv($table1_col_name_tmp.getData(), $scount_t1, $sdis_t1, MPI_INT64_T,
                                      rbuf_$table1_col_name.getData(), $rcount_t1, $rdis_t1, MPI_INT64_T, MPI_COMM_WORLD);
                      """
         s *= " $table1_col_name = rbuf_$table1_col_name; \n"
@@ -642,9 +643,9 @@ function pattern_match_call_join(linfo, f::GlobalRef,table_new_cols_len, table1_
 
     for (index, col_name) in enumerate(table2_cols)
         table2_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
-        tmp_table2_col_name = "tmp_" * table2_col_name
+        table2_col_name_tmp = table2_col_name * "_tmp_join_" * join_rand
         s *= " j2c_array< int64_t > rbuf_$table2_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $rsize_t2);\n"
-        s *= """ MPI_Alltoallv($tmp_table2_col_name.getData(), $scount_t2, $sdis_t2, MPI_INT64_T,
+        s *= """ MPI_Alltoallv($table2_col_name_tmp.getData(), $scount_t2, $sdis_t2, MPI_INT64_T,
                                      rbuf_$table2_col_name.getData(), $rcount_t2, $rdis_t2, MPI_INT64_T, MPI_COMM_WORLD);
                      """
         s *= " $table2_col_name = rbuf_$table2_col_name; \n"
