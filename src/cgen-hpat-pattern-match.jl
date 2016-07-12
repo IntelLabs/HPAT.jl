@@ -2177,24 +2177,24 @@ end
 
 # TODO Add support for more types in future floats etc
 function get_mpi_type_from_array(input_array,linfo)
-    input_type = string(getType(input_array,linfo))
+    input_type = eltype(ParallelAccelerator.CGen.getSymType(input_array,linfo))
     mpi_type = ""
-    if input_type=="Array{Int64,1}"
+    if input_type==Int64
         mpi_type = "MPI_INT64_T"
-    elseif input_type=="Array{Bool,1}"
+    elseif input_type==Bool
         mpi_type = "MPI_C_BOOL"
     else
-        throw("CGen unsupported MPI reduction type")
+        throw("CGen unsupported MPI type")
     end
     return mpi_type
 end
 
 function get_j2c_type_from_array(input_array,linfo)
-    input_type = string(getType(input_array,linfo))
+    input_type = eltype(ParallelAccelerator.CGen.getSymType(input_array,linfo))
     j2c_type = ""
-    if input_type=="Array{Int64,1}"
+    if input_type==Int64
         j2c_type = "int64_t"
-    elseif input_type=="Array{Bool,1}"
+    elseif input_type==Bool
         j2c_type = "bool"
     else
         throw("CGen unsupported j2c type")
