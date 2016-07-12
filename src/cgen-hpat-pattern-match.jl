@@ -550,8 +550,11 @@ function pattern_match_call_join(linfo, f::GlobalRef,table_new_cols_len, table1_
     s *= "int $t2c1_length_join = $t2_c1_join.ARRAYLEN() ;\n "
 
     # Starting for table 1
+    t1_c1_hashes = "t1_c1_hashes" * join_rand
+    s *= "int * $t1_c1_hashes = (int*)malloc(sizeof(int)* $t1c1_length_join);\n"
     s *= "for (int i = 1 ; i <  $t1c1_length_join + 1 ; i++){\n"
     s *= "int node_id = $t1_c1_join.ARRAYELEM(i) % __hpat_num_pes ;\n"
+    s *= "$t1_c1_hashes[i-1] = node_id;\n"
     s *= "$scount_t1[node_id]++;"
     s *= "}\n"
 
@@ -563,20 +566,26 @@ function pattern_match_call_join(linfo, f::GlobalRef,table_new_cols_len, table1_
     s *= "MPI_Alltoall($scount_t1,1,MPI_INT,$rcount_t1,1,MPI_INT,MPI_COMM_WORLD);\n"
 
     # Declaring temporary buffers
+    # Assuming that all of them have same length
     for (index, col_name) in enumerate(table1_cols)
         table1_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
         tmp_table1_col_name = "tmp_" * table1_col_name
-        s *= "j2c_array< int64_t > $tmp_table1_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $table1_col_name.ARRAYLEN());\n"
-        s *= "for (int i = 1 ; i <  $table1_col_name.ARRAYLEN() + 1 ; i++){\n"
-        s *= "int node_id = $t1_c1_join.ARRAYELEM(i) % __hpat_num_pes;\n"
+        s *= "j2c_array< int64_t > $tmp_table1_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $t1c1_length_join );\n"
+        s *= "for (int i = 1 ; i <  $t1c1_length_join + 1 ; i++){\n"
+        s *= "int node_id = $t1_c1_hashes[i-1];\n"
         s *= "$tmp_table1_col_name.ARRAYELEM($sdis_t1[node_id]+$scount_t1_tmp[node_id]+1) = $table1_col_name.ARRAYELEM(i);\n"
         s *= "$scount_t1_tmp[node_id]++;\n"
         s *= "}\n"
         s *= "memset ($scount_t1_tmp, 0, sizeof(int)*__hpat_num_pes);\n"
     end
+    # delete [] $t1_c1_hashes
+
     # Starting for table 2
+    t2_c1_hashes = "t2_c1_hashes" * join_rand
+    s *= "int * $t2_c1_hashes = (int*)malloc(sizeof(int)* $t2c1_length_join);\n"
     s *= "for (int i = 1 ; i <  $t2c1_length_join + 1 ; i++){\n"
     s *= "int node_id = $t2_c1_join.ARRAYELEM(i) % __hpat_num_pes ;\n"
+    s *= "$t2_c1_hashes[i-1] = node_id;\n"
     s *= "$scount_t2[node_id]++;"
     s *= "}\n"
 
@@ -591,14 +600,15 @@ function pattern_match_call_join(linfo, f::GlobalRef,table_new_cols_len, table1_
     for (index, col_name) in enumerate(table2_cols)
         table2_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
         tmp_table2_col_name =  "tmp_" * table2_col_name
-        s *= "j2c_array< int64_t > $tmp_table2_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $table2_col_name.ARRAYLEN());\n"
-        s *= "for (int i = 1 ; i <  $table2_col_name.ARRAYLEN() + 1 ; i++){\n"
-        s *= "int node_id = $t2_c1_join.ARRAYELEM(i) % __hpat_num_pes;\n"
+        s *= "j2c_array< int64_t > $tmp_table2_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $t2c1_length_join);\n"
+        s *= "for (int i = 1 ; i <   $t2c1_length_join + 1 ; i++){\n"
+        s *= "int node_id = $t2_c1_hashes[i-1];\n"
         s *= "$tmp_table2_col_name.ARRAYELEM($sdis_t2[node_id]+$scount_t2_tmp[node_id]+1) = $table2_col_name.ARRAYELEM(i);\n"
         s *= "$scount_t2_tmp[node_id]++;\n"
         s *= "memset ($scount_t2_tmp, 0, sizeof(int)*__hpat_num_pes);\n"
         s *= "}\n"
     end
+    # delete [] t2_c1_hashes
 
     # Caculating displacements for both tables
     s *= """
@@ -610,7 +620,7 @@ function pattern_match_call_join(linfo, f::GlobalRef,table_new_cols_len, table1_
               }
         """
 
-        # Summing receiving counts
+    # Summing up receiving counts
     s *= """
             for(int i=0;i<__hpat_num_pes;i++){
                 $rsize_t1=$rsize_t1 + $rcount_t1[i];
@@ -626,6 +636,7 @@ function pattern_match_call_join(linfo, f::GlobalRef,table_new_cols_len, table1_
                      """
         s *= " $table1_col_name = rbuf_$table1_col_name; \n"
     end
+    # delete [] tmp_table1_col_name
 
     for (index, col_name) in enumerate(table2_cols)
         table2_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
@@ -636,11 +647,12 @@ function pattern_match_call_join(linfo, f::GlobalRef,table_new_cols_len, table1_
                      """
         s *= " $table2_col_name = rbuf_$table2_col_name; \n"
     end
+    # delete [] tmp_table2_col_name
 
     table_new_counter_join = "table_new_counter_join" *join_rand
     s *= "int $table_new_counter_join = 1 ; \n"
     count = 0;
-    # Initiatilizing new table arrays
+    # Initiatilizing new table(output table) arrays
     for (index, col_name) in enumerate(table1_cols)
         table_new_col_name = ParallelAccelerator.CGen.from_expr(table_new_cols[index],linfo)
         s *= "$table_new_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $rsize_t1 + $rsize_t2);\n"
