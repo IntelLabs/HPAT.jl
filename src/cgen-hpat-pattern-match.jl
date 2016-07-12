@@ -792,8 +792,11 @@ function pattern_match_call_agg(linfo, f::GlobalRef, groupby_key, num_exprs, exp
     s *= "$rdis = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
 
     # Counting displacements for table
+    agg_key_col_input_hashes = "agg_key_col_input_hashes_" * agg_rand
+    s *= "int * $agg_key_col_input_hashes = (int*)malloc(sizeof(int)* $agg_key_col_input_len);\n"
     s *= "for (int i = 1 ; i <  $agg_key_col_input_len + 1 ; i++){\n"
     s *= "int node_id = $agg_key_col_input.ARRAYELEM(i) % __hpat_num_pes ;\n"
+    s *= "$agg_key_col_input_hashes[i-1] = node_id;\n"
     s *= "$scount[node_id]++;"
     s *= "}\n"
 
@@ -807,26 +810,29 @@ function pattern_match_call_agg(linfo, f::GlobalRef, groupby_key, num_exprs, exp
     # First column is groupbykey which is handled separately
     agg_key_col_input_tmp = agg_key_col_input * "_tmp_agg_" * agg_rand
     j2c_type = get_j2c_type_from_array(groupby_key,linfo)
-    s *= "j2c_array< $j2c_type > $agg_key_col_input_tmp = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, $agg_key_col_input.ARRAYLEN());\n"
+    s *= "j2c_array< $j2c_type > $agg_key_col_input_tmp = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, $agg_key_col_input_len);\n"
     s *= "for (int i = 1 ; i <  $agg_key_col_input_len + 1 ; i++){\n"
-    s *= "int node_id =  $agg_key_col_input.ARRAYELEM(i) % __hpat_num_pes;\n"
+    s *= "int node_id =  $agg_key_col_input_hashes[i-1];\n"
     s *= "$agg_key_col_input_tmp.ARRAYELEM($sdis[node_id]+$scount_tmp[node_id]+1) = $agg_key_col_input.ARRAYELEM(i);\n"
     s *= "$scount_tmp[node_id]++;\n"
     s *= "}\n"
     s *= "memset ($scount_tmp, 0, sizeof(int)*__hpat_num_pes);\n"
+
+    # Assuming all the columns are of same length
     for (index, col_name) in enumerate(exprs_list)
         expr_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
         expr_name_tmp = expr_name * "_tmp_agg_" * agg_rand
         j2c_type = get_j2c_type_from_array(col_name,linfo)
-        s *= "j2c_array< $j2c_type > $expr_name_tmp = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, $expr_name.ARRAYLEN());\n"
+        s *= "j2c_array< $j2c_type > $expr_name_tmp = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, $agg_key_col_input_len);\n"
         s *= "for (int i = 1 ; i <  $expr_name.ARRAYLEN() + 1 ; i++){\n"
-        s *= "int node_id =  $agg_key_col_input.ARRAYELEM(i) % __hpat_num_pes;\n"
+        s *= "int node_id =  $agg_key_col_input_hashes[i-1];\n"
         s *= "$expr_name_tmp.ARRAYELEM($sdis[node_id]+$scount_tmp[node_id]+1) = $expr_name.ARRAYELEM(i);\n"
         s *= "$scount_tmp[node_id]++;\n"
         s *= "}\n"
         s *= "memset ($scount_tmp, 0, sizeof(int)*__hpat_num_pes);\n"
     end
-    #    s *= "}}};\n"
+
+    # delete [] agg_key_col_input_hashes
 
     # Caculating displacements
     s *= """
@@ -843,6 +849,7 @@ function pattern_match_call_agg(linfo, f::GlobalRef, groupby_key, num_exprs, exp
               }
             """
     # First column is groupbykey which is handled separately
+    # After mpi_alltoallv the length of agg_key_col_input is changed. Don't use agg_key_col_input_len
     mpi_type = get_mpi_type_from_array(groupby_key,linfo)
     j2c_type = get_j2c_type_from_array(groupby_key,linfo)
     s *= " j2c_array< $j2c_type > rbuf_$agg_key_col_input = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, $rsize);\n"
@@ -850,6 +857,8 @@ function pattern_match_call_agg(linfo, f::GlobalRef, groupby_key, num_exprs, exp
                                          rbuf_$agg_key_col_input.getData(), $rcount, $rdis, $mpi_type, MPI_COMM_WORLD);
                          """
     s *= " $agg_key_col_input = rbuf_$agg_key_col_input; \n"
+    # delete [] agg_key_col_input_tmp
+
     for (index, col_name) in enumerate(exprs_list)
         mpi_type = get_mpi_type_from_array(col_name,linfo)
         j2c_type = get_j2c_type_from_array(col_name,linfo)
@@ -861,6 +870,7 @@ function pattern_match_call_agg(linfo, f::GlobalRef, groupby_key, num_exprs, exp
                          """
         s *= " $expr_name = rbuf_$expr_name; \n"
     end
+    # delete [] expr_name_tmp
 
     # Temporary map for each column
     for (index, value) in enumerate(output_cols_list)
