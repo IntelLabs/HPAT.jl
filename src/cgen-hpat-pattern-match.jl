@@ -52,7 +52,9 @@ end
 
 function pattern_match_call_dist_init2d(f::GlobalRef,linfo)
     if f.name==:hpat_dist_2d_init
-        return """    blacs_setup_( &__hpat_node_id, &__hpat_num_pes);
+        return """    MKL_INT tmp_nodeid = (MKL_INT)__hpat_node_id;
+                      MKL_INT tmp_numpes = (MKL_INT)__hpat_num_pes;
+                      blacs_setup_( &tmp_nodeid, &tmp_numpes);
                       // get default context
                       double  zero = 0.0E+0, one = 1.0E+0, two = 2.0E+0, negone = -1.0E+0;
                       MKL_INT i_zero = 0, i_one = 1, i_four = 4, i_negone = -1;
