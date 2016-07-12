@@ -100,7 +100,7 @@ ParallelAccelerator.CGen.setExternalPatternMatchAssignment(CGenPatternMatch.from
 
 HPAT_path = joinpath(dirname(@__FILE__), "..")
 
-HPAT_includes = string("#include <ctime>\n#include <unordered_map>\n#include \"", HPAT_path, "/deps/include/hpat.h\"\n")
+HPAT_includes = string("#include <ctime>\n#include <stdlib.h>\n#include <unordered_map>\n#include \"", HPAT_path, "/deps/include/hpat.h\"\n#include \"", HPAT_path, "/deps/include/hpat_sort.h\"\n")
 ParallelAccelerator.CGen.addCgenUserOptions(ParallelAccelerator.CGen.CgenUserOptions(HPAT_includes))
 
 function addHpatInclude(stmts)
