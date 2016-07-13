@@ -483,6 +483,9 @@ function pattern_match_call_join(linfo, f::GlobalRef,table_new_cols_len, table1_
     if f.name!=:__hpat_join
         return s
     end
+    HPAT_path = joinpath(dirname(@__FILE__), "..")
+    HPAT_includes = string("\n#include \"", HPAT_path, "/deps/include/hpat_sort.h\"\n")
+    ParallelAccelerator.CGen.addCgenUserOptions(ParallelAccelerator.CGen.CgenUserOptions(HPAT_includes))
 
     # its an array of array. array[2:end] and table_cols... notation does that
     table_columns = table_columns[1]
@@ -795,6 +798,10 @@ function pattern_match_call_agg_seq(linfo, f::GlobalRef, groupby_key, num_exprs,
     if f.name!=:__hpat_aggregate
         return s
     end
+    HPAT_path = joinpath(dirname(@__FILE__), "..")
+    HPAT_includes = string("\n#include <unordered_map>\n")
+    ParallelAccelerator.CGen.addCgenUserOptions(ParallelAccelerator.CGen.CgenUserOptions(HPAT_includes))
+
     expr_func_output_list = expr_func_output_list[1]
     exprs_list = expr_func_output_list[1:num_exprs]
     funcs_list = expr_func_output_list[num_exprs+1:(2*num_exprs)]
@@ -847,6 +854,10 @@ function pattern_match_call_agg(linfo, f::GlobalRef, groupby_key, num_exprs, exp
     if f.name!=:__hpat_aggregate
         return s
     end
+    HPAT_path = joinpath(dirname(@__FILE__), "..")
+    HPAT_includes = string("\n#include <unordered_map>\n")
+    ParallelAccelerator.CGen.addCgenUserOptions(ParallelAccelerator.CGen.CgenUserOptions(HPAT_includes))
+
     expr_func_output_list = expr_func_output_list[1]
     exprs_list = expr_func_output_list[1:num_exprs]
     funcs_list = expr_func_output_list[num_exprs+1:(2*num_exprs)]
