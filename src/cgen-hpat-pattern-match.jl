@@ -571,7 +571,7 @@ function pattern_match_call_join(linfo, f::GlobalRef,table_new_cols_len, table1_
     end
 
     s *= "for (int i = 1 ; i <   $t2c1_length_join + 1 ; i++){\n"
-    s *= "int node_id = $t1_c1_join.ARRAYELEM(i) % __hpat_num_pes ;\n"
+    s *= "int node_id = $t2_c1_join.ARRAYELEM(i) % __hpat_num_pes ;\n"
     for (index, col_name) in enumerate(table2_cols)
         table2_col_name =ParallelAccelerator.CGen.from_expr(col_name,linfo)
         table2_col_name_tmp =  table2_col_name * "_tmp_join_" * join_rand
