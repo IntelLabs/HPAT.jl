@@ -155,19 +155,7 @@ end
 
 function pattern_match_call_dist_reduce(f::GlobalRef, var::TypedVar, reductionFunc::DelayedFunc, output::LHSVar,linfo)
     if f.name==:hpat_dist_reduce
-        mpi_type = ""
-        if var.typ==Float64
-            mpi_type = "MPI_DOUBLE"
-        elseif var.typ==Float32
-            mpi_type = "MPI_FLOAT"
-        elseif var.typ==Int32
-            mpi_type = "MPI_INT"
-        elseif var.typ==Int64
-            mpi_type = "MPI_LONG_LONG_INT"
-        else
-            throw("CGen unsupported MPI reduction type")
-        end
-
+        mpi_type = get_mpi_type_from_var_type(var.typ)
         mpi_func = ""
         if pattern_match_reduce_sum(reductionFunc, linfo)
             mpi_func = "MPI_SUM"
@@ -233,18 +221,7 @@ function pattern_match_call_dist_allreduce(f::GlobalRef, var::RHSVar, reductionF
             c_var = "&"*c_var
             c_output = "&"*c_output
         end
-        if var_typ==Float64
-            mpi_type = "MPI_DOUBLE"
-        elseif var_typ==Float32
-            mpi_type = "MPI_FLOAT"
-        elseif var_typ==Int32
-            mpi_type = "MPI_INT"
-        elseif var_typ==Int64
-            mpi_type = "MPI_LONG_LONG_INT"
-        else
-            println("reduction type ", var_typ)
-            throw("CGen unsupported MPI reduction type")
-        end
+        mpi_type = get_mpi_type_from_var_type(var_typ)
 
         mpi_func = ""
         if pattern_match_reduce_sum(reductionFunc, linfo)
@@ -281,19 +258,7 @@ function pattern_match_call_dist_bcast(f::GlobalRef, var::RHSVar, size::ANY,linf
         else
             c_var = "&"*c_var
         end
-        if var_typ==Float64
-            mpi_type = "MPI_DOUBLE"
-        elseif var_typ==Float32
-            mpi_type = "MPI_FLOAT"
-        elseif var_typ==Int32
-            mpi_type = "MPI_INT"
-        elseif var_typ==Int64
-            mpi_type = "MPI_LONG_LONG_INT"
-        else
-            println("reduction type ", var_typ)
-            throw("CGen unsupported MPI broadcast type")
-        end
-
+        mpi_type = get_mpi_type_from_var_type(var_typ)
         s="MPI_Bcast($c_var, $c_size, $mpi_type, 0, MPI_COMM_WORLD);"
         return s
     else
@@ -2210,6 +2175,22 @@ function get_j2c_type_from_array(input_array,linfo)
         throw("CGen unsupported j2c type")
     end
     return j2c_type
+end
+
+function get_mpi_type_from_var_type(var_typ)
+    mpi_type = ""
+    if var_typ==Float64
+        mpi_type = "MPI_DOUBLE"
+    elseif var_typ==Float32
+        mpi_type = "MPI_FLOAT"
+    elseif var_typ==Int32
+        mpi_type = "MPI_INT"
+    elseif var_typ==Int64
+        mpi_type = "MPI_LONG_LONG_INT"
+    else
+        throw("CGen unsupported MPI reduction type")
+    end
+    return mpi_type
 end
 
 end # module
