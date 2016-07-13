@@ -584,7 +584,6 @@ function pattern_match_call_join(linfo, f::GlobalRef,table_new_cols_len, table1_
     end
     s *= "$scount_t1_tmp[node_id]++;\n"
     s *= "}\n"
-    s *= "memset ($scount_t1_tmp, 0, sizeof(int)*__hpat_num_pes);\n"
 
     # Starting for table 2
     s *= "for (int i = 1 ; i <  $t2c1_length_join + 1 ; i++){\n"
@@ -615,7 +614,6 @@ function pattern_match_call_join(linfo, f::GlobalRef,table_new_cols_len, table1_
     end
     s *= "$scount_t2_tmp[node_id]++;\n"
     s *= "}\n"
-    s *= "memset ($scount_t2_tmp, 0, sizeof(int)*__hpat_num_pes);\n"
 
     # Caculating displacements for both tables
     s *= """
