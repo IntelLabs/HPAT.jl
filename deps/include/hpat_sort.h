@@ -1,21 +1,91 @@
 #ifndef HPAT_SORT_H_
 #define HPAT_SORT_H_
 
-#ifndef SORT_CMP
-#define SORT_CMP(x, y)  ((x) < (y) ? -1 : ((x) == (y) ? 0 : 1))
-#endif
+int __hpat_sort_compare(int64_t x, int64_t y){
+  if (x < y)
+    return -1;
+  else if (x == y)
+    return 0;
+  else
+    return 1;
+}
 
-#define SORT_SWAP(x,y) {int64_t __SORT_SWAP_t = (x); (x) = (y); (y) = __SORT_SWAP_t;}
 
-typedef struct {
-  uint64_t start;
-  uint64_t length;
-} TIM_SORT_RUN_T;
+//Declarations
+static void __hpat_binary_insertionsort_index(int64_t *comp_arr, const size_t start, const size_t size, int64_t ** all_arrs ,const size_t all_arrs_len);
+static int64_t __hpat_binary_insertionsort_search(int64_t *comp_arr, const int64_t x, const size_t size);
 
-typedef struct {
-  size_t alloc;
-  int64_t *storage;
-} TEMP_STORAGE_T;
+// Basic binary search to find the right position
+static __inline int64_t __hpat_binary_insertionsort_search(int64_t *comp_arr, const int64_t elem,const size_t size) {
+  int64_t low, mid, high, pivot;
+  low = 0;
+  high = size - 1;
+  mid = high >> 1;
+  // If it is less than low
+  if (__hpat_sort_compare(elem, comp_arr[0]) < 0) {
+    return 0;
+  } else if (__hpat_sort_compare(elem, comp_arr[high]) > 0) {
+    return high;
+  }
+  pivot = comp_arr[mid];
+  while (1) {
+    if (__hpat_sort_compare(elem, pivot) < 0) {
+      if (mid - low <= 1) {
+        return mid;
+      }
+      high = mid;
+    } else {
+      if (high - mid <= 1) {
+        return mid + 1;
+      }
+      low = mid;
+    }
+    mid = low + ((high - low) >> 1);
+    pivot = comp_arr[mid];
+  }
+}
+
+// Binary search with different starting index
+static void __hpat_binary_insertionsort_index(int64_t *comp_arr, const size_t start, const size_t size, int64_t ** all_arrs ,const size_t all_arrs_len) {
+  for (int64_t ind_start = start; ind_start < size; ind_start++) {
+    int64_t ind_curr, elem, pivot;
+    // Already sorted
+    if (__hpat_sort_compare(comp_arr[ind_start - 1], comp_arr[ind_start]) <= 0) {
+      continue;
+    }
+    elem = comp_arr[ind_start];
+    int64_t temp_x[all_arrs_len];
+    for (int k = 0 ; k < all_arrs_len ; k++){
+      int64_t * cur_arr = all_arrs[k];
+      temp_x[k]= cur_arr[ind_start];
+    }
+    pivot = __hpat_binary_insertionsort_search(comp_arr, elem, ind_start);
+    for (ind_curr = ind_start - 1; ind_curr >= pivot; ind_curr--) {
+      //std::cout << "swapping" << std::endl;
+      comp_arr[ind_curr + 1] = comp_arr[ind_curr];
+      for (int k = 0 ; k < all_arrs_len ; k++){
+	int64_t * cur_arr = all_arrs[k];
+	cur_arr[ind_curr + 1] = cur_arr[ind_curr];
+      }
+    }
+    comp_arr[pivot] = elem;
+    for (int k = 0 ; k < all_arrs_len ; k++){
+      int64_t * cur_arr = all_arrs[k];
+      cur_arr[pivot] = temp_x[k];
+    }
+  }
+}
+
+void TIM_SORT(int64_t *dst, const size_t size,int64_t ** all_arrs,const size_t all_arrs_len) {
+  std::cout << "TIM SORT" << std::endl;
+  if (size <= 1) {
+    return;
+  }
+  if (size < 64) {
+    __hpat_binary_insertionsort_index(dst, 1,size,all_arrs, all_arrs_len);
+    return;
+  }
+}
 
 int __hpat_quicksort_partition( int64_t ** arr,int64_t size ,int64_t* comp_arr , int low, int high) {
   int64_t pivot, t;
