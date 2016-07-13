@@ -76,8 +76,7 @@ static void __hpat_binary_insertionsort_index(int64_t *comp_arr, const size_t st
   }
 }
 
-void TIM_SORT(int64_t *dst, const size_t size,int64_t ** all_arrs,const size_t all_arrs_len) {
-  std::cout << "TIM SORT" << std::endl;
+void __hpat_timsort(int64_t *dst, const size_t size,int64_t ** all_arrs,const size_t all_arrs_len) {
   if (size <= 1) {
     return;
   }
