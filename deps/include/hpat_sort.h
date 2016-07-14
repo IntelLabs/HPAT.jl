@@ -375,7 +375,7 @@ static void __hpat_timsort_mergeright_run(int64_t *comp_arr, const int64_t run1_
     } else if (temp_buffer_ind >= 0) {
       comp_arr[curr] = temp_buffer[temp_buffer_ind--];
     } else {
-      comp_arr[curr] = temp_buffer[run1_high--];
+      comp_arr[curr] = comp_arr[run1_high--];
     }
   }
 }
