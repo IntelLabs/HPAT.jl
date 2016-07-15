@@ -663,9 +663,10 @@ function pattern_match_call_join(linfo, f::GlobalRef,table_new_cols_len, table1_
         table2_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
         s *= "$t2_all_arrays [$arr_index] = ( $j2c_type_t2 *) $table2_col_name.getData();\n"
     end
-
-    s *= "__hpat_quicksort($t1_all_arrays,$t1_length - 1, ( $j2c_type_t1 *) $t1_c1_join.getData(), 0, $rsize_t1 - 1);\n"
-    s *= "__hpat_quicksort($t2_all_arrays,$t2_length - 1, ( $j2c_type_t2 *) $t2_c1_join.getData(), 0, $rsize_t2 - 1);\n"
+    s *= "__hpat_timsort(( $j2c_type_t1 *) $t1_c1_join.getData(), $rsize_t1 , $t1_all_arrays, $t1_length - 1);\n"
+    s *= "__hpat_timsort(( $j2c_type_t2 *) $t2_c1_join.getData(), $rsize_t2 , $t2_all_arrays, $t2_length - 1);\n"
+    # s *= "__hpat_quicksort($t1_all_arrays,$t1_length - 1, ( $j2c_type_t1 *) $t1_c1_join.getData(), 0, $rsize_t1 - 1);\n"
+    # s *= "__hpat_quicksort($t2_all_arrays,$t2_length - 1, ( $j2c_type_t2 *) $t2_c1_join.getData(), 0, $rsize_t2 - 1);\n"
 
     #s *= "qsort($t2_c1_join.getData(),$rsize_t2, sizeof( $j2c_type_t2 ), __hpat_compare_qsort_$j2c_type_t2);\n"
     # after the arrays has been sorted merge them
