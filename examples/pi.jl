@@ -28,9 +28,9 @@ using MPI
 using DocOpt
 
 @acc hpat function calcPi(n::Int64)
-    x = rand(n) .* 2.0 .- 1.0
-    y = rand(n) .* 2.0 .- 1.0
-    return 4.0*sum(x.^2 .+ y.^2 .< 1.0)/n
+    x = rand(n) * 2 - 1
+    y = rand(n) * 2 - 1
+    return 4.0*sum(x.^2 + y.^2 .< 1)/n
 end
 
 function main()
