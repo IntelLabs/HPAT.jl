@@ -214,6 +214,10 @@ static int64_t __hpat_timsort_count_run(int64_t *comp_arr, const uint64_t start,
   if (start >= size - 2) {
     if (__hpat_sort_compare(comp_arr[size - 2], comp_arr[size - 1]) > 0) {
       __hpat_sort_swap(&comp_arr[size - 2], &comp_arr[size - 1]);
+      for (int k = 0 ; k < all_arrs_len; k++){
+	int64_t * curr_arr = all_arrs[k];
+	__hpat_sort_swap(&curr_arr[size - 2], &curr_arr[size - 1]);
+      }
     }
     return 2;
   }
@@ -242,7 +246,13 @@ static int __hpat_timsort_getrun(int64_t *comp_arr, const size_t size, __HPAT_TI
     run = size - *curr;
   }
   if (run > run_size) {
-    __hpat_binary_insertionsort_index(&comp_arr[*curr], run_size, run,all_arrs, all_arrs_len);
+    int64_t * temp_all_arrs[all_arrs_len];
+    // As we are starting from different index/start
+    for (int k = 0 ; k < all_arrs_len; k++){
+      int64_t * curr_arr = all_arrs[k];
+      temp_all_arrs[k] = &curr_arr[*curr];
+    }
+    __hpat_binary_insertionsort_index(&comp_arr[*curr], run_size, run, temp_all_arrs, all_arrs_len);
     run_size = run;
   }
   run_stack->_stack[run_stack->size].start = *curr;
@@ -335,48 +345,142 @@ static void __hpat_timsort_resize_buffer(__HPAT_TIMSORT_TEMP_BUFFER *store, cons
     store->size = new_size;
   }
 }
-static void __hpat_timsort_mergeleft_run(int64_t *comp_arr, const int64_t run1_len, const int64_t run2_len, int64_t * temp_buffer, const int64_t stack_ptr, int64_t ** all_arrs, const size_t all_arrs_len) {
+static void __hpat_timsort_mergeleft_run(int64_t *comp_arr, const int64_t run1_len, const int64_t run2_len, int64_t * temp_buffer,
+                                         const int64_t stack_ptr, int64_t ** all_arrs, const size_t all_arrs_len, const size_t min_len) {
   // array layout [ run 1 || run 2]
   int64_t temp_buffer_ind, run2_low, curr;
   // Make temporary copy
   memcpy(temp_buffer, &comp_arr[stack_ptr], run1_len * sizeof(int64_t));
+
+  int64_t * temp_x[all_arrs_len];
+  for (int k = 0 ; k < all_arrs_len; k++){
+    int64_t * curr_arr = all_arrs[k];
+    temp_x[k] = (int64_t*)malloc(sizeof(int64_t)* min_len);
+    memcpy(temp_x[k], &curr_arr[stack_ptr], run1_len * sizeof(int64_t));
+  }
   temp_buffer_ind = 0;
   run2_low = stack_ptr + run1_len;
   int64_t total_len = stack_ptr + run1_len + run2_len;
   for (curr = stack_ptr; curr < total_len; curr++) {
     if ((temp_buffer_ind < run1_len) && (run2_low < total_len)) {
       if (__hpat_sort_compare(temp_buffer[temp_buffer_ind], comp_arr[run2_low]) <= 0) {
-        comp_arr[curr] = temp_buffer[temp_buffer_ind++];
+
+        comp_arr[curr] = temp_buffer[temp_buffer_ind];
+
+        for (int k = 0 ; k < all_arrs_len; k++){
+          int64_t * curr_arr = all_arrs[k];
+          int64_t * temp_curr_arr = temp_x[k];
+          curr_arr[curr] = temp_curr_arr[temp_buffer_ind];
+        }
+        temp_buffer_ind++;
+
       } else {
-        comp_arr[curr] = comp_arr[run2_low++];
+
+        comp_arr[curr] = comp_arr[run2_low];
+
+        for (int k = 0 ; k < all_arrs_len; k++){
+          int64_t * curr_arr = all_arrs[k];
+          curr_arr[curr] = curr_arr[run2_low];
+        }
+        run2_low++;
       }
+
     } else if (temp_buffer_ind < run1_len) {
-      comp_arr[curr] = temp_buffer[temp_buffer_ind++];
+
+      comp_arr[curr] = temp_buffer[temp_buffer_ind];
+
+      for (int k = 0 ; k < all_arrs_len; k++){
+        int64_t * curr_arr = all_arrs[k];
+        int64_t * temp_curr_arr = temp_x[k];
+        curr_arr[curr] = temp_curr_arr[temp_buffer_ind];
+      }
+      temp_buffer_ind++;
+
     } else {
-      comp_arr[curr] = comp_arr[run2_low++];
+
+      comp_arr[curr] = comp_arr[run2_low];
+
+      for (int k = 0 ; k < all_arrs_len; k++){
+        int64_t * curr_arr = all_arrs[k];
+        curr_arr[curr] = curr_arr[run2_low];
+      }
+      run2_low++;
+
     }
   }
+  // deleting malloc
+  for (int k = 0 ; k < all_arrs_len; k++){
+    free(temp_x[k]);
+  }
 }
-static void __hpat_timsort_mergeright_run(int64_t *comp_arr, const int64_t run1_len, const int64_t run2_len, int64_t * temp_buffer, const int64_t stack_ptr, int64_t ** all_arrs, const size_t all_arrs_len) {
+static void __hpat_timsort_mergeright_run(int64_t *comp_arr, const int64_t run1_len, const int64_t run2_len, int64_t * temp_buffer,
+                                          const int64_t stack_ptr, int64_t ** all_arrs, const size_t all_arrs_len ,const size_t min_len) {
   // array layout [ run 1 || run 2]
   int64_t temp_buffer_ind, run1_high, curr;
   // Make temporary copy
   memcpy(temp_buffer, &comp_arr[stack_ptr + run1_len], run2_len * sizeof(int64_t));
+
+  int64_t * temp_x[all_arrs_len];
+  for (int k = 0 ; k < all_arrs_len; k++){
+    int64_t * curr_arr = all_arrs[k];
+    temp_x[k] = (int64_t*)malloc(sizeof(int64_t)* min_len);
+    memcpy(temp_x[k], &curr_arr[stack_ptr + run1_len], run2_len * sizeof(int64_t));
+  }
+
   temp_buffer_ind = run2_len - 1;
   run1_high = stack_ptr + run1_len - 1;
   int64_t total_len = stack_ptr + run1_len + run2_len;
+
   for (curr = total_len - 1; curr >= stack_ptr ; curr--) {
     if ((temp_buffer_ind >= 0) && (run1_high >= stack_ptr)) {
       if (__hpat_sort_compare(comp_arr[run1_high], temp_buffer[temp_buffer_ind]) > 0) {
-        comp_arr[curr] = comp_arr[run1_high--];
+
+        comp_arr[curr] = comp_arr[run1_high];
+
+        for (int k = 0 ; k < all_arrs_len; k++){
+          int64_t * curr_arr = all_arrs[k];
+          curr_arr[curr] = curr_arr[run1_high];
+        }
+        run1_high--;
+
       } else {
-        comp_arr[curr] = temp_buffer[temp_buffer_ind--];
+
+        comp_arr[curr] = temp_buffer[temp_buffer_ind];
+
+        for (int k = 0 ; k < all_arrs_len; k++){
+          int64_t * curr_arr = all_arrs[k];
+          int64_t * temp_curr_arr = temp_x[k];
+          curr_arr[curr] = temp_curr_arr[temp_buffer_ind];
+        }
+        temp_buffer_ind--;
       }
+
     } else if (temp_buffer_ind >= 0) {
-      comp_arr[curr] = temp_buffer[temp_buffer_ind--];
+
+      comp_arr[curr] = temp_buffer[temp_buffer_ind];
+
+      for (int k = 0 ; k < all_arrs_len; k++){
+        int64_t * curr_arr = all_arrs[k];
+        int64_t * temp_curr_arr = temp_x[k];
+        curr_arr[curr] = temp_curr_arr[temp_buffer_ind];
+      }
+      temp_buffer_ind--;
+
     } else {
-      comp_arr[curr] = comp_arr[run1_high--];
+
+      comp_arr[curr] = comp_arr[run1_high];
+
+      for (int k = 0 ; k < all_arrs_len; k++){
+        int64_t * curr_arr = all_arrs[k];
+        curr_arr[curr] = curr_arr[run1_high];
+      }
+      run1_high--;
+
     }
+  }
+  // deleting malloc
+  for (int k = 0 ; k < all_arrs_len; k++){
+    free(temp_x[k]);
   }
 }
 
@@ -385,12 +489,13 @@ static void __hpat_timsort_merge_run(int64_t *comp_arr, const __HPAT_TIMSORT_RUN
   const int64_t len2 = run_stack->_stack[run_stack->size - 1].length;
   const int64_t stack_ptr = run_stack->_stack[run_stack->size - 2].start;
   int64_t *temp_buffer;
-  __hpat_timsort_resize_buffer(store, MIN(len1, len2));
+  int64_t min_len = MIN(len1, len2);
+  __hpat_timsort_resize_buffer(store, min_len);
   temp_buffer = store->buffer;
   if (len1 < len2) {
-    __hpat_timsort_mergeleft_run(comp_arr, len1, len2, temp_buffer, stack_ptr, all_arrs, all_arrs_len);
+    __hpat_timsort_mergeleft_run(comp_arr, len1, len2, temp_buffer, stack_ptr, all_arrs, all_arrs_len, min_len);
   } else {
-    __hpat_timsort_mergeright_run(comp_arr, len1, len2, temp_buffer, stack_ptr, all_arrs, all_arrs_len);
+    __hpat_timsort_mergeright_run(comp_arr, len1, len2, temp_buffer, stack_ptr, all_arrs, all_arrs_len, min_len);
   }
 }
 
