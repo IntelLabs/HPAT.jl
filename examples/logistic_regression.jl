@@ -32,10 +32,10 @@ using DocOpt
     responses = DataSource(Vector{Float32},HDF5,"/responses", file_name)
     D,N = size(points) # number of features,samples
     labels = reshape(responses,1,N)
-    w = reshape(2.0f0.*rand(Float32,D)-1.0f0,1,D)
+    w = reshape(2*rand(Float32,D)-1,1,D)
 
     for i in 1:iterations
-       w -= ((1.0f0./(1.0f0.+exp(-labels.*(w*points))).-1.0f0).*labels)*points'
+       w -= ((1./(1+exp(-labels.*(w*points)))-1).*labels)*points'
     end
     w
 end
