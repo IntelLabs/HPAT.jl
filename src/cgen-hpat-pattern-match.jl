@@ -448,6 +448,7 @@ function pattern_match_call_join(linfo, f::GlobalRef,table_new_cols_len, table1_
     if f.name!=:__hpat_join
         return s
     end
+    # TODO remove join random. Use join id/counter in domain pass and pass to this function
     HPAT_path = joinpath(dirname(@__FILE__), "..")
     HPAT_includes = string("\n#include \"", HPAT_path, "/deps/include/hpat_sort.h\"\n")
     ParallelAccelerator.CGen.addCgenUserOptions(ParallelAccelerator.CGen.CgenUserOptions(HPAT_includes))
@@ -819,6 +820,7 @@ function pattern_match_call_agg(linfo, f::GlobalRef, groupby_key, num_exprs, exp
     if f.name!=:__hpat_aggregate
         return s
     end
+    # TODO remove aggregate random. Use aggregate id/counter in domain pass and pass to this function
     HPAT_path = joinpath(dirname(@__FILE__), "..")
     HPAT_includes = string("\n#include <unordered_map>\n")
     ParallelAccelerator.CGen.addCgenUserOptions(ParallelAccelerator.CGen.CgenUserOptions(HPAT_includes))
@@ -883,7 +885,7 @@ function pattern_match_call_agg(linfo, f::GlobalRef, groupby_key, num_exprs, exp
         j2c_type = get_j2c_type_from_array(col_name,linfo)
         s *= "j2c_array< $j2c_type > $expr_name_tmp = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, $agg_key_col_input_len);\n"
     end
-    
+
     s *= "for (int i = 1 ; i <  $agg_key_col_input_len + 1 ; i++){\n"
     s *= "int node_id = $agg_key_col_input.ARRAYELEM(i) % __hpat_num_pes ;\n"
     # Assuming all the columns are of same length
@@ -892,12 +894,12 @@ function pattern_match_call_agg(linfo, f::GlobalRef, groupby_key, num_exprs, exp
         expr_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
         expr_name_tmp = expr_name * "_tmp_agg_" * agg_rand
         j2c_type = get_j2c_type_from_array(col_name,linfo)
-    
+
         s *= "$expr_name_tmp.ARRAYELEM($sdis[node_id]+$scount_tmp[node_id]+1) = $expr_name.ARRAYELEM(i);\n"
     end
     s *= "$scount_tmp[node_id]++;\n"
     s *= "}\n"
-    
+
     # delete [] agg_key_col_input_hashes
 
     # Caculating displacements
@@ -924,7 +926,7 @@ function pattern_match_call_agg(linfo, f::GlobalRef, groupby_key, num_exprs, exp
                          """
     s *= " $agg_key_col_input = rbuf_$agg_key_col_input; \n"
     # delete [] agg_key_col_input_tmp
-
+    # TODO before moving data using mpialltoallv use combiner to do aggregate locally
     for (index, col_name) in enumerate(exprs_list)
         mpi_type = get_mpi_type_from_array(col_name,linfo)
         j2c_type = get_j2c_type_from_array(col_name,linfo)
@@ -938,6 +940,7 @@ function pattern_match_call_agg(linfo, f::GlobalRef, groupby_key, num_exprs, exp
     end
     # delete [] expr_name_tmp
 
+    # TODO Only need one map and use write counter for each value, Use j2c arrays
     # Temporary map for each column
     for (index, value) in enumerate(output_cols_list)
         table_new_col_name = ParallelAccelerator.CGen.from_expr(value,linfo)
