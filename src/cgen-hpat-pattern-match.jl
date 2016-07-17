@@ -940,38 +940,45 @@ function pattern_match_call_agg(linfo, f::GlobalRef, groupby_key, num_exprs, exp
     end
     # delete [] expr_name_tmp
 
-    # TODO Only need one map and use write counter for each value, Use j2c arrays
-    # Temporary map for each column
-    for (index, value) in enumerate(output_cols_list)
-        table_new_col_name = ParallelAccelerator.CGen.from_expr(value,linfo)
-        s *= "std::unordered_map<int,int> temp_map_$table_new_col_name ;\n"
-    end
-    agg_key_map_temp = "temp_map_$agg_key_col_output"
-    s *= "for(int i = 1 ; i < $agg_key_col_input.ARRAYLEN() + 1 ; i++){\n"
-    s *= "$agg_key_map_temp[$agg_key_col_input.ARRAYELEM(i)] = $agg_key_col_input.ARRAYELEM(i);\n"
-    for (index, func) in enumerate(funcs_list)
-        column_name = ""
-        expr_name = ParallelAccelerator.CGen.from_expr(exprs_list[index],linfo)
-        map_name = "temp_map_" * ParallelAccelerator.CGen.from_expr(output_cols_list[index+1],linfo)
-        s *= return_reduction_string_with_closure(agg_key_col_input, expr_name, map_name, func)
-    end
-    s *= "}\n"
-    # Initializing new columns
     for col_name in output_cols_list
         j2c_type = get_j2c_type_from_array(col_name,linfo)
         arr_col_name = ParallelAccelerator.CGen.from_expr(col_name, linfo)
-        s *= "$arr_col_name = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, $agg_key_map_temp.size());\n"
+        s *= "$arr_col_name = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, $agg_key_col_input.ARRAYLEN());\n"
     end
-    # copy back the values from map into arrays
-    counter_agg = "counter_agg$agg_rand"
-    s *= "int $counter_agg = 1;\n"
-    s *= "for(auto i : $agg_key_map_temp){\n"
-    for (index, value) in enumerate(output_cols_list)
-        map_name = ParallelAccelerator.CGen.from_expr(value, linfo)
-        s *= "$map_name.ARRAYELEM($counter_agg) = temp_map_$map_name[i.first];\n"
+    agg_key_map_temp = "temp_map_$agg_key_col_output"
+    s *= "std::unordered_map<int,int> $agg_key_map_temp ;\n"
+
+    agg_write_index = "agg_write_index_" * agg_rand
+    s *= "int $agg_write_index = 1;"
+    s *= "for(int i = 1 ; i < $agg_key_col_input.ARRAYLEN() + 1 ; i++){\n"
+    s *= "if ($agg_key_map_temp.find($agg_key_col_input.ARRAYELEM(i)) == $agg_key_map_temp.end()){"
+    s *= "$agg_key_map_temp[$agg_key_col_input.ARRAYELEM(i)] = $agg_write_index ;\n"
+    col_name = ParallelAccelerator.CGen.from_expr(output_cols_list[1], linfo)
+    s *= "$col_name.ARRAYELEM($agg_write_index) = $agg_key_col_input.ARRAYELEM(i);\n"
+    for (index, func) in enumerate(funcs_list)
+        expr_name = ParallelAccelerator.CGen.from_expr(exprs_list[index],linfo)
+        new_col_name = ParallelAccelerator.CGen.from_expr(output_cols_list[index + 1], linfo)
+        s *= return_reduction_string_with_closure_first_elem(new_col_name, expr_name, func, agg_write_index)
     end
-    s *= "$counter_agg++;\n"
+    s *= "$agg_write_index++;\n"
     s *= "}\n"
+    s *= "else{\n"
+    current_write_index = "current_write_index" * agg_rand
+    s *= "int $current_write_index = $agg_key_map_temp[$agg_key_col_input.ARRAYELEM(i)]; \n"
+    for (index, func) in enumerate(funcs_list)
+        expr_name = ParallelAccelerator.CGen.from_expr(exprs_list[index],linfo)
+        new_col_name = ParallelAccelerator.CGen.from_expr(output_cols_list[index + 1], linfo)
+        s *= return_reduction_string_with_closure_second_elem(new_col_name, expr_name, func, current_write_index)
+    end
+    s *= "}\n"
+    s *= "}\n"
+    counter_agg = "counter_agg$agg_rand"
+    s *= "int $counter_agg = $agg_key_map_temp.size();\n"
+    for col_name in output_cols_list
+        j2c_type = get_j2c_type_from_array(col_name,linfo)
+        arr_col_name = ParallelAccelerator.CGen.from_expr(col_name, linfo)
+        s *= "$arr_col_name.dims[0] = $counter_agg ;\n"
+    end
     return s
 end
 
@@ -2147,6 +2154,31 @@ function return_reduction_string_with_closure(agg_key_col_input,expr_arr,agg_map
         s *= "else{ \n"
         s *= "if (agg_map_count[$agg_key_col_input.ARRAYELEM(i)] < $expr_arr.ARRAYELEM(i) ) \n"
         s *= "$agg_map[$agg_key_col_input.ARRAYELEM(i)] = $expr_arr.ARRAYELEM(i) ;}\n\n"
+    end
+    return s
+end
+
+function return_reduction_string_with_closure_first_elem(new_column_name,expr_arr,func,write_index)
+    s = ""
+    if string(func) == "Main.length"
+        s *= "$new_column_name.ARRAYELEM($write_index) = 1;\n"
+    elseif string(func) == "Main.sum"
+        s *= "$new_column_name.ARRAYELEM($write_index) = $expr_arr.ARRAYELEM(i) ;\n"
+    elseif string(func) == "Main.max"
+        s *= "$new_column_name.ARRAYELEM($write_index) = $expr_arr.ARRAYELEM(i) ;}\n"
+    end
+    return s
+end
+
+function return_reduction_string_with_closure_second_elem(new_column_name,expr_arr,func, current_index)
+    s = ""
+    if string(func) == "Main.length"
+        s *= "$new_column_name.ARRAYELEM($current_index) += 1; \n"
+    elseif string(func) == "Main.sum"
+        s *= "$new_column_name.ARRAYELEM($current_index) +=  $expr_arr.ARRAYELEM(i)  ;\n\n"
+    elseif string(func) == "Main.max"
+        s *= "if ($new_column_name.ARRAYELEM($current_index) < $expr_arr.ARRAYELEM(i)) \n"
+        s *= "$new_column_name.ARRAYELEM($current_index) = $expr_arr.ARRAYELEM(i) ;}\n\n"
     end
     return s
 end
