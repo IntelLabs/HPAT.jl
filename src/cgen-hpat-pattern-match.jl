@@ -862,10 +862,18 @@ function pattern_match_call_agg(linfo, f::GlobalRef, groupby_key, num_exprs, exp
     s *= "$sdis = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
     s *= "$rdis = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
 
+    agg_key_map_temp = "temp_map_$agg_key_col_output"
+    s *= "std::unordered_map<int,int> $agg_key_map_temp ;\n"
+    agg_temp_counter = "agg_temp_counter_" * agg_rand
+    s *= "int $agg_temp_counter = 0;"
     # Counting displacements for table
     s *= "for (int i = 1 ; i <  $agg_key_col_input_len + 1 ; i++){\n"
+    s *= "if ($agg_key_map_temp.find($agg_key_col_input.ARRAYELEM(i)) == $agg_key_map_temp.end()){\n"
+    s *= "$agg_key_map_temp[$agg_key_col_input.ARRAYELEM(i)] = 1;\n"
     s *= "int node_id = $agg_key_col_input.ARRAYELEM(i) % __hpat_num_pes ;\n"
-    s *= "$scount[node_id]++;"
+    s *= "$scount[node_id]++;\n"
+    s *= "$agg_temp_counter++;\n"
+    s *= "}\n"
     s *= "}\n"
 
     s *= "$sdis[0]=0;\n"
@@ -875,33 +883,7 @@ function pattern_match_call_agg(linfo, f::GlobalRef, groupby_key, num_exprs, exp
 
     s *= "MPI_Alltoall($scount,1,MPI_INT,$rcount,1,MPI_INT,MPI_COMM_WORLD);\n"
 
-    # First column is groupbykey which is handled separately
-    agg_key_col_input_tmp = agg_key_col_input * "_tmp_agg_" * agg_rand
-    j2c_type = get_j2c_type_from_array(groupby_key,linfo)
-    s *= "j2c_array< $j2c_type > $agg_key_col_input_tmp = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, $agg_key_col_input_len);\n"
-    for (index, col_name) in enumerate(exprs_list)
-        expr_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
-        expr_name_tmp = expr_name * "_tmp_agg_" * agg_rand
-        j2c_type = get_j2c_type_from_array(col_name,linfo)
-        s *= "j2c_array< $j2c_type > $expr_name_tmp = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, $agg_key_col_input_len);\n"
-    end
-
-    s *= "for (int i = 1 ; i <  $agg_key_col_input_len + 1 ; i++){\n"
-    s *= "int node_id = $agg_key_col_input.ARRAYELEM(i) % __hpat_num_pes ;\n"
-    # Assuming all the columns are of same length
-    s *= "$agg_key_col_input_tmp.ARRAYELEM($sdis[node_id]+$scount_tmp[node_id]+1) = $agg_key_col_input.ARRAYELEM(i);\n"
-    for (index, col_name) in enumerate(exprs_list)
-        expr_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
-        expr_name_tmp = expr_name * "_tmp_agg_" * agg_rand
-        j2c_type = get_j2c_type_from_array(col_name,linfo)
-
-        s *= "$expr_name_tmp.ARRAYELEM($sdis[node_id]+$scount_tmp[node_id]+1) = $expr_name.ARRAYELEM(i);\n"
-    end
-    s *= "$scount_tmp[node_id]++;\n"
-    s *= "}\n"
-
-    # delete [] agg_key_col_input_hashes
-
+    s *= "$agg_key_map_temp.clear();\n"
     # Caculating displacements
     s *= """
                   $rdis[0]=0;
@@ -916,6 +898,44 @@ function pattern_match_call_agg(linfo, f::GlobalRef, groupby_key, num_exprs, exp
                   $rsize = $rsize + $rcount[i];
               }
             """
+
+    # First column is groupbykey which is handled separately
+    agg_key_col_input_tmp = agg_key_col_input * "_tmp_agg_" * agg_rand
+    j2c_type = get_j2c_type_from_array(groupby_key,linfo)
+    s *= "j2c_array< $j2c_type > $agg_key_col_input_tmp = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, $agg_temp_counter);\n"
+    for (index, col_name) in enumerate(exprs_list)
+        expr_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
+        expr_name_tmp = expr_name * "_tmp_agg_" * agg_rand
+        j2c_type = get_j2c_type_from_array(col_name,linfo)
+        s *= "j2c_array< $j2c_type > $expr_name_tmp = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, $agg_temp_counter);\n"
+    end
+
+    s *= "for(int i = 1 ; i < $agg_key_col_input.ARRAYLEN() + 1 ; i++){\n"
+    s *= "int node_id = $agg_key_col_input.ARRAYELEM(i) % __hpat_num_pes ;\n"
+    s *= "if ($agg_key_map_temp.find($agg_key_col_input.ARRAYELEM(i)) == $agg_key_map_temp.end()){\n"
+    agg_write_index = "agg_write_index_" * agg_rand
+    s *= "int $agg_write_index =  $sdis[node_id]+$scount_tmp[node_id]+1 ;\n"
+    s *= "$agg_key_map_temp[$agg_key_col_input.ARRAYELEM(i)] = $agg_write_index ;\n"
+    s *= "$agg_key_col_input_tmp.ARRAYELEM($agg_write_index) = $agg_key_col_input.ARRAYELEM(i);\n"
+    for (index, func) in enumerate(funcs_list)
+        expr_name = ParallelAccelerator.CGen.from_expr(exprs_list[index],linfo)
+        expr_name_tmp = expr_name * "_tmp_agg_" * agg_rand
+        s *= return_combiner_string_with_closure_first_elem(expr_name_tmp, expr_name, func, agg_write_index)
+    end
+    s *= "$scount_tmp[node_id]++;\n"
+    s *= "}\n"
+    s *= "else{\n"
+    current_write_index = "current_write_index" * agg_rand
+    s *= "int $current_write_index = $agg_key_map_temp[$agg_key_col_input.ARRAYELEM(i)]; \n"
+    for (index, func) in enumerate(funcs_list)
+        expr_name = ParallelAccelerator.CGen.from_expr(exprs_list[index],linfo)
+        expr_name_tmp = expr_name * "_tmp_agg_" * agg_rand
+        s *= return_combiner_string_with_closure_second_elem(expr_name_tmp, expr_name, func, current_write_index)
+    end
+    s *= "}\n"
+    s *= "}\n"
+    s *= "$agg_key_map_temp.clear();\n"
+
     # First column is groupbykey which is handled separately
     # After mpi_alltoallv the length of agg_key_col_input is changed. Don't use agg_key_col_input_len
     mpi_type = get_mpi_type_from_array(groupby_key,linfo)
@@ -925,8 +945,7 @@ function pattern_match_call_agg(linfo, f::GlobalRef, groupby_key, num_exprs, exp
                                          rbuf_$agg_key_col_input.getData(), $rcount, $rdis, $mpi_type, MPI_COMM_WORLD);
                          """
     s *= " $agg_key_col_input = rbuf_$agg_key_col_input; \n"
-    # delete [] agg_key_col_input_tmp
-    # TODO before moving data using mpialltoallv use combiner to do aggregate locally
+
     for (index, col_name) in enumerate(exprs_list)
         mpi_type = get_mpi_type_from_array(col_name,linfo)
         j2c_type = get_j2c_type_from_array(col_name,linfo)
@@ -945,8 +964,6 @@ function pattern_match_call_agg(linfo, f::GlobalRef, groupby_key, num_exprs, exp
         arr_col_name = ParallelAccelerator.CGen.from_expr(col_name, linfo)
         s *= "$arr_col_name = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, $agg_key_col_input.ARRAYLEN());\n"
     end
-    agg_key_map_temp = "temp_map_$agg_key_col_output"
-    s *= "std::unordered_map<int,int> $agg_key_map_temp ;\n"
 
     agg_write_index = "agg_write_index_" * agg_rand
     s *= "int $agg_write_index = 1;"
@@ -2135,7 +2152,7 @@ end
 function return_pound_array_name(table_name,table_column)
     return "#"* string(table_name) * "#" * string(table_column)
 end
-
+# TODO Combine all below five functions into one.
 function return_reduction_string_with_closure(agg_key_col_input,expr_arr,agg_map,func)
     s = ""
     if string(func) == "Main.length"
@@ -2158,10 +2175,35 @@ function return_reduction_string_with_closure(agg_key_col_input,expr_arr,agg_map
     return s
 end
 
+function return_combiner_string_with_closure_first_elem(new_column_name,expr_arr,func,write_index)
+    s = ""
+    if string(func) == "Main.length"
+        s *= "$new_column_name.ARRAYELEM($write_index) = 1 ;\n"
+    elseif string(func) == "Main.sum"
+        s *= "$new_column_name.ARRAYELEM($write_index) = $expr_arr.ARRAYELEM(i) ;\n"
+    elseif string(func) == "Main.max"
+        s *= "$new_column_name.ARRAYELEM($write_index) = $expr_arr.ARRAYELEM(i) ;}\n"
+    end
+    return s
+end
+
+function return_combiner_string_with_closure_second_elem(new_column_name,expr_arr,func, current_index)
+    s = ""
+    if string(func) == "Main.length"
+        s *= "$new_column_name.ARRAYELEM($current_index) += 1 ; \n"
+    elseif string(func) == "Main.sum"
+        s *= "$new_column_name.ARRAYELEM($current_index) +=  $expr_arr.ARRAYELEM(i)  ;\n\n"
+    elseif string(func) == "Main.max"
+        s *= "if ($new_column_name.ARRAYELEM($current_index) < $expr_arr.ARRAYELEM(i)) \n"
+        s *= "$new_column_name.ARRAYELEM($current_index) = $expr_arr.ARRAYELEM(i) ;}\n\n"
+    end
+    return s
+end
+
 function return_reduction_string_with_closure_first_elem(new_column_name,expr_arr,func,write_index)
     s = ""
     if string(func) == "Main.length"
-        s *= "$new_column_name.ARRAYELEM($write_index) = 1;\n"
+        s *= "$new_column_name.ARRAYELEM($write_index) = $expr_arr.ARRAYELEM(i);\n"
     elseif string(func) == "Main.sum"
         s *= "$new_column_name.ARRAYELEM($write_index) = $expr_arr.ARRAYELEM(i) ;\n"
     elseif string(func) == "Main.max"
@@ -2173,7 +2215,7 @@ end
 function return_reduction_string_with_closure_second_elem(new_column_name,expr_arr,func, current_index)
     s = ""
     if string(func) == "Main.length"
-        s *= "$new_column_name.ARRAYELEM($current_index) += 1; \n"
+        s *= "$new_column_name.ARRAYELEM($current_index) += $expr_arr.ARRAYELEM(i) ; \n"
     elseif string(func) == "Main.sum"
         s *= "$new_column_name.ARRAYELEM($current_index) +=  $expr_arr.ARRAYELEM(i)  ;\n\n"
     elseif string(func) == "Main.max"
