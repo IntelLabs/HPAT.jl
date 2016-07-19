@@ -906,7 +906,7 @@ function pattern_match_call_agg(linfo, f::GlobalRef, groupby_key, num_exprs, exp
     for (index, col_name) in enumerate(exprs_list)
         expr_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
         expr_name_tmp = expr_name * "_tmp_agg_" * agg_rand
-        j2c_type = get_j2c_type_from_array(col_name,linfo)
+        j2c_type = get_j2c_type_from_array(output_cols_list[index + 1 ],linfo)
         s *= "j2c_array< $j2c_type > $expr_name_tmp = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, $agg_temp_counter);\n"
     end
 
@@ -947,15 +947,14 @@ function pattern_match_call_agg(linfo, f::GlobalRef, groupby_key, num_exprs, exp
     s *= " $agg_key_col_input = rbuf_$agg_key_col_input; \n"
 
     for (index, col_name) in enumerate(exprs_list)
-        mpi_type = get_mpi_type_from_array(col_name,linfo)
-        j2c_type = get_j2c_type_from_array(col_name,linfo)
+        mpi_type = get_mpi_type_from_array(output_cols_list[index + 1], linfo)
+        j2c_type = get_j2c_type_from_array(output_cols_list[index + 1], linfo)
         expr_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
         expr_name_tmp = expr_name * "_tmp_agg_" * agg_rand
         s *= " j2c_array< $j2c_type > rbuf_$expr_name = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, $rsize);\n"
         s *= """ MPI_Alltoallv($expr_name_tmp.getData(), $scount, $sdis, $mpi_type,
                                          rbuf_$expr_name.getData(), $rcount, $rdis, $mpi_type, MPI_COMM_WORLD);
                          """
-        s *= " $expr_name = rbuf_$expr_name; \n"
     end
     # delete [] expr_name_tmp
 
@@ -974,8 +973,9 @@ function pattern_match_call_agg(linfo, f::GlobalRef, groupby_key, num_exprs, exp
     s *= "$col_name.ARRAYELEM($agg_write_index) = $agg_key_col_input.ARRAYELEM(i);\n"
     for (index, func) in enumerate(funcs_list)
         expr_name = ParallelAccelerator.CGen.from_expr(exprs_list[index],linfo)
+        rbuf_expr_name = "rbuf_" * expr_name
         new_col_name = ParallelAccelerator.CGen.from_expr(output_cols_list[index + 1], linfo)
-        s *= return_reduction_string_with_closure_first_elem(new_col_name, expr_name, func, agg_write_index)
+        s *= return_reduction_string_with_closure_first_elem(new_col_name, rbuf_expr_name, func, agg_write_index)
     end
     s *= "$agg_write_index++;\n"
     s *= "}\n"
@@ -984,8 +984,9 @@ function pattern_match_call_agg(linfo, f::GlobalRef, groupby_key, num_exprs, exp
     s *= "int $current_write_index = $agg_key_map_temp[$agg_key_col_input.ARRAYELEM(i)]; \n"
     for (index, func) in enumerate(funcs_list)
         expr_name = ParallelAccelerator.CGen.from_expr(exprs_list[index],linfo)
+        rbuf_expr_name = "rbuf_" * expr_name
         new_col_name = ParallelAccelerator.CGen.from_expr(output_cols_list[index + 1], linfo)
-        s *= return_reduction_string_with_closure_second_elem(new_col_name, expr_name, func, current_write_index)
+        s *= return_reduction_string_with_closure_second_elem(new_col_name, rbuf_expr_name, func, current_write_index)
     end
     s *= "}\n"
     s *= "}\n"
