@@ -14,6 +14,10 @@ and [CompilerTools](https://github.com/IntelLabs/CompilerTools.jl) packages.
 
 HPAT is in early development and therefore feedback is highly appreciated.
 
+Presentation at [JuliaCon 2016](http://juliacon.org/):
+- [Slides (Slideshare)](http://www.slideshare.net/EhsanTotoni/hpat-presentation-at-juliacon-2016)
+- [Video (YouTube)](https://www.youtube.com/watch?v=Qa7nfaDacII)
+
 ## Quick Start
 ```shell
 $ julia -e 'Pkg.add("HPAT")'
