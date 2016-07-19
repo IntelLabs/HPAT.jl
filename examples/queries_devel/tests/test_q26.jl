@@ -6,6 +6,9 @@ HPAT.DataTablePass.set_debug_level(3)
 using CompilerTools
 CompilerTools.OptFramework.set_debug_level(3)
 
+using ParallelAccelerator
+ParallelAccelerator.CGen.setCreateMain(true)
+
 @acc hpat function q26(category, item_count, num_centroids, file_name)
     store_sales = DataSource(DataTable{:ss_item_sk=Int64,:ss_customer_sk=Int64}, HDF5, file_name)
     item = DataSource(DataTable{:i_item_sk=Int64,:i_category=Int64,:i_class_id=Int64}, HDF5, file_name)
