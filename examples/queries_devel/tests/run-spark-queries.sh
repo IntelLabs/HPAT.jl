@@ -30,6 +30,8 @@ fi
 cd  $SPARK_DIR
 
 # TODO generalize this for every query
+# wget http://search.maven.org/remotecontent?filepath=org/apache/commons/commons-csv/1.1/commons-csv-1.1.jar -O commons-csv-1.1.jar
+# wget https://repo1.maven.org/maven2/com/databricks/spark-csv_2.10/1.4.0/spark-csv_2.10-1.4.0.jar
 ./bin/spark-submit --master spark://172.16.144.26:7080 --executor-memory 8G --driver-memory 8G  --jars /home/whassan/commons-csv-1.1.jar,/home/whassan/spark-csv_2.10-1.4.0.jar   --class Query26  ~/spark-sql-query-tests/target/scala-2.10/query26_2.10-0.1.jar &> tmp.txt
 
 time_q26=`cat tmp.txt  | grep '\*\*\*\*\*\*' | cut -d ' ' -f 6`
