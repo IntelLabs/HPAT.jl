@@ -33,9 +33,13 @@ CompilerTools.OptFramework.set_debug_level(3)
 
     customer_i_class = customer_i_class[:ss_item_count>item_count]
 
+    # points = traspose(hcat(customer_i_class[:ss_item_count], customer_i_class[:id1], customer_i_class[:id2],
+    # customer_i_class[:id3], customer_i_class[:id4], customer_i_class[:id5], customer_i_class[:id6],
+    # customer_i_class[:id7], customer_i_class[:id8], customer_i_class[:id9], customer_i_class[:id10],
+    # customer_i_class[:id11], customer_i_class[:id12], customer_i_class[:id13], customer_i_class[:id14], customer_i_class[:id15]))
     #model = Kmeans(customer_i_class, num_centroids)
     #return model
-    return customer_i_class[:ss_item_count],customer_i_class[:id15] 
+    return customer_i_class[:ss_item_count],customer_i_class[:id15]
 end
 
 
