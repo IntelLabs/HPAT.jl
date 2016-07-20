@@ -1,23 +1,32 @@
 using HDF5
 
+# Arguments:
+# ARGS[1] = option
+# ARGS[2] = table store_sales path e.g."/home/whassan/tmp/csv/store_sales_sanitized.csv"
+# ARGS[3] = table item path e.g. "/home/whassan/tmp/csv/item_sanitized.csv"
+option = parse(Int,ARGS[1])
+if  option == 1 && length(ARGS) >= 3
+    table1_path=ARGS[2]
+    table2_path=ARGS[3]
+end
+
 customer = []
 sale = []
 item = []
 class = []
 category = []
 
-option = 1
 num_rows = 20000
 if option == 0
     #=
-customer    iterm
-1       1
-1       2
-2       1
-1       3
-2       3
-3       1
-=#
+    customer    iterm
+    1       1
+    1       2
+    2       1
+    1       3
+    2       3
+    3       1
+    =#
     customer = [1,1,2,1,2,3]
     sale = [1,2,1,3,3,1]
 
@@ -32,8 +41,8 @@ customer    iterm
 end
 
 if option == 1
-    item_file = open("/home/whassan/tmp/csv/item_sanitized.csv")
-    store_sales_file = open("/home/whassan/tmp/csv/store_sales_sanitized.csv")
+    store_sales_file = open(table1_path)
+    item_file = open(table2_path)
     counter = 0
     for line in readlines(item_file)
         line = chomp(line)
@@ -67,6 +76,10 @@ if option == 1
 end
 
 file_name = "test_q26.hdf5"
+
+if isfile(file_name)
+    rm(file_name)
+end
 
 h5write(file_name ,"/ss_customer_sk",customer)
 h5write(file_name, "/ss_item_sk",sale)
