@@ -16,7 +16,8 @@ item = []
 class = []
 category = []
 
-num_rows = 20000
+num_rows = 2000000000000
+
 if option == 0
     #=
     customer    iterm
