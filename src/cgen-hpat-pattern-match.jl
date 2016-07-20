@@ -335,7 +335,7 @@ function pattern_match_call_data_src_close(f::Any, v::Any,linfo)
     return ""
 end
 
-function pattern_match_call_filter_seq(linfo,f::GlobalRef,cond_e, num_cols,table_cols...)
+function pattern_match_call_filter_seq(linfo,f::GlobalRef, id, cond_e, num_cols,table_cols...)
     s = ""
     if f.name!=:__hpat_filter
         return s
@@ -343,7 +343,7 @@ function pattern_match_call_filter_seq(linfo,f::GlobalRef,cond_e, num_cols,table
     # its an array of array. array[2:end] and table_cols... notation does that
     table_cols = table_cols[1]
     # For unique counter variables of filter
-    filter_rand = string(convert(Int8, round(rand() * 100)))
+    filter_rand = string(id)
     # assuming that all columns are of same size in a table
     array_length = "array_length" * filter_rand
     s *= "int $array_length = " * ParallelAccelerator.CGen.from_expr(table_cols[1],linfo) * ".ARRAYLEN();\n"
@@ -369,11 +369,11 @@ function pattern_match_call_filter_seq(linfo,f::GlobalRef,cond_e, num_cols,table
     return s
 end
 
-function pattern_match_call_filter_seq(linfo,f::Any,cond_e, num_cols,table_cols...)
+function pattern_match_call_filter_seq(linfo,f::Any, id, cond_e, num_cols,table_cols...)
     return ""
 end
 
-function pattern_match_call_join_seq(linfo, f::GlobalRef,table_new_cols_len, table1_cols_len, table2_cols_len, table_columns...)
+function pattern_match_call_join_seq(linfo, f::GlobalRef, id, table_new_cols_len, table1_cols_len, table2_cols_len, table_columns...)
     s = ""
     if f.name!=:__hpat_join
         return s
@@ -385,7 +385,7 @@ function pattern_match_call_join_seq(linfo, f::GlobalRef,table_new_cols_len, tab
     table1_cols = table_columns[table_new_cols_len+1:table_new_cols_len+table1_cols_len]
     table2_cols = table_columns[table_new_cols_len+table1_cols_len+1:end]
     # to assign unique id to each variable
-    join_rand = string(convert(Int8, round(rand() * 100)))
+    join_rand = string(id)
 
     # assuming that all columns are of same size in a table
     # Also output table's length would be sum of both table length
@@ -439,11 +439,11 @@ function pattern_match_call_join_seq(linfo, f::GlobalRef,table_new_cols_len, tab
     return s
 end
 
-function pattern_match_call_join_seq(linfo, f::Any,table_new_len, table1_len, table2_len, table_columns...)
+function pattern_match_call_join_seq(linfo, f::Any, id, table_new_len, table1_len, table2_len, table_columns...)
     return ""
 end
 
-function pattern_match_call_join(linfo, f::GlobalRef,table_new_cols_len, table1_cols_len, table2_cols_len, table_columns...)
+function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, table1_cols_len, table2_cols_len, table_columns...)
     s = ""
     if f.name!=:__hpat_join
         return s
@@ -459,7 +459,7 @@ function pattern_match_call_join(linfo, f::GlobalRef,table_new_cols_len, table1_
     table_new_cols = table_columns[1:table_new_cols_len]
     table1_cols = table_columns[table_new_cols_len+1:table_new_cols_len+table1_cols_len]
     table2_cols = table_columns[table_new_cols_len+table1_cols_len+1:end]
-    join_rand = string(convert(Int8, round(rand() * 100)))
+    join_rand = string(id)
 
     # Sending counts for both tables
     scount_t1 = "scount_t1_"*join_rand
@@ -755,11 +755,11 @@ function pattern_match_call_join(linfo, f::GlobalRef,table_new_cols_len, table1_
     return s
 end
 
-function pattern_match_call_join(linfo, f::Any,table_new_len, table1_len, table2_len, table_columns...)
+function pattern_match_call_join(linfo, f::Any, id, table_new_len, table1_len, table2_len, table_columns...)
     return ""
 end
 
-function pattern_match_call_agg_seq(linfo, f::GlobalRef, groupby_key, num_exprs, expr_func_output_list...)
+function pattern_match_call_agg_seq(linfo, f::GlobalRef,  id, groupby_key, num_exprs, expr_func_output_list...)
     s = ""
     if f.name!=:__hpat_aggregate
         return s
@@ -771,7 +771,7 @@ function pattern_match_call_agg_seq(linfo, f::GlobalRef, groupby_key, num_exprs,
     expr_func_output_list = expr_func_output_list[1]
     exprs_list = expr_func_output_list[1:num_exprs]
     funcs_list = expr_func_output_list[num_exprs+1:(2*num_exprs)]
-    agg_rand = string(convert(Int8, round(rand() * 100)))
+    agg_rand = string(id)
     # first element of output list is the groupbykey column
     output_cols_list = expr_func_output_list[(2*num_exprs)+1 : end]
     agg_key_col_input = ParallelAccelerator.CGen.from_expr(groupby_key, linfo)
@@ -811,11 +811,11 @@ function pattern_match_call_agg_seq(linfo, f::GlobalRef, groupby_key, num_exprs,
     return s
 end
 
-function pattern_match_call_agg_seq(linfo, f::Any, groupby_key, num_exprs, exprs_func_list...)
+function pattern_match_call_agg_seq(linfo, f::Any, id,  groupby_key, num_exprs, exprs_func_list...)
     return ""
 end
 
-function pattern_match_call_agg(linfo, f::GlobalRef, groupby_key, num_exprs, expr_func_output_list...)
+function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs, expr_func_output_list...)
     s = ""
     if f.name!=:__hpat_aggregate
         return s
@@ -828,7 +828,7 @@ function pattern_match_call_agg(linfo, f::GlobalRef, groupby_key, num_exprs, exp
     expr_func_output_list = expr_func_output_list[1]
     exprs_list = expr_func_output_list[1:num_exprs]
     funcs_list = expr_func_output_list[num_exprs+1:(2*num_exprs)]
-    agg_rand = string(convert(Int8, round(rand() * 100)))
+    agg_rand = string(id)
     # first element of output list is the groupbykey column
     output_cols_list = expr_func_output_list[(2*num_exprs)+1 : end]
     agg_key_col_input = ParallelAccelerator.CGen.from_expr(groupby_key, linfo)
@@ -1893,12 +1893,12 @@ function pattern_match_call(ast::Array{Any, 1}, linfo)
   elseif length(ast)==17
     s *= pattern_match_call_data_sink_write_2d(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8],ast[9],ast[10],ast[11],ast[12],ast[13],ast[14],ast[15],ast[16],ast[17],linfo)
   end
-  if length(ast)>=4
-    s *= pattern_match_call_filter_seq(linfo, ast[1], ast[2], ast[3], ast[4:end])
-    s *= pattern_match_call_agg(linfo, ast[1], ast[2], ast[3], ast[4:end])
-  end
   if length(ast)>=5
-    s *= pattern_match_call_join(linfo, ast[1], ast[2], ast[3], ast[4],ast[5:end])
+    s *= pattern_match_call_filter_seq(linfo, ast[1], ast[2], ast[3], ast[4], ast[5:end])
+    s *= pattern_match_call_agg(linfo, ast[1], ast[2], ast[3], ast[4], ast[5:end])
+  end
+  if length(ast)>=6
+    s *= pattern_match_call_join(linfo, ast[1], ast[2], ast[3], ast[4], ast[5],ast[6:end])
   end
   return s
 end

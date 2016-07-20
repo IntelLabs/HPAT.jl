@@ -153,7 +153,7 @@ end
 function translate_hpat_join(node,linfo)
     res = Any[]
     open_call = mk_call(GlobalRef(HPAT.API,:__hpat_join),
-                        [length(node.args[7]); length(node.args[8]); length(node.args[9]); node.args[7]; node.args[8]; node.args[9]])
+                        [node.args[10]; length(node.args[7]); length(node.args[8]); length(node.args[9]); node.args[7]; node.args[8]; node.args[9]])
     push!(res, open_call)
     return res
 end
@@ -165,7 +165,7 @@ condition expression lhs, columns length, columns names(#t1#c1) ...
 function translate_hpat_filter(node)
     num_cols = length(node.args[4])
     open_call = mk_call(GlobalRef(HPAT.API,:__hpat_filter),
-                        [node.args[1]; num_cols; node.args[4]])
+                        [node.args[6]; node.args[1]; num_cols; node.args[4]])
     return [open_call]
 end
 
@@ -175,7 +175,7 @@ end
 function translate_hpat_aggregate(node,linfo)
     res = Any[]
     open_call = mk_call(GlobalRef(HPAT.API,:__hpat_aggregate),
-                        [node.args[3]; length(node.args[4]); node.args[4]; node.args[6]; node.args[7]])
+                        [node.args[8]; node.args[3]; length(node.args[4]); node.args[4]; node.args[6]; node.args[7]])
     push!(res, open_call)
     return res
 end
@@ -191,21 +191,24 @@ function push_filter_up(nodes::Array{Any,1},tableCols,linfo)
         #println(nodes[i])
         if isa(nodes[i], Expr) && nodes[i].head==:join
             hit_join = true
-            pos=i
+            # move above join id
+            pos=i-1
         end
         if isa(nodes[i], Expr) && nodes[i].head==:filter && hit_join
             # TODO change condition in filter expression node too
             new_filter_node = nodes[i]
-            new_cond_node = nodes[i-1]
+            new_id_node = nodes[i-1]
+            new_cond_node = nodes[i-2]
             cond_lhs = string(nodes[i].args[1])
             cond_rhs = string(nodes[i].args[5].args[2].name)
             table_name = find_table_from_cond(tableCols,cond_rhs)
             replace_cond_in_linfo(linfo,cond_lhs,table_name)
             replace_table_in_cond(new_cond_node,table_name)
             replace_table_in_filter_node(new_filter_node,table_name,tableCols)
-            # remove condition node above filter node
+            # remove condition and id node above filter node
             pop!(new_nodes)
-            splice!(new_nodes,pos:1,[new_cond_node,new_filter_node])
+            pop!(new_nodes)
+            splice!(new_nodes,pos:1,[new_cond_node,new_id_node,new_filter_node])
             hit_join=false
             continue
         end

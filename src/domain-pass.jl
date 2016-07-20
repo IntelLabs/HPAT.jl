@@ -76,7 +76,7 @@ function from_root(function_name, ast)
     linfo, body = CompilerTools.LambdaHandling.lambdaToLambdaVarInfo(ast)
     tableCols, tableTypes = get_table_meta(body)
     @dprintln(3,"HPAT tables: ", tableCols,tableTypes)
-    state::DomainState = DomainState(linfo, 0, tableCols, tableTypes)
+    state::DomainState = DomainState(linfo, 0, 0, tableCols, tableTypes)
 
     # transform body
     body.args = from_toplevel_body(body.args, state)
@@ -89,6 +89,7 @@ end
 type DomainState
     linfo  :: LambdaVarInfo
     data_source_counter::Int64 # a unique counter for data sources in program
+    table_oprs_counter::Int64 # a unique for table operation join,filter,etc
     tableCols::Dict{Symbol,Vector{Symbol}}
     tableTypes::Dict{Symbol,Vector{Symbol}}
 end
@@ -222,6 +223,12 @@ end
 """
 function translate_filter(nodes::Array{Any,1},pos,filter_node::Expr,state)
     @dprintln(3,"translating filter: ",filter_node)
+    new_filter_node = Any[]
+    state.table_oprs_counter += 1
+    opr_num = state.table_oprs_counter
+    opr_id_var = addTempVariable(Int64, state.linfo)
+    push!(new_filter_node, TypedExpr(Int64, :(=), opr_id_var, opr_num))
+
     cond_arr = toLHSVar(filter_node.args[2])
     arr_of_arrs = toLHSVar(filter_node.args[3])
     # TODO: remove arr_of_arrs from Lambda
@@ -235,9 +242,9 @@ function translate_filter(nodes::Array{Any,1},pos,filter_node::Expr,state)
     remove_before = 2*num_cols+1;
     # remove type convert calls after filter()
     remove_after = num_cols
-    new_filter_node = Expr(:filter, cond_arr, table_name, cols, col_arrs,nodes[pos-remove_before-1].args[2])
+    push!(new_filter_node, Expr(:filter, cond_arr, table_name, cols, col_arrs,nodes[pos-remove_before-1].args[2],opr_id_var))
     @dprintln(3,"filter remove_before: ",remove_before," remove_after: ",remove_after," filter_node: ",filter_node)
-    return remove_before, remove_after, [new_filter_node]
+    return remove_before, remove_after, new_filter_node
 end
 
 """ Translate join to Expr(:join, t3,t1,t2,out_cols, in1_cols, in2_cols) and remove array of array garbage
@@ -279,7 +286,13 @@ end
 
 """
 function translate_join(join_node,state)
-    @dprintln(3,"translating join: ",join_node)
+    @dprintln(3, "translating join: ", join_node)
+    new_join_node = Any[]
+    state.table_oprs_counter += 1
+    opr_num = state.table_oprs_counter
+    opr_id_var = addTempVariable(Int64, state.linfo)
+    push!(new_join_node, TypedExpr(Int64, :(=), opr_id_var, opr_num))
+
     out_arr = toLHSVar(join_node.args[1])
     in1_arr = toLHSVar(join_node.args[2].args[2])
     in2_arr = toLHSVar(join_node.args[2].args[3])
@@ -299,9 +312,9 @@ function translate_join(join_node,state)
 
     remove_before = 2*t1_num_cols+1+2*t2_num_cols+1
     remove_after =  4*t3_num_cols
-    new_join_node = Expr(:join, t3, t1, t2, t3_cols, t1_cols, t2_cols,
-                     map(x->getColName(t3, x), t3_cols), map(x->getColName(t1, x), t1_cols), map(x->getColName(t2, x), t2_cols))
-    return remove_before, remove_after, [new_join_node]
+    push!(new_join_node, Expr(:join, t3, t1, t2, t3_cols, t1_cols, t2_cols,
+                     map(x->getColName(t3, x), t3_cols), map(x->getColName(t1, x), t1_cols), map(x->getColName(t2, x), t2_cols),opr_id_var))
+    return remove_before, remove_after, new_join_node
 end
 
 """   Example:
@@ -318,6 +331,12 @@ end
 """
 function translate_aggregate(aggregate_node,state)
     @dprintln(3,"translating aggregate: ",aggregate_node)
+    new_aggregate_node = Any[]
+    state.table_oprs_counter += 1
+    opr_num = state.table_oprs_counter
+    opr_id_var = addTempVariable(Int64, state.linfo)
+    push!(new_aggregate_node, TypedExpr(Int64, :(=), opr_id_var, opr_num))
+
     out_arr = toLHSVar(aggregate_node.args[1])
     # convert _agg_out_t2_in_t1 to t2, t1
     out_names = string(out_arr)[10:end]
@@ -346,8 +365,8 @@ function translate_aggregate(aggregate_node,state)
     in_e_arr_list_rhs = map(x->toLHSVar(x.args[3]), agg_list)
     in_func_list = map(x->x.args[4], agg_list)
     out_col_arrs = map(x->getColName(t2, x), t2_cols)
-    new_aggregate_node = Expr(:aggregate, t2, t1, key_arr, in_e_arr_list, in_e_arr_list_rhs, in_func_list, out_col_arrs)
-    return remove_before, remove_after, [new_aggregate_node]
+    push!(new_aggregate_node, Expr(:aggregate, t2, t1, key_arr, in_e_arr_list, in_e_arr_list_rhs, in_func_list, out_col_arrs,opr_id_var))
+    return remove_before, remove_after, new_aggregate_node
 end
 
 # :(=) assignment (:(=), lhs, rhs)
