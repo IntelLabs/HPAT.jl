@@ -41,7 +41,7 @@ if [ -f ${RESULT_FILE} ]; then
 fi
 touch ${RESULT_FILE}
 
-for dataset_factor in "10" "100" "150" "200" "250"; do
+for dataset_factor in "10" "100" "150" "200" "250" "300"; do
     table1_path=$DATASET_DIR/store_sales_sanitized_${dataset_factor}f.csv
     table2_path=$DATASET_DIR/item_sanitized_${dataset_factor}f.csv
     table1_rows=`cat $table1_path | wc -l`
