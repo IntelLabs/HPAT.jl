@@ -134,7 +134,6 @@ void __hpat_timsort(int64_t *comp_arr, const size_t size,int64_t ** all_arrs,con
   uint64_t curr = 0;
 
   minrun =  __hpat_timsort_calcuate_minrun(size);
-  std::cout << "MINRUN: " << minrun << std::endl;
   // temporary buffer for merge
   store = &_store;
   store->size = 0;
