@@ -51,15 +51,16 @@ for dataset_factor in "10" "100" "150" "200" "250" "300"; do
 	exit
     fi
     echo ":D Running Spark"
-    ${SPARK_DIR}/bin/spark-submit --master spark://172.16.144.26:7080 --executor-memory 8G --driver-memory 8G  --jars /home/whassan/commons-csv-1.1.jar,/home/whassan/spark-csv_2.10-1.4.0.jar   --class Query26  ~/spark-sql-query-tests/target/scala-2.10/query26_2.10-0.1.jar $table1_path $table2_path &> tmp_spark.txt
+    ${SPARK_DIR}/bin/spark-submit --conf spark.sql.autoBroadcastJoinThreshold=-1 --master spark://172.16.144.26:7080 --executor-memory 8G --driver-memory 8G  --jars /home/whassan/commons-csv-1.1.jar,/home/whassan/spark-csv_2.10-1.4.0.jar   --class Query26  ~/spark-sql-query-tests/target/scala-2.10/query26_2.10-0.1.jar $table1_path $table2_path &> tmp_spark.txt
     
     
     time_q26_spark=`cat tmp_spark.txt  | grep '\*\*\*\*\*\*' | cut -d ' ' -f 6`
     echo "Time took for Query 26[Spark]: "$time_q26_spark
     rm tmp_spark.txt
 
-    echo ":D Running HPAT"
+    echo ":D Copying to hdf5"
     julia ${HPAT_DATAGEN_DIR}/create_data_test_q26.jl 1 "$table1_path" "$table2_path"
+    echo ":D Running HPAT"
     mpirun -hosts psephi07-ib,psephi08-ib,psephi09-ib,psephi10-ib -n 16 -ppn 4 $HPAT_CGEN_BINARY_DIR/main1 2>&1 > tmp_hpat.txt
     time_q26_hpat=`cat tmp_hpat.txt  | grep '\*\*\*\*\*\*' | cut -d ' ' -f 6`
     echo "Time took for Query 26[Hpat]: "$time_q26_hpat
