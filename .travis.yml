@@ -32,5 +32,7 @@ script:
   - julia --depwarn=no examples/pi.jl
   - mpirun -np 2 julia --depwarn=no examples/pi.jl
   - julia --depwarn=no generate_data/generate_logistic_regression.jl --instances=10000 --path=/tmp/
+  - julia --depwarn=no examples/logistic_regression.jl --iterations=10 --file=/tmp/logistic_regression.hdf5
   - mpirun -np 2 julia --depwarn=no examples/logistic_regression.jl --iterations=10 --file=/tmp/logistic_regression.hdf5
+  - julia --depwarn=no examples/kmeans.jl --iterations=10 --file=/tmp/logistic_regression.hdf5
   - mpirun -np 2 julia --depwarn=no examples/kmeans.jl --iterations=10 --file=/tmp/logistic_regression.hdf5
