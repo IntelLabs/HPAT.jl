@@ -370,7 +370,7 @@ function pattern_match_call_filter(linfo,f::GlobalRef, id, cond_e, num_cols,tabl
     return s
 end
 
-function pattern_match_call_filter_seq(linfo,f::Any, id, cond_e, num_cols,table_cols...)
+function pattern_match_call_filter(linfo,f::Any, id, cond_e, num_cols,table_cols...)
     return ""
 end
 
