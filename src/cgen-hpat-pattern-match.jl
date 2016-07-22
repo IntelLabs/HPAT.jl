@@ -335,7 +335,7 @@ function pattern_match_call_data_src_close(f::Any, v::Any,linfo)
     return ""
 end
 
-function pattern_match_call_filter_seq(linfo,f::GlobalRef, id, cond_e, num_cols,table_cols...)
+function pattern_match_call_filter(linfo,f::GlobalRef, id, cond_e, num_cols,table_cols...)
     s = ""
     if f.name!=:__hpat_filter
         return s
@@ -343,12 +343,13 @@ function pattern_match_call_filter_seq(linfo,f::GlobalRef, id, cond_e, num_cols,
     # its an array of array. array[2:end] and table_cols... notation does that
     table_cols = table_cols[1]
     # For unique counter variables of filter
-    filter_rand = string(id)
+    unique_id = string(id)
     # assuming that all columns are of same size in a table
-    array_length = "array_length" * filter_rand
-    s *= "int $array_length = " * ParallelAccelerator.CGen.from_expr(table_cols[1],linfo) * ".ARRAYLEN();\n"
+    column1_name = ParallelAccelerator.CGen.from_expr(table_cols[1],linfo)
+    array_length = column1_name*"_array_length_filter" * unique_id
+    s *= "int $array_length = " * column1_name * ".ARRAYLEN();\n"
     # Calculate final filtered array length
-    write_index = "write_index" * filter_rand
+    write_index = "write_index_filter" * unique_id
     s *= "int $write_index = 1;\n"
     cond_e_arr = ParallelAccelerator.CGen.from_expr(cond_e, linfo)
     s *= "for (int index = 1 ; index < $array_length + 1 ; index++) { \n"
@@ -1894,7 +1895,7 @@ function pattern_match_call(ast::Array{Any, 1}, linfo)
     s *= pattern_match_call_data_sink_write_2d(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8],ast[9],ast[10],ast[11],ast[12],ast[13],ast[14],ast[15],ast[16],ast[17],linfo)
   end
   if length(ast)>=5
-    s *= pattern_match_call_filter_seq(linfo, ast[1], ast[2], ast[3], ast[4], ast[5:end])
+    s *= pattern_match_call_filter(linfo, ast[1], ast[2], ast[3], ast[4], ast[5:end])
     s *= pattern_match_call_agg(linfo, ast[1], ast[2], ast[3], ast[4], ast[5:end])
   end
   if length(ast)>=6
