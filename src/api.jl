@@ -24,12 +24,11 @@ end
     return arr
 end
 
-@noinline function Kmeans{T}(points::Matrix{T}, numCenter::Int)
+@noinline function Kmeans{T}(points::Matrix{T}, numCenter::Int, iterNum::Int)
     # naive backup sequential implementation
     D = size(points,1) # number of features
     N = size(points,2) # number of instances
     centroids = rand(T, D, numCenter)
-    iterNum=10
     for l in 1:iterNum
         dist = [ T[sqrt(sum((points[:,i].-centroids[:,j]).^2)) for j in 1:numCenter] for i in 1:N]
         labels = Int[indmin(dist[i]) for i in 1:N]

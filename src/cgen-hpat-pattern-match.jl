@@ -1883,8 +1883,8 @@ function pattern_match_call(ast::Array{Any, 1}, linfo)
           ast[16],ast[17],ast[18],ast[19],ast[20],ast[21],ast[22],ast[23],ast[24],linfo)
   elseif length(ast)==7
     s *= pattern_match_call_data_sink_write(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7], linfo)
-  elseif length(ast)==8
-    s *= pattern_match_call_kmeans(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8], linfo)
+  elseif length(ast)==9
+    s *= pattern_match_call_kmeans(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8],ast[9], linfo)
   elseif length(ast)==12
     s *= pattern_match_call_linear_regression(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],ast[7],ast[8],ast[9],ast[10],ast[11],ast[12], linfo)
   elseif length(ast)==13
