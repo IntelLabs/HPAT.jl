@@ -102,7 +102,7 @@ dist_ir_funcs = Set([   :unsafe_arrayref,
                         :Kmeans,
                         :LinearRegression,
                         :NaiveBayes,
-                        :arraylen, :arraysize, :reshape, :tuple,
+                        :arraylen, :arraysize, :reshape, :tuple, :hcat,
                         :gemm_wrapper!,
                         :gemv!])
 
@@ -321,7 +321,6 @@ end
 
 function from_assignment(node::Expr, state::DistPassState, lhs::LHSVar, rhs::Expr)
     @assert node.head==:(=) "DistributedPass invalid assignment head"
-
     if isAllocation(rhs)
       return from_assignment_alloc(node,state,lhs,rhs)
     elseif rhs.head==:call && isBaseFunc(rhs.args[1],:reshape)

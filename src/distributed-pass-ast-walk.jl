@@ -322,6 +322,10 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
             return get_arr_dist_info_gemm(node, state, top_level_number, lhs, rhs)
         elseif isBaseFunc(func,:gemv!)
             return get_arr_dist_info_gemv(node, state, top_level_number, lhs, rhs)
+        elseif (func.name == :hcat)
+            state.arrs_dist_info[lhs].dim_sizes = state.arrs_dist_info[toLHSVar(rhs.args[3])].dim_sizes
+            partitioning = min(state.arrs_dist_info[lhs].partitioning, state.arrs_dist_info[toLHSVar(rhs.args[2])].partitioning)
+            state.arrs_dist_info[lhs].partitioning = state.arrs_dist_info[toLHSVar(rhs.args[2])].partitioning = partitioning
         end
     else
       # lhs is sequential if rhs is unknown
