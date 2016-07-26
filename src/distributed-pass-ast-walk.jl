@@ -290,7 +290,7 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
                 state.arrs_dist_info[lhs].local_sizes = state.arrs_dist_info[rhs.args[2]].local_sizes
                 state.arrs_dist_info[lhs].leftovers = state.arrs_dist_info[rhs.args[2]].leftovers
                 =#
-                
+
                 @dprintln(3,"DistPass arr info dim_sizes update: ", state.arrs_dist_info[lhs].dim_sizes)
                 # lhs and rhs are sequential if either is sequential
                 # partitioning based on precedence, SEQ has highest precedence
@@ -322,10 +322,29 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
             return get_arr_dist_info_gemm(node, state, top_level_number, lhs, rhs)
         elseif isBaseFunc(func,:gemv!)
             return get_arr_dist_info_gemv(node, state, top_level_number, lhs, rhs)
+
+        # GenSym(20) = (Base.hcat)(....
+        # GenSym(5) = (Base.arraysize)(GenSym(20),2)::Int64
+        # GenSym(6) = (Base.arraysize)(GenSym(20),1)::Int64
+        # ##B#8632 = (Core.ccall)(:jl_alloc_array_2d,(Core.apply_type)(Core.Array,Int64,2)::Type{Array{Int64,2}},
+        #            (Core.svec)(Base.Any,Base.Int,Base.Int)::SimpleVector,Array{Int64,2},0,GenSym(5),0,GenSym(6),0)::Array{Int64,2}
+        # points = (Base.transpose!)(##B#8632::Array{Int64,2},GenSym(20))::Array{Int64,2}
         elseif (func.name == :hcat)
-            state.arrs_dist_info[lhs].dim_sizes = state.arrs_dist_info[toLHSVar(rhs.args[3])].dim_sizes
-            partitioning = min(state.arrs_dist_info[lhs].partitioning, state.arrs_dist_info[toLHSVar(rhs.args[2])].partitioning)
-            state.arrs_dist_info[lhs].partitioning = state.arrs_dist_info[toLHSVar(rhs.args[2])].partitioning = partitioning
+            state.arrs_dist_info[lhs].dim_sizes[1] = state.arrs_dist_info[toLHSVar(rhs.args[2])].dim_sizes[1]
+            state.arrs_dist_info[lhs].dim_sizes[2] = length(rhs.args) - 1
+            min_partitioning = state.arrs_dist_info[lhs].partitioning
+            for i in 2:length(rhs.args)
+                min_partitioning = min(state.arrs_dist_info[lhs].partitioning, state.arrs_dist_info[toLHSVar(rhs.args[2])].partitioning)
+            end
+            for i in 2:length(rhs.args)
+                state.arrs_dist_info[toLHSVar(rhs.args[i])].partitioning = min_partitioning
+            end
+            state.arrs_dist_info[lhs].partitioning = min_partitioning
+        elseif isBaseFunc(func,:transpose!)
+            state.arrs_dist_info[lhs].dim_sizes[2] = state.arrs_dist_info[toLHSVar(rhs.args[3])].dim_sizes[1]
+            state.arrs_dist_info[lhs].dim_sizes[1] = state.arrs_dist_info[toLHSVar(rhs.args[3])].dim_sizes[2]
+            partitioning = min(state.arrs_dist_info[lhs].partitioning, state.arrs_dist_info[toLHSVar(rhs.args[3])].partitioning)
+            state.arrs_dist_info[lhs].partitioning = state.arrs_dist_info[toLHSVar(rhs.args[3])].partitioning = partitioning
         end
     else
       # lhs is sequential if rhs is unknown
