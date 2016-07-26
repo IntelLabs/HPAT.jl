@@ -231,7 +231,7 @@ const hpat_checkpoint_internal =
                OptPass(toFlatParfors, PASS_TYPED),
                OptPass(toCGen, PASS_TYPED) ]
 
-append!(ParallelAccelerator.DomainIR.funcIgnoreList, [DomainPass.generatedFuncs; API.operators])
+append!(ParallelAccelerator.DomainIR.funcIgnoreList, map(x->GlobalRef(HPAT.API,x),[DomainPass.generatedFuncs; API.operators]))
 append!(ParallelAccelerator.DomainIR.exprHeadIgnoreList, DomainPass.generatedExprHeads)
 ParallelAccelerator.DomainIR.setExternalCallback(DomainPass.AstWalkCallback)
 ParallelAccelerator.DomainIR.setExternalLiveCB(DomainPass.live_cb)
