@@ -1,13 +1,14 @@
 using HPAT
+using HPAT.API.Kmeans
 #HPAT.CaptureAPI.set_debug_level(3)
 #HPAT.DomainPass.set_debug_level(3)
 #HPAT.DataTablePass.set_debug_level(3)
 using CompilerTools
-CompilerTools.OptFramework.set_debug_level(3)
+#CompilerTools.OptFramework.set_debug_level(3)
 
 using ParallelAccelerator
 ParallelAccelerator.CGen.setCreateMain(true)
-#ParallelAccelerator.DomainIR.set_debug_level(3)
+ParallelAccelerator.DomainIR.set_debug_level(3)
 
 
 @acc hpat function q26(category, item_count, num_centroids, iterations, file_name)
