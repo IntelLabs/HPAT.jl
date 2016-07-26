@@ -1,13 +1,15 @@
 using HPAT
-
-HPAT.CaptureAPI.set_debug_level(3)
-HPAT.DomainPass.set_debug_level(3)
-HPAT.DataTablePass.set_debug_level(3)
+#HPAT.CaptureAPI.set_debug_level(3)
+#HPAT.DomainPass.set_debug_level(3)
+#HPAT.DataTablePass.set_debug_level(3)
 using CompilerTools
 CompilerTools.OptFramework.set_debug_level(3)
 
 using ParallelAccelerator
 ParallelAccelerator.CGen.setCreateMain(true)
+#ParallelAccelerator.DomainIR.set_debug_level(3)
+
+
 @acc hpat function q26(category, item_count, num_centroids, iterations, file_name)
     store_sales = DataSource(DataTable{:ss_item_sk=Int64,:ss_customer_sk=Int64}, HDF5, file_name)
     item = DataSource(DataTable{:i_item_sk=Int64,:i_category=Int64,:i_class_id=Int64}, HDF5, file_name)
@@ -39,7 +41,9 @@ ParallelAccelerator.CGen.setCreateMain(true)
     customer_i_class[:id3], customer_i_class[:id4], customer_i_class[:id5], customer_i_class[:id6],
     customer_i_class[:id7], customer_i_class[:id8], customer_i_class[:id9], customer_i_class[:id10],
     customer_i_class[:id11], customer_i_class[:id12], customer_i_class[:id13], customer_i_class[:id14], customer_i_class[:id15]))
-    model = Kmeans(points, num_centroids, iterations)
+    pointsF = convert(Matrix{Float64},points)
+    model = Kmeans(pointsF, num_centroids, iterations)
+    #model = Kmeans([1. 2.; 3. 4.], num_centroids, iterations)
     #return model
     return customer_i_class[:ss_item_count],customer_i_class[:id15], model
 end
