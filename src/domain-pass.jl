@@ -401,6 +401,11 @@ end
 
 function getHPATcall(call::Expr)
     if call.head==:call
+        # TODO: hack to get around Julia 0.4 function resolution issue (q26)
+        # remove in 0.5
+        if call.args[1]==GlobalRef(Main,:Kmeans)
+            call.args[1]=GlobalRef(HPAT.API,:Kmeans)
+        end
         return getHPATcall_inner(call.args[1])
     end
     return :null
