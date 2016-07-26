@@ -389,7 +389,8 @@ function translate_hpat_dist_calls(lhs::LHSVar, rhs::Expr, hpat_call::Symbol, st
         # enable OpenMP for DAAL calls
         HPAT.enableOMP()
         # no change
-        return [Expr(:(=),lhs,rhs)]
+        #return [Expr(:(=),lhs,rhs)]
+        return [Expr(:call,GlobalRef(HPAT.API,hpat_call), lhs,rhs.args[2:end]...)]
     else # not handled yet
         return [Expr(:(=),lhs,rhs)]
     end
