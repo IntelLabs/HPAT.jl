@@ -322,13 +322,7 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
             return get_arr_dist_info_gemm(node, state, top_level_number, lhs, rhs)
         elseif isBaseFunc(func,:gemv!)
             return get_arr_dist_info_gemv(node, state, top_level_number, lhs, rhs)
-
-        # GenSym(20) = (Base.hcat)(....
-        # GenSym(5) = (Base.arraysize)(GenSym(20),2)::Int64
-        # GenSym(6) = (Base.arraysize)(GenSym(20),1)::Int64
-        # ##B#8632 = (Core.ccall)(:jl_alloc_array_2d,(Core.apply_type)(Core.Array,Int64,2)::Type{Array{Int64,2}},
-        #            (Core.svec)(Base.Any,Base.Int,Base.Int)::SimpleVector,Array{Int64,2},0,GenSym(5),0,GenSym(6),0)::Array{Int64,2}
-        # points = (Base.transpose!)(##B#8632::Array{Int64,2},GenSym(20))::Array{Int64,2}
+        # TODO: Check why toLHSVar(rhs.args[2])].dim_sizes[1] is zero for all arrays
         elseif (func.name == :hcat)
             state.arrs_dist_info[lhs].dim_sizes[1] = state.arrs_dist_info[toLHSVar(rhs.args[2])].dim_sizes[1]
             state.arrs_dist_info[lhs].dim_sizes[2] = length(rhs.args) - 1
