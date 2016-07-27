@@ -93,6 +93,33 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
             # second array is input matrix and is parallel
             # third array is responses and is parallel
             setSEQ(toLHSVar(node.args[2]),state)
+        elseif func==:__hpat_join
+          # output columns of join can have variable length on different processors
+          # set dimension to -1
+          output_cols = node.args[6]
+          for col in output_cols
+            # table columns are 1D
+            @assert length(state.arrs_dist_info[col].dim_sizes)==1
+            state.arrs_dist_info[col].dim_sizes[1] = -1
+          end
+        elseif func==:__hpat_filter
+          # output columns of filter can have variable length on different processors
+          # set dimension to -1
+          output_cols = node.args[5]
+          for col in output_cols
+            # table columns are 1D
+            @assert length(state.arrs_dist_info[col].dim_sizes)==1
+            state.arrs_dist_info[col].dim_sizes[1] = -1
+          end
+        elseif func==:__hpat_aggregate
+          # output columns of aggregate can have variable length on different processors
+          # set dimension to -1
+          output_cols = node.args[7]
+          for col in output_cols
+            # table columns are 1D
+            @assert length(state.arrs_dist_info[col].dim_sizes)==1
+            state.arrs_dist_info[col].dim_sizes[1] = -1
+          end
         end
         return node
     elseif head==:gotoifnot
