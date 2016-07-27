@@ -99,6 +99,7 @@ dist_ir_funcs = Set([   :unsafe_arrayref,
                         :__hpat_data_source_TXT_read,
                         :__hpat_filter,
                         :__hpat_join,
+                        :__hpat_aggregate,
                         :Kmeans,
                         :LinearRegression,
                         :NaiveBayes,
@@ -806,7 +807,7 @@ function from_call(node::Expr, state)
     elseif func==GlobalRef(HPAT.API,:Kmeans) && isONE_D(toLHSVar(node.args[3]), state)
         arr = toLHSVar(node.args[3])
         @dprintln(3,"DistPass kmeans call for array: ", arr)
-        node.args[1].name = :Kmeans_dist
+        node.args[1] = GlobalRef(HPAT.API,:Kmeans_dist)
 
         push!(node.args, state.arrs_dist_info[arr].starts[end], state.arrs_dist_info[arr].counts[end],
                 state.arrs_dist_info[arr].dim_sizes[1], state.arrs_dist_info[arr].dim_sizes[end])
