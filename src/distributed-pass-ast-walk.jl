@@ -333,11 +333,11 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
             state.arrs_dist_info[lhs].dim_sizes[1] = state.arrs_dist_info[toLHSVar(rhs.args[2])].dim_sizes[1]
             state.arrs_dist_info[lhs].dim_sizes[2] = length(rhs.args) - 1
             min_partitioning = state.arrs_dist_info[lhs].partitioning
-            for i in 2:length(rhs.args)
-                min_partitioning = min(state.arrs_dist_info[lhs].partitioning, state.arrs_dist_info[toLHSVar(rhs.args[2])].partitioning)
+            for curr_array_index in 2:length(rhs.args)
+                min_partitioning = min(min_partitioning, state.arrs_dist_info[toLHSVar(rhs.args[curr_array_index])].partitioning)
             end
-            for i in 2:length(rhs.args)
-                state.arrs_dist_info[toLHSVar(rhs.args[i])].partitioning = min_partitioning
+            for curr_array_index in 2:length(rhs.args)
+                state.arrs_dist_info[toLHSVar(rhs.args[curr_array_index])].partitioning = min_partitioning
             end
             state.arrs_dist_info[lhs].partitioning = min_partitioning
         elseif isBaseFunc(func,:transpose!)
