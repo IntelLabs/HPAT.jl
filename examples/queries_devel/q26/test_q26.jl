@@ -44,8 +44,6 @@ ParallelAccelerator.DomainIR.set_debug_level(3)
     customer_i_class[:id11], customer_i_class[:id12], customer_i_class[:id13], customer_i_class[:id14], customer_i_class[:id15]))
     pointsF = convert(Matrix{Float64},points)
     model = Kmeans(pointsF, num_centroids, iterations)
-    #model = Kmeans([1. 2.; 3. 4.], num_centroids, iterations)
-    #return model
     return customer_i_class[:ss_item_count],customer_i_class[:id15], model
 end
 
