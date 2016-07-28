@@ -38,26 +38,26 @@ import CompilerTools.DebugMsg
 DebugMsg.init()
 
 """ At macro level, translate DataSource into function calls so that type inference
-and ParallelAccelerator compilation works with knowledge of calls and allocations for arrays.
-"""
+    and ParallelAccelerator compilation works with knowledge of calls and allocations for arrays.
+    """
 function process_node(node::Expr, state, top_level_number, is_top_level, read)
     @dprintln(3,"translating expr, head: ",node.head," node: ",node)
     if node.head == :(=)
         return process_assignment(node, state, node.args[1], node.args[2])
     elseif node.head==:call && node.args[1]==:DataSink
-      return translate_data_sink(node.args[2], state, node.args[3], node.args[4:end])
+        return translate_data_sink(node.args[2], state, node.args[3], node.args[4:end])
     elseif node.head==:ref
         t1 = node.args[1]
-         # table column ref like: t1[:c1]
-         # TODO: column assignment like t1[:c2] =... should be processed in assignment
+        # table column ref like: t1[:c1]
+        # TODO: column assignment like t1[:c2] =... should be processed in assignment
         if haskey(state.tableCols,t1)
             c1 = node.args[2]
             @assert isQuote(c1) " $node = $c1 invalid table ref"
-             return getColName(t1, getQuoteValue(c1))
+            return getColName(t1, getQuoteValue(c1))
         end
         CompilerTools.AstWalker.ASTWALK_RECURSE
     elseif node.head==:macrocall
-      return process_macros(node, state,node.args[1])
+        return process_macros(node, state,node.args[1])
     end
     CompilerTools.AstWalker.ASTWALK_RECURSE
 end
@@ -77,59 +77,58 @@ function process_assignment(node, state, lhs::Symbol, rhs::Expr)
         else
             return translate_data_source(lhs, state, arr_var_expr, rhs.args[3], rhs.args[4:end])
         end
-   elseif rhs.head==:call && rhs.args[1]==:join
+    elseif rhs.head==:call && rhs.args[1]==:join
         return translate_join(lhs, rhs, state)
-   elseif rhs.head==:call && rhs.args[1]==:aggregate
+    elseif rhs.head==:call && rhs.args[1]==:aggregate
         return translate_aggregate(lhs,rhs,state)
     elseif rhs.head==:ref
         t1 = rhs.args[1]
-         # table filter like t1 = t1[:c1>=2]
+        # table filter like t1 = t1[:c1>=2]
         if haskey(state.tableCols,t1)
             return translate_filter(lhs, t1, rhs.args[2], state)
         end
-   end
-   CompilerTools.AstWalker.ASTWALK_RECURSE
+    end
+    CompilerTools.AstWalker.ASTWALK_RECURSE
 end
 
 function process_assignment(node, state, lhs::ANY, rhs::ANY)
-   CompilerTools.AstWalker.ASTWALK_RECURSE
+    CompilerTools.AstWalker.ASTWALK_RECURSE
 end
 
 function process_macros(node, state, func)
-  if func==Symbol("@partitioned")
-    state.array_partitioning[node.args[2]] = convert_partitioning(node.args[3])
-    return CompilerTools.AstWalker.ASTWALK_REMOVE
-  end
-  return node
+    if func==Symbol("@partitioned")
+        state.array_partitioning[node.args[2]] = convert_partitioning(node.args[3])
+        return CompilerTools.AstWalker.ASTWALK_REMOVE
+    end
+    return node
 end
 
-
 function convert_partitioning(p::Symbol)
-  if p==:HPAT_2D
-    return TWO_D
-  elseif p==:HPAT_1D
-    return ONE_D
-  elseif p==:HPAT_SEQ
+    if p==:HPAT_2D
+        return TWO_D
+    elseif p==:HPAT_1D
+        return ONE_D
+    elseif p==:HPAT_SEQ
+        return SEQ
+    else
+        error("unknown partitioning $p")
+        return SEQ
+    end
     return SEQ
-  else
-    error("unknown partitioning $p")
-    return SEQ
-  end
-  return SEQ
 end
 
 """ Translate filter out_t = t1[cond]
 
-We create an array of arrays to pass the columns to table_filter since
-arrays are passed by value with tuples.
-            _t1_cond_e = cond
-            _filter_t1 = Array(Vector,n)
-            _filter_t1[1] = _t1_c1
-            ...
-            (HPAT.API.table_filter!)(_t1_e,_filter_t1)
-            _t1_c1 = _filter_t1[1]
-            ...
-"""
+    We create an array of arrays to pass the columns to table_filter since
+    arrays are passed by value with tuples.
+                _t1_cond_e = cond
+                _filter_t1 = Array(Vector,n)
+                _filter_t1[1] = _t1_c1
+                ...
+                (HPAT.API.table_filter!)(_t1_e,_filter_t1)
+                _t1_c1 = _filter_t1[1]
+                ...
+    """
 
 function translate_filter(t_out::Symbol, t_in::Symbol, cond::Expr, state)
     @dprintln(3, "translating filter: ",t_in," ",cond)
@@ -171,12 +170,12 @@ end
 
 
 """
-Basic join will match first column of each column array
-  t3 = join(t1, t2, :c1==:c1, :c2)
-                ->  t3_c1, t3_c2,... = join([t1_c1,t1_c2,...], [t2_c1,t2_c2,...])
-                    assertEqShape(t3_c1, t3_c2,...)
-                    newTableMeta(:t3, [:c1,:c2,...])
-"""
+    Basic join will match first column of each column array
+      t3 = join(t1, t2, :c1==:c1, :c2)
+                    ->  t3_c1, t3_c2,... = join([t1_c1,t1_c2,...], [t2_c1,t2_c2,...])
+                        assertEqShape(t3_c1, t3_c2,...)
+                        newTableMeta(:t3, [:c1,:c2,...])
+    """
 function translate_join(lhs, rhs, state)
     @dprintln(3,"join: ", lhs)
     # 1st and 2nd args are tables to join
@@ -242,17 +241,17 @@ function translate_join(lhs, rhs, state)
 end
 
 """
-example: t4 = aggregate(t3, :userid, :sumo2 = sum(:val2==1.1), :size_val3 = size(:val3))
+    example: t4 = aggregate(t3, :userid, :sumo2 = sum(:val2==1.1), :size_val3 = size(:val3))
 
-f is a reduction function on grouped data, e is closure for filtering column elements
- t2 = aggregate(t1, :c1, :c3=f(e(:c2,...)),...)
-                ->  t2_c3_e = e(t1_c2,...)
-                    ...
-                    t2_c1, t2_c3,... = aggregate(t1_c1, (t2_c3_e,f),...)
-                    assertEqShape(t3_c1, t3_c3,...)
-                    newTableMeta(:t3, [:c1,:c3,...])
+    f is a reduction function on grouped data, e is closure for filtering column elements
+     t2 = aggregate(t1, :c1, :c3=f(e(:c2,...)),...)
+                    ->  t2_c3_e = e(t1_c2,...)
+                        ...
+                        t2_c1, t2_c3,... = aggregate(t1_c1, (t2_c3_e,f),...)
+                        assertEqShape(t3_c1, t3_c3,...)
+                        newTableMeta(:t3, [:c1,:c3,...])
 
-"""
+    """
 function translate_aggregate(lhs, rhs, state)
     @dprintln(3,"aggregate: ", lhs)
     t1 = rhs.args[2]
@@ -326,34 +325,34 @@ function translate_aggregate(lhs, rhs, state)
 end
 
 agg_oprs_map = Dict{Symbol, Symbol}(
-    # comparison operators
-    :(>) => :(.>),
-    :(<) => :(.<),
-    :(<=) => :(.<=),
-    :(>=) => :(.>=),
-    :(==) => :(.==),
+                                    # comparison operators
+                                    :(>) => :(.>),
+                                    :(<) => :(.<),
+                                    :(<=) => :(.<=),
+                                    :(>=) => :(.>=),
+                                    :(==) => :(.==),
 
-    # binary operators
-    :(+) => :(.+),
-    :(-) => :(.-),
-    :(*) => :(.*),
-    :(/) => :(./),
-    :(%) => :(.%),
-    :(^) => :(.^),
-    :(<<) => :(.<<),
-    :(>>) => :(.>>)
-)
+                                    # binary operators
+                                    :(+) => :(.+),
+                                    :(-) => :(.-),
+                                    :(*) => :(.*),
+                                    :(/) => :(./),
+                                    :(%) => :(.%),
+                                    :(^) => :(.^),
+                                    :(<<) => :(.<<),
+                                    :(>>) => :(.>>)
+                                    )
 
 
 """ Convert math operations to element-wise versions to work with arrays
 
-example: user can write 't4 = aggregate(t3, :userid, :sumo2 = sum(:val2==1.1), :size_val3 = size(:val3))'
-the aggregate expression ':val2==1.1' should be translated to '_t4_val2.==1.1' to be valid for arrays.
+    example: user can write 't4 = aggregate(t3, :userid, :sumo2 = sum(:val2==1.1), :size_val3 = size(:val3))'
+    the aggregate expression ':val2==1.1' should be translated to '_t4_val2.==1.1' to be valid for arrays.
 
-For simplicity, we assume we can convert all operations with element-wise versions.
-This is wrong for rare use cases such as comparison of two arrays([1,2]==[1,3] is not the same as [1,2].==[1,3]),
-TODO: make it fully general.
-"""
+    For simplicity, we assume we can convert all operations with element-wise versions.
+    This is wrong for rare use cases such as comparison of two arrays([1,2]==[1,3] is not the same as [1,2].==[1,3]),
+    TODO: make it fully general.
+    """
 function convert_oprs_to_elementwise(node::Symbol, table::Tuple{Symbol,Vector{Symbol}}, top_level_number, is_top_level, read)
     if haskey(agg_oprs_map,node)
         return agg_oprs_map[node]
@@ -366,8 +365,8 @@ function convert_oprs_to_elementwise(node::ANY, table::Tuple{Symbol,Vector{Symbo
 end
 
 """
-Replace column symbols with translated array names in aggregate expressions
-"""
+    Replace column symbols with translated array names in aggregate expressions
+    """
 function replace_col_with_array(node::QuoteNode, table::Tuple{Symbol,Vector{Symbol}}, top_level_number, is_top_level, read)
     col_sym = getQuoteValue(node)
     if col_sym in table[2]
@@ -415,15 +414,15 @@ function translate_data_source(lhs, state, arr_var_expr, source_typ, other_args)
 end
 
 """ Data tables are broken down to individual column arrays, table meta data is saved
-table_name = DataSource(DataTable{:column1=<typeof_column1>, :column2=<typeof_column2>, ...}, HDF5, file_name)
-                ->  table_name_column1 = DataSource(...)
-                    table_name_column2 = DataSource(...)
-                    assertEqShape([table_name_column1, table_name_column2])
-                    newTableMeta(:table_name, [:column1,:column2])
+    table_name = DataSource(DataTable{:column1=<typeof_column1>, :column2=<typeof_column2>, ...}, HDF5, file_name)
+                    ->  table_name_column1 = DataSource(...)
+                        table_name_column2 = DataSource(...)
+                        assertEqShape([table_name_column1, table_name_column2])
+                        newTableMeta(:table_name, [:column1,:column2])
 
-Example table to translate:
-        t1 = DataSource(DataTable{:userid = Int64,:val2 = Float64},HDF5,file_name)
-"""
+    Example table to translate:
+            t1 = DataSource(DataTable{:userid = Int64,:val2 = Float64},HDF5,file_name)
+    """
 function translate_data_table(lhs, state, arr_var_expr, source_typ, other_args)
     @assert arr_var_expr.args[1]==:DataTable "expected :DataTable"
     # arr_var_expr has the form: :(DataTable{:userid = Int64,:val2 = Float64})
@@ -463,14 +462,14 @@ function isQuote(e::ANY)
 end
 
 """
-Julia sometimes returns a QuoteNode for :column1
+    Julia sometimes returns a QuoteNode for :column1
 """
 function getQuoteValue(exp::QuoteNode)
     return exp.value
 end
 
 """
-Julia sometimes returns an Expr for :column1
+    Julia sometimes returns an Expr for :column1
 """
 function getQuoteValue(exp::Expr)
     @assert exp.head==:quote "expected :quote expression"
@@ -479,15 +478,15 @@ end
 
 
 """
-Convert a table column to an array name
-"""
+    Convert a table column to an array name
+    """
 function getColName(t::Symbol, c::Symbol)
     return symbol("#$(t)#$(c)")
 end
 
 """
-reverse of getColName()
-get column name from array name
+    reverse of getColName()
+    get column name from array name
 """
 function revColName(t::Symbol, c_arr::Symbol)
     t_str = string(t)
