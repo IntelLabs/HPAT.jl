@@ -116,7 +116,8 @@ end
 # nodes are :body of AST
 function from_toplevel_body(nodes::Array{Any,1},tableCols,linfo)
     res::Array{Any,1} = []
-    nodes = push_filter_up(nodes,tableCols,linfo)
+    # TODO Handle optimization; Need to replace all uses of filter output table after pushing up with new filter output table
+    # nodes = push_filter_up(nodes,tableCols,linfo)
     @dprintln(3,"body after query optimizations ", nodes)
     # After optimizations make actuall call nodes for cgen
     for (index, node) in enumerate(nodes)
@@ -166,9 +167,9 @@ condition expression lhs, columns length, columns names(#t1#c1) ...
 =#
 function translate_hpat_filter(node)
     num_cols = length(node.args[4])
-    # args: id, condition, number of columns, columns
+    # args: id, condition, number of columns, output table columns, input table columns
     open_call = mk_call(GlobalRef(HPAT.API,:__hpat_filter),
-                        [node.args[6]; node.args[1]; num_cols; node.args[4]])
+                        [node.args[8]; node.args[1]; num_cols; node.args[5]; node.args[6]])
     return [open_call]
 end
 
@@ -200,15 +201,29 @@ function push_filter_up(nodes::Array{Any,1},tableCols,linfo)
         end
         if isa(nodes[i], Expr) && nodes[i].head==:filter && hit_join
             # TODO change condition in filter expression node too
+            join_node = nodes[pos+1]
+            # args[2] and args[3] are join input table.
+            # Search in these input tables on which filter condition can be applied.
+            join_input_tables = [join_node.args[2];join_node.args[3]]
             new_filter_node = nodes[i]
             new_id_node = nodes[i-1]
             new_cond_node = nodes[i-2]
             cond_lhs = string(nodes[i].args[1])
-            cond_rhs = string(nodes[i].args[5].args[2].name)
-            table_name = find_table_from_cond(tableCols,cond_rhs)
+            # args[7] is the conditional
+            cond_rhs = string(nodes[i].args[7].args[2].name)
+            # Extract column name from filter condition and check in join input tables on which it was applied
+            # It will return table name and join input table index 1 or 2 which should be filtered
+            table_name,j_ind = find_table_from_cond(tableCols,join_input_tables,cond_rhs)
+
             replace_cond_in_linfo(linfo,cond_lhs,table_name)
             replace_table_in_cond(new_cond_node,table_name)
-            replace_table_in_filter_node(new_filter_node,table_name,tableCols)
+            # return output filter table name which will be replaced in join
+            out_filter_table, out_filter_table_cols = replace_table_in_filter_node(new_filter_node,table_name,tableCols)
+            # + 1 because we need right index in join expression node
+            join_node.args[j_ind + 1] = out_filter_table
+            # Also replace table columns list with appropriate name 
+            # + 7 because we need right index in join expression node
+            join_node.args[j_ind + 7] = out_filter_table_cols
             # remove condition and id node above filter node
             pop!(new_nodes)
             pop!(new_nodes)
@@ -262,20 +277,20 @@ This necessary to replace the table name if you move filter
 above join or aggregates
 TODO make it short
 =#
-function find_table_from_cond(tableCols,cond)
-    # TODO : This hack should be changes.
+function find_table_from_cond(tableCols,join_input_tables,cond)
     # I am assuming that second element has column name
     arr = split(cond,'#')
     col_name = arr[3]
-    for k in keys(tableCols)
+    for (j_ind,k) in enumerate(join_input_tables)
         arr = tableCols[k]
         for (index, value) in enumerate(arr)
             curr_col = string(value)
             if curr_col == col_name
-                return string(k)
+                return string(k),j_ind
             end
         end
     end
+    @assert false "Could not find column in join input tables"
 end
 
 #=
@@ -310,17 +325,32 @@ end
 Replaces table name and columns accordingly in the filter node after moving
 =#
 function replace_table_in_filter_node(node,table_name,tableCols)
-    arr1 = split(string(node.args[1]),'#')
-    arr2 = split(string(node.args[5].args[2].name),'#')
-    node.args[1] = getColName(Symbol(table_name),Symbol(arr1[3]))
-    node.args[2] = Symbol(table_name)
+
+    # node.args[2] gives output table
+    out_table_name = string(table_name, "_fil")
+    node.args[2] = Symbol(out_table_name)
+    # New table must be added in tableCols which will have same columns as input
+    tableCols[Symbol(out_table_name)] = tableCols[Symbol(table_name)]
+    # node.args[3] gives input table
+    node.args[3] = Symbol(table_name)
     # replace in condition expression (could be removed in future)
-    node.args[5].args[2] = getColName(Symbol(table_name),Symbol(arr2[3]))
-    # replace column array with new table columns
-    node.args[4] = []
+    # args[1] gives cond_rhs
+    # args[7] gives cond_lhs
+    arr1 = split(string(node.args[1]),'#')
+    arr2 = split(string(node.args[7].args[2].name),'#')
+    node.args[1] = getColName(Symbol(table_name),Symbol(arr1[3]))
+    node.args[7].args[2] = getColName(Symbol(table_name),Symbol(arr2[3]))
+    # Replace columns list with new columns
+    node.args[4] = tableCols[Symbol(table_name)]
+    # Replace output and input table columns array with new table columns
+    node.args[5] = []
+    node.args[6] = []
     for (index, col) in enumerate(tableCols[node.args[2]])
-        append!(node.args[4], [getColName(Symbol(table_name),col)])
+        append!(node.args[5], [getColName(Symbol(out_table_name),col)])
+        append!(node.args[6], [getColName(Symbol(table_name),col)])
     end
+    # Return output filter table and its columns list
+    return node.args[2], node.args[5]
 end
 
 end # DataTablePass
