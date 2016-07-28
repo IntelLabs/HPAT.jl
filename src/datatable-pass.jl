@@ -28,9 +28,9 @@ module DataTablePass
 #using Debug
 
 using CompilerTools
+using CompilerTools.AstWalker
 import CompilerTools.DebugMsg
 DebugMsg.init()
-using CompilerTools.AstWalker
 using CompilerTools.Helper
 using CompilerTools.LambdaHandling
 import CompilerTools.ReadWriteSet
@@ -101,7 +101,7 @@ end
 function from_toplevel_body(nodes::Array{Any,1},tableCols,linfo)
     res::Array{Any,1} = []
     # TODO Handle optimization; Need to replace all uses of filter output table after pushing up with new filter output table
-    # nodes = push_filter_up(nodes,tableCols,linfo)
+    nodes = push_filter_up(nodes,tableCols,linfo)
     @dprintln(3,"Datatable pass: Body after query optimizations ", nodes)
     # After optimizations make actuall call nodes for cgen
     for (index, node) in enumerate(nodes)
@@ -158,7 +158,7 @@ function translate_hpat_filter(node)
 end
 
 """
-    Translate aggragte node so that backend can tranlate
+    Translate aggragte node so that backend can translate
 """
 function translate_hpat_aggregate(node,linfo)
     # args: id, key, number of expressions, expression list
@@ -173,8 +173,10 @@ end
         if there is a join before a filter then move that filter above join
 """
 function push_filter_up(nodes::Array{Any,1},tableCols,linfo)
+    rename_map::Dict{Symbol,Symbol} = Dict{Symbol,Symbol}()
     new_nodes = []
     hit_join = false
+    hit_join_filter = false
     pos = 0
     for i in 1:length(nodes)
         if isa(nodes[i], Expr) && nodes[i].head==:join
@@ -182,12 +184,18 @@ function push_filter_up(nodes::Array{Any,1},tableCols,linfo)
             # move above join id
             pos=i-1
         end
+        #if hit_join_filter && is(nodes[i],Expr) && ( nodes[i].head==:join || nodes[i].head==:filter || nodes[i].head==:aggregate)
+        AstWalk(nodes[i], rename_symbols, rename_map)
+        #end
+
         if isa(nodes[i], Expr) && nodes[i].head==:filter && hit_join
             join_node = nodes[pos+1]
             # args[2] and args[3] are join input table.
             # Search in these input tables on which filter condition can be applied.
             join_input_tables = [join_node.args[2];join_node.args[3]]
             new_filter_node = nodes[i]
+            filter_output_table = nodes[i].args[2]
+
             new_id_node = nodes[i-1]
             new_cond_node = nodes[i-2]
             cond_lhs = string(nodes[i].args[1])
@@ -201,6 +209,12 @@ function push_filter_up(nodes::Array{Any,1},tableCols,linfo)
             replace_table_in_cond(new_cond_node,table_name)
             # return output filter table name which will be replaced in join
             out_filter_table, out_filter_table_cols = replace_table_in_filter_node(new_filter_node,table_name,tableCols)
+
+            # Adding mapping from filter table output to join output
+            # In future change generalize it because any node output above filter node should be used instead of join output
+
+            add_mapping(filter_output_table, join_node.args[1], tableCols, rename_map)
+
             # + 1 because we need right index in join expression node
             join_node.args[j_ind + 1] = out_filter_table
             # Also replace table columns list with appropriate name 
@@ -211,12 +225,38 @@ function push_filter_up(nodes::Array{Any,1},tableCols,linfo)
             pop!(new_nodes)
             splice!(new_nodes,pos:1,[new_cond_node,new_id_node,new_filter_node])
             hit_join=false
+            hit_join_filter=true
             continue
         end
         push!(new_nodes, nodes[i])
     end
     return new_nodes
 end
+
+function rename_symbols(node::Symbol, rename_map::Dict{Symbol,Symbol}, top_level_number, is_top_level, read)
+    new_sym = node
+    while haskey(rename_map, new_sym)
+      new_sym = rename_map[new_sym]
+    end
+    return new_sym
+end
+
+function rename_symbols(node::ANY, rename_map::Dict{Symbol,Symbol}, top_level_number, is_top_level, read)
+    return CompilerTools.AstWalker.ASTWALK_RECURSE
+end
+
+function add_mapping(old_t::Symbol, new_t::Symbol, tableCols::Dict{Symbol,Array{Symbol,1}}, mapping::Dict{Symbol,Symbol})
+    mapping[old_t]=new_t
+    old_t_cols = tableCols[old_t]
+    new_t_cols = tableCols[new_t]
+    for (ind,old_col) in enumerate(old_t_cols)
+        new_col = new_t_cols[ind]
+        @assert new_col==old_col "Both table cols should be same"
+        mapping[getColName(old_t,old_col)] = getColName(new_t,new_col)
+    end
+    @dprintln(3,"Datatable pass: After adding new mappings = ",mapping)
+end
+
 
 """
     OPTIMIZATION: Remove extra columns.
