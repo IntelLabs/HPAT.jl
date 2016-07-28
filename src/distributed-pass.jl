@@ -708,6 +708,9 @@ function from_parfor_1d(node::Expr, state, parfor)
     end
   end
    if is_var_length
+     for arr in state.parfor_arrays[parfor.unique_id]
+          state.arrs_dist_info[arr].dim_sizes[end]=-1
+     end
        # TODO join output table cols gets -1 dim_sizes which is input to filter
         # for arr in state.parfor_arrays[parfor.unique_id]
         #     @assert state.arrs_dist_info[arr].dim_sizes[1]==-1 "$arr parfor array should be variable length"
@@ -945,7 +948,7 @@ function gen_rebalance_array(arr::LHSVar, state)
   size_var_init = Expr(:(=), darr_size_var, -1)
   # get size of last dimension, assume 1D partitioning
   loc_size_var_init = Expr(:(=), darr_loc_size_var, Expr(:call, GlobalRef(Base, :arraysize), arr, num_dims))
-  push!(out, reduce_var_init)
+  push!(out, size_var_init)
   push!(out, loc_size_var_init)
   reduceCall = Expr(:call, GlobalRef(HPAT.API,:hpat_dist_allreduce),
     darr_loc_size_var, GlobalRef(Base, :add_int), darr_size_var, 1)
