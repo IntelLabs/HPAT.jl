@@ -132,6 +132,7 @@ end
 
 function translate_filter(t_out::Symbol, t_in::Symbol, cond::Expr, state)
     @dprintln(3, "translating filter: ",t_in," ",cond)
+    @assert t_out!=t_in "Output table of filter must have different name"
     # Adding new output table to state.tableCols
     state.tableCols[t_out] = state.tableCols[t_in]
     state.tableTypes[t_out] = state.tableTypes[t_in]
