@@ -341,11 +341,14 @@ function pattern_match_call_filter(linfo,f::GlobalRef, id, cond_e, num_cols,tabl
         return s
     end
     # its an array of array. array[2:end] and table_cols... notation does that
-    table_cols = table_cols[1]
+    all_table_cols = table_cols[1]
+    out_table_cols = all_table_cols[1:num_cols]
+    in_table_cols = all_table_cols[(num_cols + 1):end]
+
     # For unique counter variables of filter
     unique_id = string(id)
     # assuming that all columns are of same size in a table
-    column1_name = ParallelAccelerator.CGen.from_expr(table_cols[1],linfo)
+    column1_name = ParallelAccelerator.CGen.from_expr(in_table_cols[1],linfo)
     array_length = column1_name*"_array_length_filter" * unique_id
     s *= "int $array_length = " * column1_name * ".ARRAYLEN();\n"
     # Calculate final filtered array length
@@ -355,7 +358,7 @@ function pattern_match_call_filter(linfo,f::GlobalRef, id, cond_e, num_cols,tabl
     s *= "for (int index = 1 ; index < $array_length + 1 ; index++) { \n"
     s *= "if ( $cond_e_arr.ARRAYELEM(index) ){\n"
     # If condition satisfy copy all columns values
-    for col_name in table_cols
+    for col_name in in_table_cols
         arr_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
         s *= "$arr_col_name.ARRAYELEM($write_index) =  $arr_col_name.ARRAYELEM(index); \n"
     end
@@ -363,9 +366,12 @@ function pattern_match_call_filter(linfo,f::GlobalRef, id, cond_e, num_cols,tabl
     s *= "};\n" # if condition
     s *= "};\n" # for loop
     # After filtering we need to change the size of each array
-    for col_name in table_cols
+    # And assign to output filter column tables
+    for (index, col_name) in enumerate(in_table_cols)
         arr_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
+        out_arr_col_name = ParallelAccelerator.CGen.from_expr(out_table_cols[index],linfo)
         s *= "$arr_col_name.dims[0] =  $write_index - 1; \n"
+        s *= "$out_arr_col_name = $arr_col_name ; \n"
     end
     return s
 end
