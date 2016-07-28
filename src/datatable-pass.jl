@@ -28,7 +28,6 @@ module DataTablePass
 #using Debug
 
 using CompilerTools
-using CompilerTools.AstWalker
 import CompilerTools.DebugMsg
 DebugMsg.init()
 using CompilerTools.Helper
@@ -40,6 +39,7 @@ import HPAT.CaptureAPI.getColName
 using HPAT.DomainPass.get_table_meta
 
 using ParallelAccelerator
+using ParallelAccelerator.DomainIR.AstWalk
 import ParallelAccelerator.ParallelIR
 import ParallelAccelerator.ParallelIR.computeLiveness
 
@@ -217,7 +217,7 @@ function push_filter_up(nodes::Array{Any,1},tableCols,linfo)
 
             # + 1 because we need right index in join expression node
             join_node.args[j_ind + 1] = out_filter_table
-            # Also replace table columns list with appropriate name 
+            # Also replace table columns list with appropriate name
             # + 7 because we need right index in join expression node
             join_node.args[j_ind + 7] = out_filter_table_cols
             # remove condition and id node above filter node

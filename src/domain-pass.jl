@@ -607,7 +607,7 @@ function AstWalkCallback(node::Expr,dw)
             #out_col = out_col_arrs[i]
             in_col = in_col_arrs[i]
             #out_col_arrs[i] = AstWalker.AstWalk(out_col_arrs[i], ParallelAccelerator.DomainIR.AstWalkCallback, dw)
-            in_col_arrs[i] = AstWalker.AstWalk(out_col_arrs[i], ParallelAccelerator.DomainIR.AstWalkCallback, dw)
+            in_col_arrs[i] = AstWalker.AstWalk(in_col_arrs[i], ParallelAccelerator.DomainIR.AstWalkCallback, dw)
             #out_col_arrs!=out_col && @dprintln(3,"Mapping from :",out_col," to ",out_col_arrs[i])
             in_col_arrs!=in_col && @dprintln(3,"Mapping from :",in_col," to ",in_col_arrs[i])
             #@assert col_arrs[i]==old_arr "Table column name shouldn't change for now"
