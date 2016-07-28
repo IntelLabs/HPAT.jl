@@ -27,40 +27,24 @@ module DataTablePass
 
 #using Debug
 
-import Base.show
-
 using CompilerTools
 import CompilerTools.DebugMsg
 DebugMsg.init()
-
 using CompilerTools.AstWalker
-import CompilerTools.ReadWriteSet
-using CompilerTools.LambdaHandling
 using CompilerTools.Helper
+using CompilerTools.LambdaHandling
+import CompilerTools.ReadWriteSet
 
 import HPAT
-using HPAT.DomainPass.get_table_meta
 import HPAT.CaptureAPI.getColName
+using HPAT.DomainPass.get_table_meta
 
 using ParallelAccelerator
 import ParallelAccelerator.ParallelIR
-import ParallelAccelerator.ParallelIR.isArrayType
-import ParallelAccelerator.ParallelIR.getParforNode
-import ParallelAccelerator.ParallelIR.isBareParfor
-import ParallelAccelerator.ParallelIR.isAllocation
-import ParallelAccelerator.ParallelIR.TypedExpr
-import ParallelAccelerator.ParallelIR.get_alloc_shape
 import ParallelAccelerator.ParallelIR.computeLiveness
 
-import ParallelAccelerator.ParallelIR.ISCAPTURED
-import ParallelAccelerator.ParallelIR.ISASSIGNED
-import ParallelAccelerator.ParallelIR.ISASSIGNEDBYINNERFUNCTION
-import ParallelAccelerator.ParallelIR.ISCONST
-import ParallelAccelerator.ParallelIR.ISASSIGNEDONCE
-import ParallelAccelerator.ParallelIR.ISPRIVATEPARFORLOOP
-import ParallelAccelerator.ParallelIR.PIRReduction
-
 mk_call(fun,args) = Expr(:call, fun, args...)
+
 # ENTRY to datatable-pass
 type QueryTreeNode{T}
     data::T
@@ -87,7 +71,7 @@ type QueryTreeNode{T}
         n
     end
 end
-
+# Helper function to adding node Query Tree
 function add_child{T}(data::T,parent::QueryTreeNode{T},sp,ep)
     newc = QueryTreeNode(data,parent,sp,ep)
     parent.child = newc
@@ -101,7 +85,7 @@ QueryTreeNode{T}(data::T) = QueryTreeNode{T}(data)
 QueryTreeNode{T}(data::T, parent::QueryTreeNode{T},sp,ep) = QueryTreeNode{T}(data,parent,sp,ep)
 
 function from_root(function_name, ast::Tuple)
-    @dprintln(1,"Starting main DataTablePass.from_root.  function = ", function_name, " ast = ", ast)
+    @dprintln(1, "Starting main DataTablePass.from_root.  function = ", function_name, " ast = ", ast)
     (linfo, body) = ast
     lives = computeLiveness(body, linfo)
     tableCols, tableTypes = get_table_meta(body)
@@ -118,7 +102,7 @@ function from_toplevel_body(nodes::Array{Any,1},tableCols,linfo)
     res::Array{Any,1} = []
     # TODO Handle optimization; Need to replace all uses of filter output table after pushing up with new filter output table
     # nodes = push_filter_up(nodes,tableCols,linfo)
-    @dprintln(3,"body after query optimizations ", nodes)
+    @dprintln(3,"Datatable pass: Body after query optimizations ", nodes)
     # After optimizations make actuall call nodes for cgen
     for (index, node) in enumerate(nodes)
         if isa(node, Expr) && node.head==:filter
@@ -148,59 +132,57 @@ function make_query_plan(nodes::Array{Any,1},root_qtn)
     end
 end
 
-#=
-
-=#
+"""
+    Translate join node so that backend can translate
+"""
 function translate_hpat_join(node,linfo)
-    res = Any[]
     # args: id, length of output table columns, length of 1st input table columns,
     #       length of 2nd input table columns, output columns, input1 columns, input2 columns
     open_call = mk_call(GlobalRef(HPAT.API,:__hpat_join),
                         [node.args[10]; length(node.args[7]); length(node.args[8]); length(node.args[9]); node.args[7]; node.args[8]; node.args[9]])
-    push!(res, open_call)
-    return res
+    dprintln(3, "Datatable pass: join translated: ", open_call)
+    return [open_call]
 end
 
-#=
-Make filter :call node with the following layout
-condition expression lhs, columns length, columns names(#t1#c1) ...
-=#
+"""
+    Make filter :call node with the following layout
+    condition expression lhs, columns length, columns names(#t1#c1) ...
+"""
 function translate_hpat_filter(node)
     num_cols = length(node.args[4])
     # args: id, condition, number of columns, output table columns, input table columns
     open_call = mk_call(GlobalRef(HPAT.API,:__hpat_filter),
                         [node.args[8]; node.args[1]; num_cols; node.args[5]; node.args[6]])
+    dprintln(3, "Datatable pass: filter translated: ", open_call)
     return [open_call]
 end
 
-#=
-
-=#
+"""
+    Translate aggragte node so that backend can tranlate
+"""
 function translate_hpat_aggregate(node,linfo)
-    res = Any[]
     # args: id, key, number of expressions, expression list
     open_call = mk_call(GlobalRef(HPAT.API,:__hpat_aggregate),
                         [node.args[8]; node.args[3]; length(node.args[4]); node.args[4]; node.args[6]; node.args[7]])
-    push!(res, open_call)
-    return res
+    dprintln(3, "Datatable pass: aggregate translated: ", open_call)
+    return [open_call]
 end
 
-#=
-if there is a join before a filter then move that filter above join
-=#
+"""
+    OPTIMIZATION: PUSH FILTER UP
+        if there is a join before a filter then move that filter above join
+"""
 function push_filter_up(nodes::Array{Any,1},tableCols,linfo)
     new_nodes = []
     hit_join = false
     pos = 0
     for i in 1:length(nodes)
-        #println(nodes[i])
         if isa(nodes[i], Expr) && nodes[i].head==:join
             hit_join = true
             # move above join id
             pos=i-1
         end
         if isa(nodes[i], Expr) && nodes[i].head==:filter && hit_join
-            # TODO change condition in filter expression node too
             join_node = nodes[pos+1]
             # args[2] and args[3] are join input table.
             # Search in these input tables on which filter condition can be applied.
@@ -236,47 +218,34 @@ function push_filter_up(nodes::Array{Any,1},tableCols,linfo)
     return new_nodes
 end
 
-#=
-Remove extra columns.
-Insert Project(select) above aggregate and join
-=#
+"""
+    OPTIMIZATION: Remove extra columns.
+    Insert Project(select) above aggregate and join
+"""
 function prune_column(nodes::Array{Any,1})
 end
 
-#=
-Combine two or more filters using AND on condition which are on
-same table without any other inner query operations
-=#
+"""
+    OPTIMIZATION: Combine two or more filters using AND on condition which are on
+    same table without any other inner query operations
+"""
 function combine_filters()
 end
 
-#=
-If select/projection operator only use one of the table columns after join then
-we can safely remove that join.
-TODO check with ParallelAccelerator
-=#
+"""
+    OPTIMIZATION: If select/projection operator only use one of the table columns after join then
+    we can safely remove that join.
+    TODO check with ParallelAccelerator
+"""
 function remove_unnessary_joins()
 end
 
-#=
-Remove always true and false filters
-=#
-function simplify_filters()
-end
-
-#=
-Simplify expressions whose results can be determined from only one side.
-TODO check with ParallelAccelerator
-=#
-function simplify_booleans()
-end
-
-#=
-Find table name for the given filter condition
-This necessary to replace the table name if you move filter
-above join or aggregates
-TODO make it short
-=#
+"""
+    Find table name for the given filter condition
+    This necessary to replace the table name if you move filter
+    above join or aggregates
+    TODO make it short
+"""
 function find_table_from_cond(tableCols,join_input_tables,cond)
     # I am assuming that second element has column name
     arr = split(cond,'#')
@@ -293,10 +262,9 @@ function find_table_from_cond(tableCols,join_input_tables,cond)
     @assert false "Could not find column in join input tables"
 end
 
-#=
-Replaces condition variable in symbol table with correct table
-TODO make it short
-=#
+"""
+    Replaces condition variable in symbol table with correct table
+"""
 function replace_cond_in_linfo(linfo,cond_var,table_name)
     for i = 1:length(linfo.var_defs)
         if string(linfo.var_defs[i].name) == cond_var
@@ -308,11 +276,11 @@ function replace_cond_in_linfo(linfo,cond_var,table_name)
     end
 end
 
-#=
-Replaces table name in the filter condition(mmap)
-e.g
- table1#cond_e = table1#col1 > 1 => table2#cond_e = table2#col1 > 1
-=#
+"""
+    Replaces table name in the filter condition(mmap)
+    e.g
+     table1#cond_e = table1#col1 > 1 => table2#cond_e = table2#col1 > 1
+"""
 function replace_table_in_cond(node,table_name)
     arr1 = split(string(node.args[1]),'#')
     arr2 = split(string(node.args[2].args[1][1].name),'#')
@@ -321,11 +289,10 @@ function replace_table_in_cond(node,table_name)
     node.args[2].args[1][1] = Symbol(string("#",table_name,"#",arr2[3]))
 end
 
-#=
-Replaces table name and columns accordingly in the filter node after moving
-=#
-function replace_table_in_filter_node(node,table_name,tableCols)
-
+"""
+    Replaces table name and columns accordingly in the filter node after moving
+"""
+function replace_table_in_filter_node(node, table_name, tableCols)
     # node.args[2] gives output table
     out_table_name = string(table_name, "_fil")
     node.args[2] = Symbol(out_table_name)
@@ -338,16 +305,16 @@ function replace_table_in_filter_node(node,table_name,tableCols)
     # args[7] gives cond_lhs
     arr1 = split(string(node.args[1]),'#')
     arr2 = split(string(node.args[7].args[2].name),'#')
-    node.args[1] = getColName(Symbol(table_name),Symbol(arr1[3]))
-    node.args[7].args[2] = getColName(Symbol(table_name),Symbol(arr2[3]))
+    node.args[1] = getColName(Symbol(table_name), Symbol(arr1[3]))
+    node.args[7].args[2] = getColName(Symbol(table_name), Symbol(arr2[3]))
     # Replace columns list with new columns
     node.args[4] = tableCols[Symbol(table_name)]
     # Replace output and input table columns array with new table columns
     node.args[5] = []
     node.args[6] = []
     for (index, col) in enumerate(tableCols[node.args[2]])
-        append!(node.args[5], [getColName(Symbol(out_table_name),col)])
-        append!(node.args[6], [getColName(Symbol(table_name),col)])
+        append!(node.args[5], [getColName(Symbol(out_table_name), col)])
+        append!(node.args[6], [getColName(Symbol(table_name), col)])
     end
     # Return output filter table and its columns list
     return node.args[2], node.args[5]
