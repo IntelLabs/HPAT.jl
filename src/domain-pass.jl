@@ -140,7 +140,6 @@ function from_expr(node::Any, state::DomainState)
     return [node]
 end
 
-
 function translate_table_oprs(nodes::Array{Any,1}, state::DomainState)
     # array of new nodes after translation
     new_nodes = []
@@ -171,12 +170,7 @@ function translate_table_oprs(nodes::Array{Any,1}, state::DomainState)
                 # replace ast nodes with new node
                 splice!(new_nodes, s_start:s_end, ast)
                 continue
-            end
-        # TODO: any recursive case?
-        # elseif isa(nodes[i],Expr) && nodes[i].head==:block
-        elseif isCall(nodes[i])
-            func_call = nodes[i].args[1]
-            if func_call==GlobalRef(HPAT.API, :table_filter!)
+            elseif func_call==GlobalRef(HPAT.API, :table_filter!)
                 # returns: new ast :filter node
                 # number of junk nodes to remove AFTER the filter call
                 # number of junk nodes to remove BEFORE the filter call
@@ -188,6 +182,10 @@ function translate_table_oprs(nodes::Array{Any,1}, state::DomainState)
                 splice!(new_nodes, s_start:s_end, ast)
                 continue
             end
+        # TODO: any recursive case?
+        # elseif isa(nodes[i],Expr) && nodes[i].head==:block
+        elseif isCall(nodes[i])
+            func_call = nodes[i].args[1]
         end
         if length(out)==0
             push!(new_nodes, nodes[i])
@@ -198,7 +196,7 @@ function translate_table_oprs(nodes::Array{Any,1}, state::DomainState)
     return new_nodes
 end
 
-""" Translate table_filter to Expr(:filter, cond_arr, t1 ,col_arrs...) and remove array of array garbage
+doc=""" Translate table_filter to Expr(:filter, cond_arr, t1 ,col_arrs...) and remove array of array garbage
 
     returns: number of junk nodes to remove before the filter call
              number of junk nodes to remove after the filter call
@@ -229,20 +227,28 @@ function translate_filter(nodes::Array{Any,1},pos,filter_node::Expr,state)
     opr_id_var = addTempVariable(Int64, state.linfo)
     push!(new_filter_node, TypedExpr(Int64, :(=), opr_id_var, opr_num))
 
-    cond_arr = toLHSVar(filter_node.args[2])
-    arr_of_arrs = toLHSVar(filter_node.args[3])
+    cond_arr = toLHSVar(filter_node.args[2].args[2])
+    in_arr_of_arrs = toLHSVar(filter_node.args[2].args[3])
+    out_arr_of_arrs = toLHSVar(filter_node.args[1])
     # TODO: remove arr_of_arrs from Lambda
     # convert _filter_t1 to t1
-    table_name = Symbol(string(arr_of_arrs)[9:end])
-    cols = state.tableCols[table_name]
-    col_arrs = map(x->getColName(table_name, x), cols)
-    num_cols = length(cols)
+    in_table_name = Symbol(string(in_arr_of_arrs)[12:end])
+    out_table_name = Symbol(string(out_arr_of_arrs)[13:end])
+
+    in_cols = state.tableCols[in_table_name]
+    in_col_arrs = map(x->getColName(in_table_name, x), in_cols)
+    in_num_cols = length(in_cols)
+
+    out_cols = state.tableCols[out_table_name]
+    out_col_arrs = map(x->getColName(out_table_name, x), out_cols)
+    out_num_cols = length(out_cols)
 
     # remove temp array assignment and setindex!() for each column, remove array of array allocation
-    remove_before = 2*num_cols+1;
+    remove_before = 2*in_num_cols+1;
     # remove type convert calls after filter()
-    remove_after = num_cols
-    push!(new_filter_node, Expr(:filter, cond_arr, table_name, cols, col_arrs,nodes[pos-remove_before-1].args[2],opr_id_var))
+    remove_after = out_num_cols
+    push!(new_filter_node, Expr(:filter, cond_arr, out_table_name, in_table_name,
+                                in_cols, out_col_arrs, in_col_arrs, nodes[pos-remove_before-1].args[2], opr_id_var))
     @dprintln(3,"filter remove_before: ",remove_before," remove_after: ",remove_after," filter_node: ",filter_node)
     return remove_before, remove_after, new_filter_node
 end
