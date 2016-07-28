@@ -39,9 +39,12 @@ DebugMsg.init()
 
 """ At macro level, translate DataSource into function calls so that type inference
     and ParallelAccelerator compilation works with knowledge of calls and allocations for arrays.
-    """
+"""
 function process_node(node::Expr, state, top_level_number, is_top_level, read)
     @dprintln(3,"translating expr, head: ",node.head," node: ",node)
+    # rename symbols before translation
+    AstWalk(node, rename_symbols,  state.rename_map)
+
     if node.head == :(=)
         return process_assignment(node, state, node.args[1], node.args[2])
     elseif node.head==:call && node.args[1]==:DataSink
@@ -84,7 +87,7 @@ function process_assignment(node, state, lhs::Symbol, rhs::Expr)
     elseif rhs.head==:ref
         t1 = rhs.args[1]
         # table filter like t1 = t1[:c1>=2]
-        if haskey(state.tableCols,t1)
+        if haskey(state.tableCols, t1)
             return translate_filter(lhs, t1, rhs.args[2], state)
         end
     end
@@ -131,8 +134,19 @@ end
     """
 
 function translate_filter(t_out::Symbol, t_in::Symbol, cond::Expr, state)
-    @dprintln(3, "translating filter: ",t_in," ",cond)
-    @assert t_out!=t_in "Output table of filter must have different name"
+    @dprintln(3, "translating filter: ",t_in," ",cond," -> ", t_out)
+
+    # @assert t_out!=t_in "Output table of filter must have different name"
+    # rename output if it is the same name
+    if t_out==t_in
+      id = get_unique_id(state)
+      new_t_out = Symbol("$(t_out)_f_$(id)")
+      @dprintln(3, "renaming filter output table: ", t_out, " -> ", new_t_out)
+      # symbol will be renamed for future AST nodes
+      add_symbol_rename(t_out, new_t_out, state)
+      t_out = new_t_out
+    end
+
     # Adding new output table to state.tableCols
     state.tableCols[t_out] = state.tableCols[t_in]
     state.tableTypes[t_out] = state.tableTypes[t_in]
@@ -391,6 +405,21 @@ function replace_col_with_array(node::ANY, table::Tuple{Symbol,Vector{Symbol}}, 
     return CompilerTools.AstWalker.ASTWALK_RECURSE
 end
 
+"""
+    rename symbols of the node according to rename_map
+"""
+function rename_symbols(node::Symbol, rename_map::Dict{Symbol,Symbol}, top_level_number, is_top_level, read)
+    new_sym = node
+    while haskey(rename_map, new_sym)
+      new_sym = rename_map[new_sym]
+    end
+    return new_sym
+end
+
+function rename_symbols(node::ANY, rename_map::Dict{Symbol,Symbol}, top_level_number, is_top_level, read)
+    return CompilerTools.AstWalker.ASTWALK_RECURSE
+end
+
 function translate_data_sink(var, state, source_typ, other_args)
     @assert source_typ==:HDF5 || source_typ==:TXT "Only HDF5 and TXT (text) data sources supported for now."
 
@@ -480,7 +509,7 @@ end
 
 """
     Convert a table column to an array name
-    """
+"""
 function getColName(t::Symbol, c::Symbol)
     return symbol("#$(t)#$(c)")
 end
@@ -494,6 +523,21 @@ function revColName(t::Symbol, c_arr::Symbol)
     c_arr_str = string(c_arr)
     before_col_len = 2+length(t_str) # two underscores + length of table name
     return c_arr_str[before_col_len+1:end]
+end
+
+"""
+    get a unique id for renaming
+"""
+function get_unique_id(state)
+  state.unique_id += 1
+  return state.unique_id
+end
+
+"""
+    add symbol to rename map, to be applied from next AST node
+"""
+function add_symbol_rename(t::Symbol, new_t::Symbol, state)
+  state.rename_map[t] = new_t
 end
 
 end # module

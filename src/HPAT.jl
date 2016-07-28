@@ -163,8 +163,15 @@ type MacroState
     tableTypes::Dict{Symbol,Vector{Symbol}}
     # partitioning of arrays
     array_partitioning::Dict{Symbol,Partitioning}
+    # unique id used in renaming
+    unique_id::Int
+    # symbol rename map for cases like t1=t1[cond] where output table needs to
+    #  be rename for subsequent AST nodes.
+    rename_map::Dict{Symbol,Symbol}
+
     function MacroState()
-        new(Dict{Symbol,Vector{Symbol}}(),Dict{Symbol,Vector{Symbol}}(),Dict{Symbol,Symbol}())
+        new(Dict{Symbol,Vector{Symbol}}(), Dict{Symbol,Vector{Symbol}}(),
+         Dict{Symbol,Symbol}(), 0, Dict{Symbol,Symbol}())
     end
 end
 
@@ -179,7 +186,7 @@ function captureHPAT(func, ast, sig)
     return ast
 end
 
-""" 
+"""
     Adds a duplicate of the function to be checkpointed with "_restart" appended to the name.
 """
 function createCheckpointFunc(func, ast, sig)
