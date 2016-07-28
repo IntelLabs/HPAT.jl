@@ -342,6 +342,7 @@ function from_assignment(node::Expr, state::DistPassState, lhs::LHSVar, rhs::ANY
 end
 
 function from_assignment_alloc(node::Expr, state::DistPassState, arr::LHSVar, rhs::Expr)
+  @dprintln(3,"from assingment alloc: ", node)
   if isONE_D(arr,state)
       @dprintln(3,"DistPass allocation array: ", arr)
       #shape = get_alloc_shape(node.args[2].args[2:end])
@@ -351,6 +352,11 @@ function from_assignment_alloc(node::Expr, state::DistPassState, arr::LHSVar, rh
       # simple 1D partitioning of last dimension, more general partitioning needed
       # match common big data matrix reperesentation
       arr_tot_size = dim_sizes[end]
+
+      # Not sure if need this in future
+      # if arr_tot_size == -1
+      #     return [node]
+      # end
 
       arr_id = getDistNewID(state)
       state.arrs_dist_info[arr].arr_id = arr_id
@@ -701,10 +707,11 @@ function from_parfor_1d(node::Expr, state, parfor)
       break
     end
   end
-  if is_var_length
-    for arr in state.parfor_arrays[parfor.unique_id]
-      @assert state.arrs_dist_info[arr].dim_sizes[1]==-1 "all parfor arrays should be variable length"
-    end
+   if is_var_length
+       # TODO join output table cols gets -1 dim_sizes which is input to filter
+        # for arr in state.parfor_arrays[parfor.unique_id]
+        #     @assert state.arrs_dist_info[arr].dim_sizes[1]==-1 "$arr parfor array should be variable length"
+        # end
     return [node]
   end
 
@@ -851,6 +858,8 @@ function from_call(node::Expr, state)
         #if node.args[3]==length(state.arrs_dist_info[arr].dim_sizes)
         #    return [state.arrs_dist_info[arr].dim_sizes[end]]
         #end
+        # Parfor array length does not get zero value
+        @assert state.arrs_dist_info[arr].dim_sizes[node.args[3]]!=0 "$arr array size could not be zero"
         return [state.arrs_dist_info[arr].dim_sizes[node.args[3]]]
     elseif isBaseFunc(func,:arraylen) && (isONE_D(toLHSVar(node.args[2]), state) || isTWO_D(toLHSVar(node.args[2]),state))
         arr = toLHSVar(node.args[2])
