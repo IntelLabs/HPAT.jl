@@ -832,9 +832,13 @@ function from_call(node::Expr, state)
         @dprintln(3,"DistPass kmeans call for array: ", arr)
         node.args[1] = GlobalRef(HPAT.API,:Kmeans_dist)
 
+        # rebalance array if necessary
+        # table operations like filter produce irregular chunk sizes on different processors
+        rebalance_out = gen_rebalance_array(arr, state)
+
         push!(node.args, state.arrs_dist_info[arr].starts[end], state.arrs_dist_info[arr].counts[end],
                 state.arrs_dist_info[arr].dim_sizes[1], state.arrs_dist_info[arr].dim_sizes[end])
-        return [node]
+        return [rebalance_out; node]
     elseif (func==GlobalRef(HPAT.API,:LinearRegression) || func==GlobalRef(HPAT.API,:NaiveBayes)) && isONE_D(toLHSVar(node.args[3]),state) && isONE_D(toLHSVar(node.args[4]),state)
         arr1 = toLHSVar(node.args[3])
         arr2 = toLHSVar(node.args[4])
@@ -916,6 +920,58 @@ function gen_dist_reductions(reductions::Array{PIRReduction,1}, state)
         append!(res,[reduce_var_init; reduceCall; rootCopy])
     end
     return res
+end
+
+"""
+    generate code to rebalance 1D or 2D arrays resulting from table operations
+    like filter and join.
+"""
+function gen_rebalance_array(arr::LHSVar, state)
+  # no need to rebalance if not variable chunk length
+  if state.arrs_dist_info[arr].dim_sizes[end]!=-1
+    return Any[]
+  end
+
+  num_dims = length(state.arrs_dist_info[arr].dim_sizes)
+  out = []
+  arr_id = getDistNewID(state)
+  state.arrs_dist_info[arr].arr_id = arr_id
+
+  # get total array size with allreduce
+  darr_size_var = Symbol("_glob_arr_size_"*string(arr_id))
+  darr_loc_size_var = Symbol("_loc_arr_size_"*string(arr_id))
+  CompilerTools.LambdaHandling.addLocalVariable(darr_size_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+  CompilerTools.LambdaHandling.addLocalVariable(darr_loc_size_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+  size_var_init = Expr(:(=), darr_size_var, -1)
+  # get size of last dimension, assume 1D partitioning
+  loc_size_var_init = Expr(:(=), darr_loc_size_var, Expr(:call, GlobalRef(Base, :arraysize), arr, num_dims))
+  push!(out, reduce_var_init)
+  push!(out, loc_size_var_init)
+  reduceCall = Expr(:call, GlobalRef(HPAT.API,:hpat_dist_allreduce),
+    darr_loc_size_var, GlobalRef(Base, :add_int), darr_size_var, 1)
+  push!(out, reduceCall)
+  state.arrs_dist_info[arr].dim_sizes[end] = darr_size_var
+
+  darr_start_var = symbol("__hpat_dist_arr_start_"*string(arr_id))
+  darr_div_var = symbol("__hpat_dist_arr_div_"*string(arr_id))
+  darr_count_var = symbol("__hpat_dist_arr_count_"*string(arr_id))
+  state.arrs_dist_info[arr].starts[end] = darr_start_var
+  state.arrs_dist_info[arr].counts[end] = darr_count_var
+
+  CompilerTools.LambdaHandling.addLocalVariable(darr_start_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+  CompilerTools.LambdaHandling.addLocalVariable(darr_div_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+  CompilerTools.LambdaHandling.addLocalVariable(darr_count_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+
+  darr_div_expr = Expr(:(=),darr_div_var, mk_div_int_expr(darr_size_var,:__hpat_num_pes))
+  # zero-based index to match C interface of HDF5
+  darr_start_expr = Expr(:(=), darr_start_var, mk_mult_int_expr([:__hpat_node_id,darr_div_var]))
+  darr_count_expr = Expr(:(=), darr_count_var, mk_call(GlobalRef(HPAT.API,:__hpat_get_node_portion),[darr_size_var, darr_div_var, :__hpat_num_pes, :__hpat_node_id]))
+  push!(out, darr_div_expr, darr_start_expr, darr_count_expr)
+
+  rebalance_call = mk_call(GlobalRef(HPAT.API,:__hpat_arr_rebalance),[arr, darr_count_var])
+  push!(out, rebalance_call)
+
+  return out
 end
 
 end # DistributedPass
