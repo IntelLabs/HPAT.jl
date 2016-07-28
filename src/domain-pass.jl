@@ -593,42 +593,64 @@ end
 function AstWalkCallback(node::Expr,dw)
 
     if node.head==:filter
+        # Structure: cond, output table, input table, cols, output table cols, input table cols, id
         cond_arr = node.args[1]
         node.args[1] = AstWalker.AstWalk(cond_arr, ParallelAccelerator.DomainIR.AstWalkCallback, dw)
-        t = node.args[2]
-        cols = node.args[3]
+        #out_t = node.args[2]
+        in_t = node.args[3]
+        node.args[3] = AstWalker.AstWalk(node.args[3], ParallelAccelerator.DomainIR.AstWalkCallback, dw)
+        node.args[3]!=in_t && @dprintln(3,"Mapping from :",in_col," to ",in_col_arrs[i])
         col_arrs = node.args[4]
+        #out_col_arrs = node.args[5]
+        in_col_arrs = node.args[6]
         for i in 1:length(col_arrs)
-            old_arr = col_arrs[i]
-            col_arrs[i] = AstWalker.AstWalk(col_arrs[i], ParallelAccelerator.DomainIR.AstWalkCallback, dw)
-            @assert col_arrs[i]==old_arr "Table column name shouldn't change for now"
+            #out_col = out_col_arrs[i]
+            in_col = in_col_arrs[i]
+            #out_col_arrs[i] = AstWalker.AstWalk(out_col_arrs[i], ParallelAccelerator.DomainIR.AstWalkCallback, dw)
+            in_col_arrs[i] = AstWalker.AstWalk(out_col_arrs[i], ParallelAccelerator.DomainIR.AstWalkCallback, dw)
+            #out_col_arrs!=out_col && @dprintln(3,"Mapping from :",out_col," to ",out_col_arrs[i])
+            in_col_arrs!=in_col && @dprintln(3,"Mapping from :",in_col," to ",in_col_arrs[i])
+            #@assert col_arrs[i]==old_arr "Table column name shouldn't change for now"
         end
         return node
     elseif node.head==:join
+        # Structure: output table, input table 1, input table 2, out cols, in 1 cols, in 2 cols , output table cols, input table 1 cols , input table 2 cols, id
+        in_t1 = node.args[2]
+        in_t2 = node.args[3]
+        node.args[2] = AstWalker.AstWalk(node.args[2], ParallelAccelerator.DomainIR.AstWalkCallback, dw)
+        node.args[2]!=in_t1 && @dprintln(3,"Mapping from :",in_t1," to ",node.args[2])
+        node.args[3] = AstWalker.AstWalk(node.args[3], ParallelAccelerator.DomainIR.AstWalkCallback, dw)
+        node.args[3]!=in_t2 && @dprintln(3,"Mapping from :",in_t2," to ",node.args[3])
+
         t3_arrs = node.args[7]
         t1_arrs = node.args[8]
         t2_arrs = node.args[9]
         for i in 1:length(t3_arrs)
             old_arr = t3_arrs[i]
             t3_arrs[i] = AstWalker.AstWalk(t3_arrs[i], ParallelAccelerator.DomainIR.AstWalkCallback, dw)
-            @assert t3_arrs[i]==old_arr "Table column name shouldn't change for now"
+            t3_arrs[i]!=old_arr && @dprintln(3,"Mapping from :",old_arr," to ",t3_arrs[i])
         end
         for i in 1:length(t1_arrs)
             old_arr = t1_arrs[i]
             t1_arrs[i] = AstWalker.AstWalk(t1_arrs[i], ParallelAccelerator.DomainIR.AstWalkCallback, dw)
-            @assert t1_arrs[i]==old_arr "Table column name shouldn't change for now"
+            t1_arrs[i]!=old_arr && @dprintln(3,"Mapping from :",old_arr," to ",t1_arrs[i])
         end
         for i in 1:length(t2_arrs)
             old_arr = t2_arrs[i]
             t2_arrs[i] = AstWalker.AstWalk(t2_arrs[i], ParallelAccelerator.DomainIR.AstWalkCallback, dw)
-            @assert t2_arrs[i]==old_arr "Table column name shouldn't change for now"
+            t2_arrs[i]!=old_arr && @dprintln(3,"Mapping from :",old_arr," to ",t2_arrs[i])
         end
         return node
     elseif node.head==:aggregate
+        # Structure: output table, input table, groupby key, output expr list, expr rhs list, func list, output list, id
+        in_t = node.args[2]
         key_arr = node.args[3]
-        in_e_arrs = node.args[4]
-        out_col_arrs = node.args[6]
+        out_e_arrs = node.args[4]
+        in_e_arrs = node.args[5]
+        func_arrs = node.args[6]
+        out_col_arrs = node.args[7]
 
+        node.args[2] = AstWalker.AstWalk(in_t, ParallelAccelerator.DomainIR.AstWalkCallback, dw)
         node.args[3] = AstWalker.AstWalk(key_arr, ParallelAccelerator.DomainIR.AstWalkCallback, dw)
         for i in 1:length(in_e_arrs)
             in_e_arrs[i] = AstWalker.AstWalk(in_e_arrs[i], ParallelAccelerator.DomainIR.AstWalkCallback, dw)
@@ -636,7 +658,6 @@ function AstWalkCallback(node::Expr,dw)
         for i in 1:length(out_col_arrs)
             old_arr = out_col_arrs[i]
             out_col_arrs[i] = AstWalker.AstWalk(out_col_arrs[i], ParallelAccelerator.DomainIR.AstWalkCallback, dw)
-            @assert out_col_arrs[i]==old_arr "Table column name shouldn't change for now"
         end
         return node
     end
