@@ -85,7 +85,7 @@ function print_tree(root_qtn)
     curr_node = root_qtn
     while true
         islast(curr_node) && break
-        println(string("     Tree::", string(curr_node.child.data)))
+        println(string("     Tree::", string(curr_node.child.data.head)))
         curr_node = curr_node.child
     end
 end
@@ -99,19 +99,20 @@ function from_root(function_name, ast::Tuple)
     lives = computeLiveness(body, linfo)
     tableCols, tableTypes = get_table_meta(body)
     # transform body
-    root_qtn = QueryTreeNode("root")
+    # First node is used as a dummy node which is :meta
+    root_qtn = QueryTreeNode(body.args[1])
     make_query_plan(body.args,root_qtn)
     print_tree(root_qtn)
-    body.args = from_toplevel_body(body.args,tableCols, linfo)
+    body.args = from_toplevel_body(body.args, root_qtn,tableCols, linfo)
     @dprintln(1,"DataTablePass.from_root returns function = ", function_name, " ast = ", body)
     return LambdaVarInfoToLambda(linfo, body.args)
 end
 
 # nodes are :body of AST
-function from_toplevel_body(nodes::Array{Any,1},tableCols,linfo)
+function from_toplevel_body(nodes::Array{Any,1}, root_qtn, tableCols, linfo)
     res::Array{Any,1} = []
     # TODO Handle optimization; Need to replace all uses of filter output table after pushing up with new filter output table
-    nodes = push_filter_up(nodes,tableCols,linfo)
+    perform_opts(nodes, root_qtn, tableCols, linfo)
     @dprintln(3,"Datatable pass: Body after query optimizations ", nodes)
     # After optimizations make actuall call nodes for cgen
     for (index, node) in enumerate(nodes)
@@ -132,11 +133,16 @@ function make_query_plan(nodes::Array{Any,1},root_qtn)
     last_child = root_qtn
     for (index, node) in enumerate(nodes)
         if isa(node, Expr) && node.head==:filter
-            last_child = add_child("filter",last_child,index-2,index)
+            # -2 because id and condition are above it and these are part of filter
+            last_child = add_child(node,last_child,index-2,index)
         elseif isa(node, Expr) && node.head==:join
-            last_child = add_child("join",last_child,index-1,index)
+            # -1 because id is above it which part of join
+            last_child = add_child(node,last_child,index-1,index)
         elseif isa(node, Expr) && node.head==:aggregate
-            last_child = add_child("aggregate",last_child,(index-(length(node.args[4]))),index)
+            # node.args[4] gives length of expression nodes list and they are part of aggregate
+            # * 2 because each expression nodes occupy two places
+            # TODO Fix this. It might not work in future. Aggregate node indexes are variable
+            last_child = add_child(node,last_child,(index-(length(node.args[4]) * 2)),index)
         else
         end
     end
@@ -179,72 +185,85 @@ function translate_hpat_aggregate(node,linfo)
 end
 
 """
+    Starting point of all optimization performed on query tree
+    Add rules to perform more optimizations
+"""
+function perform_opts(nodes, root_qtn, tableCols, linfo)
+    # TODO Add more rules of optimizations
+    curr_qtn = root_qtn
+    while true
+        islast(curr_qtn) && break
+        # RULE 1: PUSH FILTER UP
+        # if parent is join and child is filter then switch the order
+        if curr_qtn.parent.data.head==:join && curr_qtn.data.head==:filter
+            @bp
+            rename_map = push_filter_up(nodes, curr_qtn, tableCols, linfo)
+            call_astwalk_down_tree(nodes, curr_qtn.end_pos, rename_map)
+            # TODO fix indexes of join and filter and  switch join and filter in query tree
+        end
+        curr_qtn = curr_qtn.child
+    end
+end
+
+"""
     OPTIMIZATION: PUSH FILTER UP
         if there is a join before a filter then move that filter above join
         Assign new output to filter operation and use that in join node
         Old output of filter needs to be replaced with whatever table operation output right above filter
 """
-function push_filter_up(nodes::Array{Any,1},tableCols,linfo)
+
+function push_filter_up(nodes::Array{Any,1}, curr_qtn, tableCols,linfo)
     rename_map::Dict{Symbol,Symbol} = Dict{Symbol,Symbol}()
-    new_nodes = []
-    hit_join = false
-    pos = 0
-    for i in 1:length(nodes)
-        if isa(nodes[i], Expr) && nodes[i].head==:join
-            hit_join = true
-            # pos will be used to splice filter above join
-            pos=i-1
-        end
-        # Once the mapping populate this ast walk become effective
-        AstWalk(nodes[i], rename_symbols, rename_map)
+    join_node = curr_qtn.parent.data
+    filter_node = curr_qtn.data
+    # args[2] and args[3] are join input table.
+    # Search in these input tables on which filter condition can be applied.
+    join_input_tables = [join_node.args[2];join_node.args[3]]
+    filter_output_table = filter_node.args[2]
+    # start_pos is the cond pos
+    new_cond_node = nodes[curr_qtn.start_pos]
+    filter_id_node = nodes[curr_qtn.start_pos+1]
+    # args[7] is the conditional
+    cond_rhs = string(filter_node.args[7].args[2].name)
+    # Extract column name from filter condition and check in join input tables on which it was applied
+    # It will return table name and join input table index 1 or 2 which should be filtered
+    table_name,j_ind = find_table_from_cond(tableCols,join_input_tables,cond_rhs)
 
-        if isa(nodes[i], Expr) && nodes[i].head==:filter && hit_join
-            join_node = nodes[pos+1]
-            # args[2] and args[3] are join input table.
-            # Search in these input tables on which filter condition can be applied.
-            join_input_tables = [join_node.args[2];join_node.args[3]]
-            new_filter_node = nodes[i]
-            filter_output_table = nodes[i].args[2]
-
-            new_cond_node = nodes[i-2]
-            # args[7] is the conditional
-            cond_rhs = string(nodes[i].args[7].args[2].name)
-            # Extract column name from filter condition and check in join input tables on which it was applied
-            # It will return table name and join input table index 1 or 2 which should be filtered
-            table_name,j_ind = find_table_from_cond(tableCols,join_input_tables,cond_rhs)
-
-            # Change condition rhs input table; Does not change output table
-            replace_table_in_cond(new_cond_node,table_name)
-            # return output filter table name which will be replaced in join
-            out_filter_table, out_filter_table_cols, in_filter_table_cols = replace_table_in_filter_node(new_filter_node,table_name,tableCols)
-            new_assigns = Any[]
-            # As new table columns are made after pushing. We need to add to linfo
-            for co in 1:length(out_filter_table_cols)
-                CompilerTools.LambdaHandling.addLocalVariable(out_filter_table_cols[co],
-                                                              CompilerTools.LambdaHandling.getType(in_filter_table_cols[co],linfo),
-                                                              ISASSIGNEDONCE | ISASSIGNED, linfo)
-            end
-
-            # Adding mapping from filter table output to join output
-            # In future change generalize it because any node output above filter node should be used instead of join output
-            add_mapping(filter_output_table, join_node.args[1], tableCols, rename_map)
-
-            # + 1 because we need right index in join expression node
-            join_node.args[j_ind + 1] = out_filter_table
-            # Also replace table columns list with appropriate name
-            # + 7 because we need right index in join expression node
-            join_node.args[j_ind + 7] = out_filter_table_cols
-            # remove condition and id node above filter node
-            pop!(new_nodes)
-            pop!(new_nodes)
-            # Move condition, ID and filter node
-            splice!(new_nodes,pos:1,[new_assigns, new_cond_node,nodes[i-1], new_filter_node])
-            hit_join=false
-            continue
-        end
-        push!(new_nodes, nodes[i])
+    # Change condition rhs input table; Does not change output table
+    replace_table_in_cond(new_cond_node,table_name)
+    # return output filter table name which will be replaced in join
+    out_filter_table, out_filter_table_cols, in_filter_table_cols = replace_table_in_filter_node(filter_node,table_name,tableCols)
+    # As new table columns are made after pushing. We need to add to linfo
+    for co in 1:length(out_filter_table_cols)
+        CompilerTools.LambdaHandling.addLocalVariable(out_filter_table_cols[co],
+                                                      CompilerTools.LambdaHandling.getType(in_filter_table_cols[co],linfo),
+                                                      ISASSIGNEDONCE | ISASSIGNED, linfo)
     end
-    return new_nodes
+    # Adding mapping from filter table output to join output
+    # In future change generalize it because any node output above filter node should be used instead of join output
+    add_mapping(filter_output_table, join_node.args[1], tableCols, rename_map)
+    # + 1 because we need right index in join expression node
+    join_node.args[j_ind + 1] = out_filter_table
+    # Also replace table columns list with appropriate name
+    # + 7 because we need right index in join expression node
+    join_node.args[j_ind + 7] = out_filter_table_cols
+    # remove condition,id and filter node
+    for ind in curr_qtn.start_pos:curr_qtn.end_pos
+        nodes=deleteat!(nodes,ind)
+    end
+    # Move condition, id and filter node
+    # curr_qtn parents start_pos give me place to put filter
+    splice!(nodes, curr_qtn.parent.start_pos:1, [new_cond_node, filter_id_node, filter_node])
+    return rename_map
+end
+
+"""
+    Utility function to perform renaming astwalk starting from the argument pos
+"""
+function call_astwalk_down_tree(nodes, pos, rename_map::Dict{Symbol,Symbol})
+    for i in pos:length(nodes)
+        AstWalk(nodes[i], rename_symbols, rename_map)
+    end
 end
 
 function rename_symbols(node::Symbol, rename_map::Dict{Symbol,Symbol}, top_level_number, is_top_level, read)
@@ -359,7 +378,7 @@ function replace_table_in_filter_node(node, table_name, tableCols)
         append!(node.args[5], [getColName(Symbol(out_table_name), col)])
         append!(node.args[6], [getColName(Symbol(table_name), col)])
     end
-    # Return output filter table and its columns list
+    # Return output filter table and its columns list and input tables columns list
     return node.args[2], node.args[5], node.args[6]
 end
 
