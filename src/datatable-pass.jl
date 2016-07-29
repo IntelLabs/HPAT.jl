@@ -78,13 +78,16 @@ function add_child{T}(data::T,parent::QueryTreeNode{T},sp,ep)
     parent.child = newc
     newc
 end
+
+islast(n::QueryTreeNode) = (n == n.child)
+
 function print_tree(root_qtn)
     curr_node = root_qtn
-    while(curr_node.parent != curr_node.child)
-        println(curr_node.parent)
+    while true
+        islast(curr_node) && break
+        println(string("     Tree::", string(curr_node.child.data)))
+        curr_node = curr_node.child
     end
-
-    # TODO recursive function to pretty print the query plan tree
 end
 
 QueryTreeNode{T}(data::T) = QueryTreeNode{T}(data)
@@ -97,7 +100,8 @@ function from_root(function_name, ast::Tuple)
     tableCols, tableTypes = get_table_meta(body)
     # transform body
     root_qtn = QueryTreeNode("root")
-    plan = make_query_plan(body.args,root_qtn)
+    make_query_plan(body.args,root_qtn)
+    print_tree(root_qtn)
     body.args = from_toplevel_body(body.args,tableCols, linfo)
     @dprintln(1,"DataTablePass.from_root returns function = ", function_name, " ast = ", body)
     return LambdaVarInfoToLambda(linfo, body.args)
@@ -177,22 +181,23 @@ end
 """
     OPTIMIZATION: PUSH FILTER UP
         if there is a join before a filter then move that filter above join
+        Assign new output to filter operation and use that in join node
+        Old output of filter needs to be replaced with whatever table operation output right above filter
 """
 function push_filter_up(nodes::Array{Any,1},tableCols,linfo)
     rename_map::Dict{Symbol,Symbol} = Dict{Symbol,Symbol}()
     new_nodes = []
     hit_join = false
-    hit_join_filter = false
     pos = 0
     for i in 1:length(nodes)
         if isa(nodes[i], Expr) && nodes[i].head==:join
             hit_join = true
-            # move above join id
+            # pos will be used to splice filter above join
             pos=i-1
         end
-        #if hit_join_filter && is(nodes[i],Expr) && ( nodes[i].head==:join || nodes[i].head==:filter || nodes[i].head==:aggregate)
+        # Once the mapping populate this ast walk become effective
         AstWalk(nodes[i], rename_symbols, rename_map)
-        #end
+
         if isa(nodes[i], Expr) && nodes[i].head==:filter && hit_join
             join_node = nodes[pos+1]
             # args[2] and args[3] are join input table.
@@ -201,31 +206,23 @@ function push_filter_up(nodes::Array{Any,1},tableCols,linfo)
             new_filter_node = nodes[i]
             filter_output_table = nodes[i].args[2]
 
-            new_id_node = nodes[i-1]
             new_cond_node = nodes[i-2]
-            cond_lhs = string(nodes[i].args[1])
             # args[7] is the conditional
             cond_rhs = string(nodes[i].args[7].args[2].name)
             # Extract column name from filter condition and check in join input tables on which it was applied
             # It will return table name and join input table index 1 or 2 which should be filtered
             table_name,j_ind = find_table_from_cond(tableCols,join_input_tables,cond_rhs)
 
-            replace_cond_in_linfo(linfo,cond_lhs,table_name)
+            # Change condition rhs input table; Does not change output table
             replace_table_in_cond(new_cond_node,table_name)
             # return output filter table name which will be replaced in join
             out_filter_table, out_filter_table_cols, in_filter_table_cols = replace_table_in_filter_node(new_filter_node,table_name,tableCols)
             new_assigns = Any[]
+            # As new table columns are made after pushing. We need to add to linfo
             for co in 1:length(out_filter_table_cols)
-                typ=nothing
-                for vd in linfo.var_defs
-                    if matchVarDef(in_filter_table_cols[co], vd)
-                        typ = vd.typ
-                    end
-                end
-                @assert typ!==nothing "Could not find type of input table"
-                push!(linfo.var_defs, VarDef(out_filter_table_cols[co], typ))
-
-                #push!(new_assigns, TypedExpr(typ, :(=), out_filter_table_cols[co], typ()))
+                CompilerTools.LambdaHandling.addLocalVariable(out_filter_table_cols[co],
+                                                              CompilerTools.LambdaHandling.getType(in_filter_table_cols[co],linfo),
+                                                              ISASSIGNEDONCE | ISASSIGNED, linfo)
             end
 
             # Adding mapping from filter table output to join output
@@ -240,9 +237,9 @@ function push_filter_up(nodes::Array{Any,1},tableCols,linfo)
             # remove condition and id node above filter node
             pop!(new_nodes)
             pop!(new_nodes)
-            splice!(new_nodes,pos:1,[new_assigns, new_cond_node,new_id_node, new_filter_node])
+            # Move condition, ID and filter node
+            splice!(new_nodes,pos:1,[new_assigns, new_cond_node,nodes[i-1], new_filter_node])
             hit_join=false
-            hit_join_filter=true
             continue
         end
         push!(new_nodes, nodes[i])
@@ -329,29 +326,12 @@ function find_table_from_cond(tableCols,join_input_tables,cond)
 end
 
 """
-    Replaces condition variable in symbol table with correct table
-"""
-function replace_cond_in_linfo(linfo,cond_var,table_name)
-    for i = 1:length(linfo.var_defs)
-        if string(linfo.var_defs[i].name) == cond_var
-            arr = split(string(linfo.var_defs[i].name),'#')
-            if length(arr) > 2
-                linfo.var_defs[i].name = string("#",table_name,"#",arr[3])
-            end
-        end
-    end
-end
-
-"""
-    Replaces table name in the filter condition(mmap)
+    Replaces table name in the filter condition(mmap) rhs
     e.g
-     table1#cond_e = table1#col1 > 1 => table2#cond_e = table2#col1 > 1
+     table1#cond_e = table1#col1 > 1 => table1#cond_e = table2#col1 > 1
 """
 function replace_table_in_cond(node,table_name)
-    arr1 = split(string(node.args[1]),'#')
     arr2 = split(string(node.args[2].args[1][1].name),'#')
-
-    node.args[1] = Symbol(string("#",table_name,"#",arr1[3]))
     node.args[2].args[1][1] = Symbol(string("#",table_name,"#",arr2[3]))
 end
 
@@ -367,11 +347,8 @@ function replace_table_in_filter_node(node, table_name, tableCols)
     # node.args[3] gives input table
     node.args[3] = Symbol(table_name)
     # replace in condition expression (could be removed in future)
-    # args[1] gives cond_rhs
     # args[7] gives cond_lhs
-    arr1 = split(string(node.args[1]),'#')
     arr2 = split(string(node.args[7].args[2].name),'#')
-    node.args[1] = getColName(Symbol(table_name), Symbol(arr1[3]))
     node.args[7].args[2] = getColName(Symbol(table_name), Symbol(arr2[3]))
     # Replace columns list with new columns
     node.args[4] = tableCols[Symbol(table_name)]
