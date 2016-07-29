@@ -196,7 +196,6 @@ function perform_opts(nodes, root_qtn, tableCols, linfo)
         # RULE 1: PUSH FILTER UP
         # if parent is join and child is filter then switch the order
         if curr_qtn.parent.data.head==:join && curr_qtn.data.head==:filter
-            @bp
             rename_map = push_filter_up(nodes, curr_qtn, tableCols, linfo)
             call_astwalk_down_tree(nodes, curr_qtn.end_pos, rename_map)
             # TODO fix indexes of join and filter and  switch join and filter in query tree
