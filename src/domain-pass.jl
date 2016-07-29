@@ -660,6 +660,13 @@ function AstWalkCallback(node::Expr,dw)
             out_col_arrs[i] = AstWalker.AstWalk(out_col_arrs[i], ParallelAccelerator.DomainIR.AstWalkCallback, dw)
         end
         return node
+    elseif node.head==:mmap
+        arr = node.args[1]
+        for col in 1:length(arr)
+            # SymbolNode inside mmap;
+            node.args[1][col] = AstWalker.AstWalk(node.args[1][col], ParallelAccelerator.DomainIR.AstWalkCallback, dw)
+        end
+        return node
     end
     return CompilerTools.AstWalker.ASTWALK_RECURSE
 end
