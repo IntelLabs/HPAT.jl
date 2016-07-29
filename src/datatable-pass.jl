@@ -33,6 +33,7 @@ DebugMsg.init()
 using CompilerTools.Helper
 using CompilerTools.LambdaHandling
 import CompilerTools.ReadWriteSet
+import CompilerTools.LambdaHandling.matchVarDef
 
 import HPAT
 import HPAT.CaptureAPI.getColName
@@ -78,6 +79,11 @@ function add_child{T}(data::T,parent::QueryTreeNode{T},sp,ep)
     newc
 end
 function print_tree(root_qtn)
+    curr_node = root_qtn
+    while(curr_node.parent != curr_node.child)
+        println(curr_node.parent)
+    end
+
     # TODO recursive function to pretty print the query plan tree
 end
 
@@ -122,9 +128,9 @@ function make_query_plan(nodes::Array{Any,1},root_qtn)
     last_child = root_qtn
     for (index, node) in enumerate(nodes)
         if isa(node, Expr) && node.head==:filter
-            last_child = add_child("filter",last_child,index-1,index)
+            last_child = add_child("filter",last_child,index-2,index)
         elseif isa(node, Expr) && node.head==:join
-            last_child = add_child("join",last_child,index,index)
+            last_child = add_child("join",last_child,index-1,index)
         elseif isa(node, Expr) && node.head==:aggregate
             last_child = add_child("aggregate",last_child,(index-(length(node.args[4]))),index)
         else
@@ -187,7 +193,6 @@ function push_filter_up(nodes::Array{Any,1},tableCols,linfo)
         #if hit_join_filter && is(nodes[i],Expr) && ( nodes[i].head==:join || nodes[i].head==:filter || nodes[i].head==:aggregate)
         AstWalk(nodes[i], rename_symbols, rename_map)
         #end
-
         if isa(nodes[i], Expr) && nodes[i].head==:filter && hit_join
             join_node = nodes[pos+1]
             # args[2] and args[3] are join input table.
@@ -208,11 +213,23 @@ function push_filter_up(nodes::Array{Any,1},tableCols,linfo)
             replace_cond_in_linfo(linfo,cond_lhs,table_name)
             replace_table_in_cond(new_cond_node,table_name)
             # return output filter table name which will be replaced in join
-            out_filter_table, out_filter_table_cols = replace_table_in_filter_node(new_filter_node,table_name,tableCols)
+            out_filter_table, out_filter_table_cols, in_filter_table_cols = replace_table_in_filter_node(new_filter_node,table_name,tableCols)
+            new_assigns = Any[]
+            for co in 1:length(out_filter_table_cols)
+                typ=nothing
+                for vd in linfo.var_defs
+                    if matchVarDef(in_filter_table_cols[co], vd)
+                        typ = vd.typ
+                    end
+                end
+                @assert typ!==nothing "Could not find type of input table"
+                push!(linfo.var_defs, VarDef(out_filter_table_cols[co], typ))
+
+                #push!(new_assigns, TypedExpr(typ, :(=), out_filter_table_cols[co], typ()))
+            end
 
             # Adding mapping from filter table output to join output
             # In future change generalize it because any node output above filter node should be used instead of join output
-
             add_mapping(filter_output_table, join_node.args[1], tableCols, rename_map)
 
             # + 1 because we need right index in join expression node
@@ -223,7 +240,7 @@ function push_filter_up(nodes::Array{Any,1},tableCols,linfo)
             # remove condition and id node above filter node
             pop!(new_nodes)
             pop!(new_nodes)
-            splice!(new_nodes,pos:1,[new_cond_node,new_id_node,new_filter_node])
+            splice!(new_nodes,pos:1,[new_assigns, new_cond_node,new_id_node, new_filter_node])
             hit_join=false
             hit_join_filter=true
             continue
@@ -239,6 +256,15 @@ function rename_symbols(node::Symbol, rename_map::Dict{Symbol,Symbol}, top_level
       new_sym = rename_map[new_sym]
     end
     return new_sym
+end
+
+function rename_symbols(node::SymbolNode, rename_map::Dict{Symbol,Symbol}, top_level_number, is_top_level, read)
+    typ = node.typ
+    new_sym = toLHSVar(node)
+    while haskey(rename_map, new_sym)
+      new_sym = rename_map[new_sym]
+    end
+    return SymbolNode(new_sym,typ)
 end
 
 function rename_symbols(node::ANY, rename_map::Dict{Symbol,Symbol}, top_level_number, is_top_level, read)
@@ -357,7 +383,7 @@ function replace_table_in_filter_node(node, table_name, tableCols)
         append!(node.args[6], [getColName(Symbol(table_name), col)])
     end
     # Return output filter table and its columns list
-    return node.args[2], node.args[5]
+    return node.args[2], node.args[5], node.args[6]
 end
 
 end # DataTablePass
