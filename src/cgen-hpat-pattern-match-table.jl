@@ -775,12 +775,12 @@ end
 function pattern_match_call_rebalance(func::GlobalRef, arr::LHSVar, count::LHSVar, linfo)
     s = ""
     if func==GlobalRef(HPAT.API, :__hpat_arr_rebalance)
-        typ = ParallelAccelerator.CGen.getSymType(A, linfo)
+        typ = ParallelAccelerator.CGen.getSymType(arr, linfo)
         num_dims = ndims(typ)
         typ = eltype(typ)
         c_typ = ParallelAccelerator.CGen.from_expr(typ, linfo)
         c_arr = ParallelAccelerator.CGen.from_expr(arr, linfo)
-        c_cout = ParallelAccelerator.CGen.from_expr(cout, linfo)
+        c_count = ParallelAccelerator.CGen.from_expr(count, linfo)
         mpi_typ = get_mpi_type_from_var_type(typ)
         s *= "int64_t __hpat_old_size_$c_arr = $c_arr.dims[$num_dims-1];\n"
         # get size of each multidim array row (e.g. row size of matrix)
@@ -800,7 +800,7 @@ function pattern_match_call_rebalance(func::GlobalRef, arr::LHSVar, count::LHSVa
         s *= "}\n"
         # my diff, all diffs
         s *= "int64_t _my_diff_$c_arr = __hpat_old_size_$c_arr-$c_count;\n"
-        s += "int64_t *_all_diff_$c_arr = new int64_t[__hpat_num_pes];\n"
+        s *= "int64_t *_all_diff_$c_arr = new int64_t[__hpat_num_pes];\n"
         # s *= "printf(\"rank:%d my_size:%d my_count:%d total_size:%d my_diff:%d\\n\", rank, my_size, my_count, total_size, my_diff);"
         s *= "MPI_Allgather(&_my_diff_$c_arr, 1, MPI_LONG_LONG_INT, _all_diff_$c_arr, 1, MPI_LONG_LONG_INT, MPI_COMM_WORLD);\n"
         # printf("rank:%d all_diff[0]:%d all_diff[1]:%d ... all_diff[n-1]:%d\n", rank, all_diff[0], all_diff[1], all_diff[num_pes-1]);
@@ -839,8 +839,6 @@ function pattern_match_call_rebalance(func::GlobalRef, arr::LHSVar, count::LHSVa
         # delete old array, assign new
         s *= "delete[] $c_arr.data;\n"
         s *= "$c_arr.data = __hpat_tmp_$c_arr;"
-    end
-
     end
     return s
 end
