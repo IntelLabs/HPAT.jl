@@ -114,6 +114,7 @@ function from_toplevel_body(nodes::Array{Any,1}, root_qtn, tableCols, linfo)
     # TODO Handle optimization; Need to replace all uses of filter output table after pushing up with new filter output table
     perform_opts(nodes, root_qtn, tableCols, linfo)
     @dprintln(3,"Datatable pass: Body after query optimizations ", nodes)
+    print_tree(root_qtn)
     # After optimizations make actuall call nodes for cgen
     for (index, node) in enumerate(nodes)
         if isa(node, Expr) && node.head==:filter
@@ -193,15 +194,43 @@ function perform_opts(nodes, root_qtn, tableCols, linfo)
     curr_qtn = root_qtn
     while true
         islast(curr_qtn) && break
+        # save child pointer because swap may happen otherwise concurrent modifiction error would be thrown
+        child_qtn = curr_qtn.child
         # RULE 1: PUSH FILTER UP
         # if parent is join and child is filter then switch the order
         if curr_qtn.parent.data.head==:join && curr_qtn.data.head==:filter
             rename_map = push_filter_up(nodes, curr_qtn, tableCols, linfo)
             call_astwalk_down_tree(nodes, curr_qtn.end_pos, rename_map)
-            # TODO fix indexes of join and filter and  switch join and filter in query tree
+            swap_querytree_nodes(curr_qtn.parent, curr_qtn)
         end
-        curr_qtn = curr_qtn.child
+        curr_qtn = child_qtn
     end
+end
+
+"""
+    Swap the positions and data of two query tree nodes
+"""
+function swap_querytree_nodes(qtn1, qtn2)
+    if qtn1.data.head==:join && qtn2.data.head==:filter
+        # filter node is shoved above join and filter has 3 nodes
+        qtn2.start_pos = qtn1.start_pos
+        qtn2.end_pos = qtn2.start_pos + 2
+        qtn1.start_pos = qtn1.start_pos + 3
+        qtn1.end_pos = qtn1.end_pos + 3
+    else
+        @assert false "Write rules to handle swaping"
+    end
+    qtn2_child = qtn2.child
+    qtn1_parent = qtn1.parent
+
+    qtn1.parent.child = qtn2
+    qtn1.child = qtn2_child
+
+    qtn2.child = qtn1
+    qtn2_child.parent = qtn1
+    qtn2.parent = qtn1_parent
+    qtn1.parent = qtn2
+
 end
 
 """
@@ -253,6 +282,7 @@ function push_filter_up(nodes::Array{Any,1}, curr_qtn, tableCols,linfo)
     # Move condition, id and filter node
     # curr_qtn parents start_pos give me place to put filter
     splice!(nodes, curr_qtn.parent.start_pos:1, [new_cond_node, filter_id_node, filter_node])
+
     return rename_map
 end
 
