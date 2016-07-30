@@ -101,10 +101,10 @@ ParallelAccelerator.CGen.setExternalPatternMatchAssignment(CGenPatternMatch.from
 HPAT_PATH = joinpath(dirname(@__FILE__), "..")
 
 HPAT_INCLUDES = string("#include <ctime>\n#include <stdlib.h>\n#include \"", HPAT_PATH, "/deps/include/hpat.h\"\n")
-ParallelAccelerator.CGen.addCgenUserOptions(ParallelAccelerator.CGen.CgenUserOptions(HPAT_INCLUDES))
+ParallelAccelerator.CGen.addCgenUserOptions(ParallelAccelerator.CGen.CgenUserOptions(HPAT_INCLUDES,"",""))
 
-function addHpatInclude(stmts)
-    ParallelAccelerator.CGen.addCgenUserOptions(ParallelAccelerator.CGen.CgenUserOptions(stmts))
+function addHpatInclude(stmts, compileFlags, linkFlags)
+    ParallelAccelerator.CGen.addCgenUserOptions(ParallelAccelerator.CGen.CgenUserOptions(stmts, compileFlags, linkFlags))
 end
 
 function ns_to_sec(x)

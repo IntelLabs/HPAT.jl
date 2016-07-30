@@ -306,7 +306,7 @@ function genDistributedInit(state::DistPassState)
                             MKL_INT numroc_(const MKL_INT*,const MKL_INT*,const MKL_INT*,const MKL_INT*,const MKL_INT*);
                             }
                             """
-      HPAT.addHpatInclude(extra_2D_includes)
+      HPAT.addHpatInclude(extra_2D_includes,"","")
       initCall2d = Expr(:call, GlobalRef(HPAT.API,:hpat_dist_2d_init))
       CompilerTools.LambdaHandling.addLocalVariable(symbol("__hpat_num_pes_x"), Int32, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
       CompilerTools.LambdaHandling.addLocalVariable(symbol("__hpat_num_pes_y"), Int32, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
@@ -835,6 +835,12 @@ function from_call(node::Expr, state)
         @dprintln(3,"DistPass kmeans call for array: ", arr)
         node.args[1] = GlobalRef(HPAT.API,:Kmeans_dist)
 
+        extra_daal_includes = """ #include "daal.h"
+        using namespace daal;
+        using namespace daal::data_management;
+        using namespace daal::algorithms;
+        """
+        HPAT.addHpatInclude(extra_daal_includes,"-daal","-daal")
         # rebalance array if necessary
         # table operations like filter produce irregular chunk sizes on different processors
         rebalance_out = gen_rebalance_array(arr, state)
@@ -847,6 +853,16 @@ function from_call(node::Expr, state)
         arr2 = toLHSVar(node.args[4])
         @dprintln(3,"DistPass LinearRegression/NaiveBayes call for arrays: ", arr1," ", arr2)
         node.args[1].name = symbol("$(func)_dist")
+
+        extra_daal_includes = """ #include "daal.h"
+        using namespace daal;
+        using namespace daal::data_management;
+        using namespace daal::algorithms;
+        """
+        HPAT.addHpatInclude(extra_daal_includes,"-daal", "-daal")
+        # rebalance array if necessary
+        # table operations like filter produce irregular chunk sizes on different processors
+        rebalance_out = gen_rebalance_array(arr, state)
 
         push!(node.args, state.arrs_dist_info[arr1].starts[end], state.arrs_dist_info[arr1].counts[end],
                 state.arrs_dist_info[arr1].dim_sizes[1], state.arrs_dist_info[arr1].dim_sizes[end])
