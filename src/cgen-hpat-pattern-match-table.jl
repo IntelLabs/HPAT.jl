@@ -784,12 +784,12 @@ function pattern_match_call_rebalance(func::GlobalRef, arr::LHSVar, count::LHSVa
         mpi_typ = get_mpi_type_from_var_type(typ)
         s *= "int64_t __hpat_old_size_$c_arr = $c_arr.dims[$num_dims-1];\n"
         # get size of each multidim array row (e.g. row size of matrix)
-        s *= "int64_t __hpat_row_size = 1;\n"
+        s *= "int64_t __hpat_row_size_$c_arr = 1;\n"
         for i in 0:num_dims-2
             s *= "__hpat_row_size_$c_arr *= $c_arr.dims[$i];\n"
         end
         # allocate new array
-        s *= "$c_typ *__hpat_tmp_$c_arr = new $c_typ[__hpat_row_size*$c_count];\n"
+        s *= "$c_typ *__hpat_tmp_$c_arr = new $c_typ[__hpat_row_size_$c_arr*$c_count];\n"
         # copy old data
         s *= "int64_t __hpat_new_data_ind_$c_arr = 0;\n"
         s *= "for(int64_t i=0; i<MIN(__hpat_old_size_$c_arr, $c_count); i++) {\n"
@@ -801,9 +801,9 @@ function pattern_match_call_rebalance(func::GlobalRef, arr::LHSVar, count::LHSVa
         # my diff, all diffs
         s *= "int64_t _my_diff_$c_arr = __hpat_old_size_$c_arr-$c_count;\n"
         s *= "int64_t *_all_diff_$c_arr = new int64_t[__hpat_num_pes];\n"
-        # s *= "printf(\"rank:%d my_size:%d my_count:%d total_size:%d my_diff:%d\\n\", rank, my_size, my_count, total_size, my_diff);"
+        # s *= "printf(\"__hpat_node_id:%d my_size:%d my_count:%d total_size:%d my_diff:%d\\n\", __hpat_node_id, my_size, my_count, total_size, my_diff);"
         s *= "MPI_Allgather(&_my_diff_$c_arr, 1, MPI_LONG_LONG_INT, _all_diff_$c_arr, 1, MPI_LONG_LONG_INT, MPI_COMM_WORLD);\n"
-        # printf("rank:%d all_diff[0]:%d all_diff[1]:%d ... all_diff[n-1]:%d\n", rank, all_diff[0], all_diff[1], all_diff[num_pes-1]);
+        # printf("__hpat_node_id:%d all_diff[0]:%d all_diff[1]:%d ... all_diff[n-1]:%d\n", __hpat_node_id, all_diff[0], all_diff[1], all_diff[num_pes-1]);
         s *= "MPI_Request *_all_reqs = new MPI_Request[__hpat_num_pes];\n"
         s *= "int _curr_req = 0;\n"
         #// for each potential receiver
@@ -816,15 +816,15 @@ function pattern_match_call_rebalance(func::GlobalRef, arr::LHSVar, count::LHSVa
         s *= "      if(_all_diff_$c_arr[j]>0) {\n"
         s *= "         int _send_size = MIN(_all_diff_$c_arr[j], -_all_diff_$c_arr[i]);\n"
         #// if I'm receiver
-        s *= "         if(rank==i) {\n"
-        #//printf("rank:%d receiving from:%d size:%d\n", rank, j, send_size);
-        s *= "            MPI_Irecv(&__hpat_tmp_$c_arr[__hpat_new_data_ind_$c_arr], __hpat_row_size*_send_size, $mpi_typ, j, 0, MPI_COMM_WORLD, &_all_reqs[_curr_req++]);\n"
-        s *= "            __hpat_new_data_ind_$c_arr += __hpat_row_size*_send_size;\n"
+        s *= "         if(__hpat_node_id==i) {\n"
+        #//printf("__hpat_node_id:%d receiving from:%d size:%d\n", __hpat_node_id, j, send_size);
+        s *= "            MPI_Irecv(&__hpat_tmp_$c_arr[__hpat_new_data_ind_$c_arr], __hpat_row_size_$c_arr*_send_size, $mpi_typ, j, 0, MPI_COMM_WORLD, &_all_reqs[_curr_req++]);\n"
+        s *= "            __hpat_new_data_ind_$c_arr += __hpat_row_size_$c_arr*_send_size;\n"
         s *= "         }\n"
-        s *= "         if(rank==j) {\n"
-        #s *= "            printf("rank:%d sending to:%d size:%d\n", rank, i, send_size);
-        s *= "            MPI_Isend(&$c_arr.data[__hpat_new_data_ind_$c_arr], __hpat_row_size*_send_size, $mpi_typ, i, 0, MPI_COMM_WORLD, &_all_reqs[_curr_req++]);\n"
-        s *= "            __hpat_new_data_ind_$c_arr += __hpat_row_size*_send_size;\n"
+        s *= "         if(__hpat_node_id==j) {\n"
+        #s *= "            printf("rank:%d sending to:%d size:%d\n", __hpat_node_id, i, send_size);
+        s *= "            MPI_Isend(&$c_arr.data[__hpat_new_data_ind_$c_arr], __hpat_row_size_$c_arr*_send_size, $mpi_typ, i, 0, MPI_COMM_WORLD, &_all_reqs[_curr_req++]);\n"
+        s *= "            __hpat_new_data_ind_$c_arr += __hpat_row_size_$c_arr*_send_size;\n"
         s *= "         }\n"
         s *= "         _all_diff_$c_arr[i] += _send_size;\n"
         s *= "         _all_diff_$c_arr[j] -= _send_size;\n"
