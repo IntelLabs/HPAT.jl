@@ -1494,15 +1494,7 @@ end
 
 function get_j2c_type_from_array(input_array,linfo)
     input_type = eltype(ParallelAccelerator.CGen.getSymType(input_array,linfo))
-    j2c_type = ""
-    if input_type==Int64
-        j2c_type = "int64_t"
-    elseif input_type==Bool
-        j2c_type = "bool"
-    else
-        throw("CGen unsupported j2c type")
-    end
-    return j2c_type
+    return ParallelAccelerator.CGen.toCtype(input_type)
 end
 
 function get_mpi_type_from_var_type(var_typ)
