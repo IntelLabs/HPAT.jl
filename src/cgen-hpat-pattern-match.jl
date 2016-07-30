@@ -1194,6 +1194,7 @@ function pattern_match_call(ast::Array{Any, 1}, linfo)
     s *= pattern_match_call_restore_checkpoint_start(ast[1], ast[2], linfo)
     s *= pattern_match_call_restore_checkpoint_value(ast[1], ast[2], ast[3], linfo)
     s *= pattern_match_call_data_src_read_seq(ast[1],ast[2],ast[3], linfo)
+    s *= pattern_match_call_rebalance_table(ast[1],ast[2],ast[3], linfo)
   elseif length(ast)==4
     s *= pattern_match_call_dist_reduce(ast[1],ast[2],ast[3], ast[4], linfo)
     # text file read
