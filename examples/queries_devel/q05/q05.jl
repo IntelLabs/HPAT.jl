@@ -2,9 +2,9 @@ using HPAT
 
 @acc hpat function q05(category, education, gender, file_name)
     web_clickstreams = DataSource(DataTable{:wcs_user_sk=Int64,:wcs_item_sk=Int64}, HDF5, file_name)
-    item = DataSource(DataTable{:item_sk=Int64,:i_category=ASCIIString,:i_category_id=Int64}, HDF5, file_name)
+    item = DataSource(DataTable{:item_sk=Int64,:i_category_id=Int64,:i_category=ASCIIString}, HDF5, file_name)
     customer = DataSource(DataTable{:c_customer_sk=Int64,:c_current_cdemo_sk=Int64}, HDF5, file_name)
-    customer_demographics = DataSource(DataTable{:cd_demo_sk=Int64,:cd_education_status=ASCIIString,:cd_gender=ASCIIString}, HDF5, file_name)
+    customer_demographics = DataSource(DataTable{:cd_demo_sk=Int64,:cd_gender=ASCIIString,:cd_education_status=ASCIIString}, HDF5, file_name)
 
     user_items = join(web_clickstreams, item, :wcs_item_sk==:i_item_sk, :item_sk)
 
