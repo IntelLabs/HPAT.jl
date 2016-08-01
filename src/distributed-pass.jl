@@ -343,7 +343,7 @@ end
 
 function from_assignment_alloc(node::Expr, state::DistPassState, arr::LHSVar, rhs::Expr)
   @dprintln(3,"from assingment alloc: ", node)
-  if isONE_D(arr,state) && state.arrs_dist_info[arr].dim_sizes[end]!=-1
+  if isONE_D(arr,state) && !(-1 in state.arrs_dist_info[arr].dim_sizes)
       @dprintln(3,"DistPass allocation array: ", arr)
       #shape = get_alloc_shape(node.args[2].args[2:end])
       #old_size = shape[end]
@@ -384,7 +384,7 @@ function from_assignment_alloc(node::Expr, state::DistPassState, arr::LHSVar, rh
       #debug_size_print = :(println("size ",$darr_count_var))
       #push!(res,debug_size_print)
       return res
-  elseif isTWO_D(arr,state) && state.arrs_dist_info[arr].dim_sizes[end]!=-1
+  elseif isTWO_D(arr,state) && !(-1 in state.arrs_dist_info[arr].dim_sizes)
     return from_assignment_alloc_2d(node, state, arr, rhs)
   end
   return [node]
@@ -702,7 +702,7 @@ function from_parfor_1d(node::Expr, state, parfor)
   # special handling of variable length arrays
   is_var_length = false
   for arr in state.parfor_arrays[parfor.unique_id]
-    if state.arrs_dist_info[arr].dim_sizes[end]==-1
+    if (-1 in state.arrs_dist_info[arr].dim_sizes)
       is_var_length = true
       break
     end
@@ -874,7 +874,7 @@ function from_call(node::Expr, state)
         @dprintln(3,"found arraysize on dist array: ",node," ",arr)
         # don't replace if it is variable length
         # can be 2D, like hcat-transpose of variable length arrays
-        if state.arrs_dist_info[arr].dim_sizes[end]==-1
+        if (-1 in state.arrs_dist_info[arr].dim_sizes)
           return [node]
         end
         # replace last dimension size queries since it is partitioned
@@ -888,7 +888,7 @@ function from_call(node::Expr, state)
         arr = toLHSVar(node.args[2])
         # don't replace if it is variable length
         # can be 2D, like hcat-transpose of variable length arrays
-        if state.arrs_dist_info[arr].dim_sizes[end]==-1
+        if (-1 in state.arrs_dist_info[arr].dim_sizes)
           return [node]
         end
         #len = parse(foldl((a,b)->"$a*$b", "1",state.arrs_dist_info[arr].dim_sizes))
@@ -947,7 +947,7 @@ end
 """
 function gen_rebalance_array(arr::LHSVar, state)
   # no need to rebalance if not variable chunk length
-  if state.arrs_dist_info[arr].dim_sizes[end]!=-1
+  if !(-1 in state.arrs_dist_info[arr].dim_sizes)
     return Any[]
   end
 
