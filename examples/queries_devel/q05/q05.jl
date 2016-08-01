@@ -1,7 +1,7 @@
 using HPAT
 
 @acc hpat function q05(category, education, gender, file_name)
-    web_clickstreams = DataSource(DataTable{:wcs_user_sk=Int64,:wcs_item_sk=Int64}, HDF5, file_name)
+    web_clickstreams = DataSource(DataTable{:wcs_item_sk=Int64, :wcs_user_sk=Int64}, HDF5, file_name)
     item = DataSource(DataTable{:item_sk=Int64,:i_category_id=Int64,:i_category=ASCIIString}, HDF5, file_name)
     customer = DataSource(DataTable{:c_customer_sk=Int64,:c_current_cdemo_sk=Int64}, HDF5, file_name)
     customer_demographics = DataSource(DataTable{:cd_demo_sk=Int64,:cd_gender=ASCIIString,:cd_education_status=ASCIIString}, HDF5, file_name)
@@ -32,5 +32,4 @@ using HPAT
     return model
 end
 
-
-println(q05("food", "colledge", "male", "data.hdf5"))
+println(q05(90882, 8303423, 1, "test_q26.hdf5"))
