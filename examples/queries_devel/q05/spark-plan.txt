@@ -1,0 +1,178 @@
+00 Project [wcs_user_sk#1, clicks_in_category#176L, CASE WHEN (cd_education_status#124 = 8303423) THEN 1 ELSE 0 END AS college_education#184, CASE WHEN (cd_gender#123 = 1) THEN 1 ELSE 0 END AS male#185, clicks_in_1#177L, clicks_in_2#178L, clicks_in_3#179L, clicks_in_4#180L, clicks_in_5#181L, clicks_in_6#182L, clicks_in_7#183L]
+01 +- Join Inner, (c_current_cdemo_sk#87 = cd_demo_sk#122)
+02    :- Project [wcs_user_sk#1, clicks_in_category#176L, clicks_in_1#177L, clicks_in_2#178L, clicks_in_3#179L, clicks_in_4#180L, clicks_in_5#181L, clicks_in_6#182L, clicks_in_7#183L, c_current_cdemo_sk#87]
+03    :  +- Join Inner, (wcs_user_sk#1 = c_customer_sk#86)
+04    :     :- Aggregate [wcs_user_sk#1], [wcs_user_sk#1, sum(cast(CASE WHEN (i_category#38L = 90882) THEN 1 ELSE 0 END as bigint)) AS clicks_in_category#176L, sum(cast(CASE WHEN (i_category_id#37 = 1) THEN 1 ELSE 0 END as bigint)) AS clicks_in_1#177L, sum(cast(CASE WHEN (i_category_id#37 = 2) THEN 1 ELSE 0 END as bigint)) AS clicks_in_2#178L, sum(cast(CASE WHEN (i_category_id#37 = 3) THEN 1 ELSE 0 END as bigint)) AS clicks_in_3#179L, sum(cast(CASE WHEN (i_category_id#37 = 4) THEN 1 ELSE 0 END as bigint)) AS clicks_in_4#180L, sum(cast(CASE WHEN (i_category_id#37 = 5) THEN 1 ELSE 0 END as bigint)) AS clicks_in_5#181L, sum(cast(CASE WHEN (i_category_id#37 = 6) THEN 1 ELSE 0 END as bigint)) AS clicks_in_6#182L, sum(cast(CASE WHEN (i_category_id#37 = 7) THEN 1 ELSE 0 END as bigint)) AS clicks_in_7#183L]
+05    :     :  +- Project [wcs_user_sk#1, i_category_id#37, i_category#38L]
+06    :     :     +- Join Inner, (wcs_item_sk#0 = i_item_sk#36)
+07    :     :        :- Filter (isnotnull(wcs_user_sk#1) && isnotnull(wcs_item_sk#0))
+08    :     :        :  +- InMemoryRelation [wcs_item_sk#0, wcs_user_sk#1], true, 10000, StorageLevel(disk, memory, deserialized, 1 replicas)
+09    :     :        :     :  +- *Scan csv [wcs_item_sk#0,wcs_user_sk#1] Format: CSV, InputPaths: file:/home/whassan/tmp/csv/q05/web_clickstreams_sanitized_1f.csv, PushedFilters: [], ReadSchema: struct<wcs_item_sk:int,wcs_user_sk:int>
+10    :     :        +- Filter isnotnull(i_item_sk#36)
+11    :     :           +- InMemoryRelation [i_item_sk#36, i_category_id#37, i_category#38L], true, 10000, StorageLevel(disk, memory, deserialized, 1 replicas)
+12    :     :              :  +- *Scan csv [i_item_sk#36,i_category_id#37,i_category#38L] Format: CSV, InputPaths: file:/home/whassan/tmp/csv/q05/item_sanitized_1f.csv, PushedFilters: [], ReadSchema: struct<i_item_sk:int,i_category_id:int,i_category:bigint>
+13    :     +- Filter (isnotnull(c_customer_sk#86) && isnotnull(c_current_cdemo_sk#87))
+14    :        +- InMemoryRelation [c_customer_sk#86, c_current_cdemo_sk#87], true, 10000, StorageLevel(disk, memory, deserialized, 1 replicas)
+15    :           :  +- *Scan csv [c_customer_sk#86,c_current_cdemo_sk#87] Format: CSV, InputPaths: file:/home/whassan/tmp/csv/q05/customer_sanitized_1f.csv, PushedFilters: [], ReadSchema: struct<c_customer_sk:int,c_current_cdemo_sk:int>
+16    +- Filter isnotnull(cd_demo_sk#122)
+17       +- InMemoryRelation [cd_demo_sk#122, cd_gender#123, cd_education_status#124], true, 10000, StorageLevel(disk, memory, deserialized, 1 replicas)
+18          :  +- *Scan csv [cd_demo_sk#122,cd_gender#123,cd_education_status#124] Format: CSV, InputPaths: file:/home/whassan/tmp/csv/q05/customer_demographics_sanitized_1f.csv, PushedFilters: [], ReadSchema: struct<cd_demo_sk:int,cd_gender:int,cd_education_status:int>
+
+Executed Plan=====================
+
+00 *Project [wcs_user_sk#1, clicks_in_category#176L, CASE WHEN (cd_education_status#124 = 8303423) THEN 1 ELSE 0 END AS college_education#184, CASE WHEN (cd_gender#123 = 1) THEN 1 ELSE 0 END AS male#185, clicks_in_1#177L, clicks_in_2#178L, clicks_in_3#179L, clicks_in_4#180L, clicks_in_5#181L, clicks_in_6#182L, clicks_in_7#183L]
+01 +- *SortMergeJoin [c_current_cdemo_sk#87], [cd_demo_sk#122], Inner
+02    :- *Sort [c_current_cdemo_sk#87 ASC], false, 0
+03    :  +- Exchange hashpartitioning(c_current_cdemo_sk#87, 200)
+04    :     +- *Project [wcs_user_sk#1, clicks_in_category#176L, clicks_in_1#177L, clicks_in_2#178L, clicks_in_3#179L, clicks_in_4#180L, clicks_in_5#181L, clicks_in_6#182L, clicks_in_7#183L, c_current_cdemo_sk#87]
+05    :        +- *SortMergeJoin [wcs_user_sk#1], [c_customer_sk#86], Inner
+06    :           :- *Sort [wcs_user_sk#1 ASC], false, 0
+07    :           :  +- *HashAggregate(keys=[wcs_user_sk#1], functions=[sum(cast(CASE WHEN (i_category#38L = 90882) THEN 1 ELSE 0 END as bigint)), sum(cast(CASE WHEN (i_category_id#37 = 1) THEN 1 ELSE 0 END as bigint)), sum(cast(CASE WHEN (i_category_id#37 = 2) THEN 1 ELSE 0 END as bigint)), sum(cast(CASE WHEN (i_category_id#37 = 3) THEN 1 ELSE 0 END as bigint)), sum(cast(CASE WHEN (i_category_id#37 = 4) THEN 1 ELSE 0 END as bigint)), sum(cast(CASE WHEN (i_category_id#37 = 5) THEN 1 ELSE 0 END as bigint)), sum(cast(CASE WHEN (i_category_id#37 = 6) THEN 1 ELSE 0 END as bigint)), sum(cast(CASE WHEN (i_category_id#37 = 7) THEN 1 ELSE 0 END as bigint))], output=[wcs_user_sk#1, clicks_in_category#176L, clicks_in_1#177L, clicks_in_2#178L, clicks_in_3#179L, clicks_in_4#180L, clicks_in_5#181L, clicks_in_6#182L, clicks_in_7#183L])
+08    :           :     +- Exchange hashpartitioning(wcs_user_sk#1, 200)
+09    :           :        +- *HashAggregate(keys=[wcs_user_sk#1], functions=[partial_sum(cast(CASE WHEN (i_category#38L = 90882) THEN 1 ELSE 0 END as bigint)), partial_sum(cast(CASE WHEN (i_category_id#37 = 1) THEN 1 ELSE 0 END as bigint)), partial_sum(cast(CASE WHEN (i_category_id#37 = 2) THEN 1 ELSE 0 END as bigint)), partial_sum(cast(CASE WHEN (i_category_id#37 = 3) THEN 1 ELSE 0 END as bigint)), partial_sum(cast(CASE WHEN (i_category_id#37 = 4) THEN 1 ELSE 0 END as bigint)), partial_sum(cast(CASE WHEN (i_category_id#37 = 5) THEN 1 ELSE 0 END as bigint)), partial_sum(cast(CASE WHEN (i_category_id#37 = 6) THEN 1 ELSE 0 END as bigint)), partial_sum(cast(CASE WHEN (i_category_id#37 = 7) THEN 1 ELSE 0 END as bigint))], output=[wcs_user_sk#1, sum#284L, sum#285L, sum#286L, sum#287L, sum#288L, sum#289L, sum#290L, sum#291L])
+10    :           :           +- *Project [wcs_user_sk#1, i_category_id#37, i_category#38L]
+11    :           :              +- *SortMergeJoin [wcs_item_sk#0], [i_item_sk#36], Inner
+12    :           :                 :- *Sort [wcs_item_sk#0 ASC], false, 0
+13    :           :                 :  +- Exchange hashpartitioning(wcs_item_sk#0, 200)
+14    :           :                 :     +- *Filter (isnotnull(wcs_user_sk#1) && isnotnull(wcs_item_sk#0))
+15    :           :                 :        +- InMemoryTableScan [wcs_item_sk#0, wcs_user_sk#1], [isnotnull(wcs_user_sk#1), isnotnull(wcs_item_sk#0)]
+16    :           :                 :           :  +- InMemoryRelation [wcs_item_sk#0, wcs_user_sk#1], true, 10000, StorageLevel(disk, memory, deserialized, 1 replicas)
+17    :           :                 :           :     :  +- *Scan csv [wcs_item_sk#0,wcs_user_sk#1] Format: CSV, InputPaths: file:/home/whassan/tmp/csv/q05/web_clickstreams_sanitized_1f.csv, PushedFilters: [], ReadSchema: struct<wcs_item_sk:int,wcs_user_sk:int>
+18    :           :                 +- *Sort [i_item_sk#36 ASC], false, 0
+19    :           :                    +- Exchange hashpartitioning(i_item_sk#36, 200)
+20    :           :                       +- *Filter isnotnull(i_item_sk#36)
+21    :           :                          +- InMemoryTableScan [i_item_sk#36, i_category_id#37, i_category#38L], [isnotnull(i_item_sk#36)]
+22    :           :                             :  +- InMemoryRelation [i_item_sk#36, i_category_id#37, i_category#38L], true, 10000, StorageLevel(disk, memory, deserialized, 1 replicas)
+23    :           :                             :     :  +- *Scan csv [i_item_sk#36,i_category_id#37,i_category#38L] Format: CSV, InputPaths: file:/home/whassan/tmp/csv/q05/item_sanitized_1f.csv, PushedFilters: [], ReadSchema: struct<i_item_sk:int,i_category_id:int,i_category:bigint>
+24    :           +- *Sort [c_customer_sk#86 ASC], false, 0
+25    :              +- Exchange hashpartitioning(c_customer_sk#86, 200)
+26    :                 +- *Filter (isnotnull(c_customer_sk#86) && isnotnull(c_current_cdemo_sk#87))
+27    :                    +- InMemoryTableScan [c_customer_sk#86, c_current_cdemo_sk#87], [isnotnull(c_customer_sk#86), isnotnull(c_current_cdemo_sk#87)]
+28    :                       :  +- InMemoryRelation [c_customer_sk#86, c_current_cdemo_sk#87], true, 10000, StorageLevel(disk, memory, deserialized, 1 replicas)
+29    :                       :     :  +- *Scan csv [c_customer_sk#86,c_current_cdemo_sk#87] Format: CSV, InputPaths: file:/home/whassan/tmp/csv/q05/customer_sanitized_1f.csv, PushedFilters: [], ReadSchema: struct<c_customer_sk:int,c_current_cdemo_sk:int>
+30    +- *Sort [cd_demo_sk#122 ASC], false, 0
+31       +- Exchange hashpartitioning(cd_demo_sk#122, 200)
+32          +- *Filter isnotnull(cd_demo_sk#122)
+33             +- InMemoryTableScan [cd_demo_sk#122, cd_gender#123, cd_education_status#124], [isnotnull(cd_demo_sk#122)]
+34                :  +- InMemoryRelation [cd_demo_sk#122, cd_gender#123, cd_education_status#124], true, 10000, StorageLevel(disk, memory, deserialized, 1 replicas)
+35                :     :  +- *Scan csv [cd_demo_sk#122,cd_gender#123,cd_education_status#124] Format: CSV, InputPaths: file:/home/whassan/tmp/csv/q05/customer_demographics_sanitized_1f.csv, PushedFilters: [], ReadSchema: struct<cd_demo_sk:int,cd_gender:int,cd_education_status:int>
+
+Spark Plan=====================
+
+00 Project [wcs_user_sk#1, clicks_in_category#176L, CASE WHEN (cd_education_status#124 = 8303423) THEN 1 ELSE 0 END AS college_education#184, CASE WHEN (cd_gender#123 = 1) THEN 1 ELSE 0 END AS male#185, clicks_in_1#177L, clicks_in_2#178L, clicks_in_3#179L, clicks_in_4#180L, clicks_in_5#181L, clicks_in_6#182L, clicks_in_7#183L]
+01 +- SortMergeJoin [c_current_cdemo_sk#87], [cd_demo_sk#122], Inner
+02    :- Project [wcs_user_sk#1, clicks_in_category#176L, clicks_in_1#177L, clicks_in_2#178L, clicks_in_3#179L, clicks_in_4#180L, clicks_in_5#181L, clicks_in_6#182L, clicks_in_7#183L, c_current_cdemo_sk#87]
+03    :  +- SortMergeJoin [wcs_user_sk#1], [c_customer_sk#86], Inner
+04    :     :- HashAggregate(keys=[wcs_user_sk#1], functions=[sum(cast(CASE WHEN (i_category#38L = 90882) THEN 1 ELSE 0 END as bigint)), sum(cast(CASE WHEN (i_category_id#37 = 1) THEN 1 ELSE 0 END as bigint)), sum(cast(CASE WHEN (i_category_id#37 = 2) THEN 1 ELSE 0 END as bigint)), sum(cast(CASE WHEN (i_category_id#37 = 3) THEN 1 ELSE 0 END as bigint)), sum(cast(CASE WHEN (i_category_id#37 = 4) THEN 1 ELSE 0 END as bigint)), sum(cast(CASE WHEN (i_category_id#37 = 5) THEN 1 ELSE 0 END as bigint)), sum(cast(CASE WHEN (i_category_id#37 = 6) THEN 1 ELSE 0 END as bigint)), sum(cast(CASE WHEN (i_category_id#37 = 7) THEN 1 ELSE 0 END as bigint))], output=[wcs_user_sk#1, clicks_in_category#176L, clicks_in_1#177L, clicks_in_2#178L, clicks_in_3#179L, clicks_in_4#180L, clicks_in_5#181L, clicks_in_6#182L, clicks_in_7#183L])
+05    :     :  +- HashAggregate(keys=[wcs_user_sk#1], functions=[partial_sum(cast(CASE WHEN (i_category#38L = 90882) THEN 1 ELSE 0 END as bigint)), partial_sum(cast(CASE WHEN (i_category_id#37 = 1) THEN 1 ELSE 0 END as bigint)), partial_sum(cast(CASE WHEN (i_category_id#37 = 2) THEN 1 ELSE 0 END as bigint)), partial_sum(cast(CASE WHEN (i_category_id#37 = 3) THEN 1 ELSE 0 END as bigint)), partial_sum(cast(CASE WHEN (i_category_id#37 = 4) THEN 1 ELSE 0 END as bigint)), partial_sum(cast(CASE WHEN (i_category_id#37 = 5) THEN 1 ELSE 0 END as bigint)), partial_sum(cast(CASE WHEN (i_category_id#37 = 6) THEN 1 ELSE 0 END as bigint)), partial_sum(cast(CASE WHEN (i_category_id#37 = 7) THEN 1 ELSE 0 END as bigint))], output=[wcs_user_sk#1, sum#284L, sum#285L, sum#286L, sum#287L, sum#288L, sum#289L, sum#290L, sum#291L])
+06    :     :     +- Project [wcs_user_sk#1, i_category_id#37, i_category#38L]
+07    :     :        +- SortMergeJoin [wcs_item_sk#0], [i_item_sk#36], Inner
+08    :     :           :- Filter (isnotnull(wcs_user_sk#1) && isnotnull(wcs_item_sk#0))
+09    :     :           :  +- InMemoryTableScan [wcs_item_sk#0, wcs_user_sk#1], [isnotnull(wcs_user_sk#1), isnotnull(wcs_item_sk#0)]
+10    :     :           :     :  +- InMemoryRelation [wcs_item_sk#0, wcs_user_sk#1], true, 10000, StorageLevel(disk, memory, deserialized, 1 replicas)
+11    :     :           :     :     :  +- *Scan csv [wcs_item_sk#0,wcs_user_sk#1] Format: CSV, InputPaths: file:/home/whassan/tmp/csv/q05/web_clickstreams_sanitized_1f.csv, PushedFilters: [], ReadSchema: struct<wcs_item_sk:int,wcs_user_sk:int>
+12    :     :           +- Filter isnotnull(i_item_sk#36)
+13    :     :              +- InMemoryTableScan [i_item_sk#36, i_category_id#37, i_category#38L], [isnotnull(i_item_sk#36)]
+14    :     :                 :  +- InMemoryRelation [i_item_sk#36, i_category_id#37, i_category#38L], true, 10000, StorageLevel(disk, memory, deserialized, 1 replicas)
+15    :     :                 :     :  +- *Scan csv [i_item_sk#36,i_category_id#37,i_category#38L] Format: CSV, InputPaths: file:/home/whassan/tmp/csv/q05/item_sanitized_1f.csv, PushedFilters: [], ReadSchema: struct<i_item_sk:int,i_category_id:int,i_category:bigint>
+16    :     +- Filter (isnotnull(c_customer_sk#86) && isnotnull(c_current_cdemo_sk#87))
+17    :        +- InMemoryTableScan [c_customer_sk#86, c_current_cdemo_sk#87], [isnotnull(c_customer_sk#86), isnotnull(c_current_cdemo_sk#87)]
+18    :           :  +- InMemoryRelation [c_customer_sk#86, c_current_cdemo_sk#87], true, 10000, StorageLevel(disk, memory, deserialized, 1 replicas)
+19    :           :     :  +- *Scan csv [c_customer_sk#86,c_current_cdemo_sk#87] Format: CSV, InputPaths: file:/home/whassan/tmp/csv/q05/customer_sanitized_1f.csv, PushedFilters: [], ReadSchema: struct<c_customer_sk:int,c_current_cdemo_sk:int>
+20    +- Filter isnotnull(cd_demo_sk#122)
+21       +- InMemoryTableScan [cd_demo_sk#122, cd_gender#123, cd_education_status#124], [isnotnull(cd_demo_sk#122)]
+22          :  +- InMemoryRelation [cd_demo_sk#122, cd_gender#123, cd_education_status#124], true, 10000, StorageLevel(disk, memory, deserialized, 1 replicas)
+23          :     :  +- *Scan csv [cd_demo_sk#122,cd_gender#123,cd_education_status#124] Format: CSV, InputPaths: file:/home/whassan/tmp/csv/q05/customer_demographics_sanitized_1f.csv, PushedFilters: [], ReadSchema: struct<cd_demo_sk:int,cd_gender:int,cd_education_status:int>
+
+Statistics=====================
+
+1438134435317466783800511562
+== Parsed Logical Plan ==
+'Project ['wcs_user_sk, 'clicks_in_category, CASE WHEN ('cd_education_status = 8303423) THEN 1 ELSE 0 END AS college_education#184, CASE WHEN ('cd_gender = 1) THEN 1 ELSE 0 END AS male#185, 'clicks_in_1, 'clicks_in_2, 'clicks_in_3, 'clicks_in_4, 'clicks_in_5, 'clicks_in_6, 'clicks_in_7]
++- 'Join Inner, ('c_current_cdemo_sk = 'cd_demo_sk)
+   :- 'Join Inner, ('wcs_user_sk = 'c_customer_sk)
+   :  :- 'SubqueryAlias q05_user_clicks_in_cat
+   :  :  +- 'Aggregate ['wcs_user_sk], ['wcs_user_sk, 'SUM(CASE WHEN ('i_category = 90882) THEN 1 ELSE 0 END) AS clicks_in_category#176, 'SUM(CASE WHEN ('i_category_id = 1) THEN 1 ELSE 0 END) AS clicks_in_1#177, 'SUM(CASE WHEN ('i_category_id = 2) THEN 1 ELSE 0 END) AS clicks_in_2#178, 'SUM(CASE WHEN ('i_category_id = 3) THEN 1 ELSE 0 END) AS clicks_in_3#179, 'SUM(CASE WHEN ('i_category_id = 4) THEN 1 ELSE 0 END) AS clicks_in_4#180, 'SUM(CASE WHEN ('i_category_id = 5) THEN 1 ELSE 0 END) AS clicks_in_5#181, 'SUM(CASE WHEN ('i_category_id = 6) THEN 1 ELSE 0 END) AS clicks_in_6#182, 'SUM(CASE WHEN ('i_category_id = 7) THEN 1 ELSE 0 END) AS clicks_in_7#183]
+   :  :     +- 'Join Inner, (('wcs_item_sk = 'i_item_sk) && isnotnull('wcs_user_sk))
+   :  :        :- 'UnresolvedRelation `web_clickstreams`
+   :  :        +- 'UnresolvedRelation `item`, it
+   :  +- 'UnresolvedRelation `customer`, ct
+   +- 'UnresolvedRelation `customer_demographics`
+
+== Analyzed Logical Plan ==
+wcs_user_sk: int, clicks_in_category: bigint, college_education: int, male: int, clicks_in_1: bigint, clicks_in_2: bigint, clicks_in_3: bigint, clicks_in_4: bigint, clicks_in_5: bigint, clicks_in_6: bigint, clicks_in_7: bigint
+Project [wcs_user_sk#1, clicks_in_category#176L, CASE WHEN (cd_education_status#124 = 8303423) THEN 1 ELSE 0 END AS college_education#184, CASE WHEN (cd_gender#123 = 1) THEN 1 ELSE 0 END AS male#185, clicks_in_1#177L, clicks_in_2#178L, clicks_in_3#179L, clicks_in_4#180L, clicks_in_5#181L, clicks_in_6#182L, clicks_in_7#183L]
++- Join Inner, (c_current_cdemo_sk#87 = cd_demo_sk#122)
+   :- Join Inner, (wcs_user_sk#1 = c_customer_sk#86)
+   :  :- SubqueryAlias q05_user_clicks_in_cat
+   :  :  +- Aggregate [wcs_user_sk#1], [wcs_user_sk#1, sum(cast(CASE WHEN (i_category#38L = cast(90882 as bigint)) THEN 1 ELSE 0 END as bigint)) AS clicks_in_category#176L, sum(cast(CASE WHEN (i_category_id#37 = 1) THEN 1 ELSE 0 END as bigint)) AS clicks_in_1#177L, sum(cast(CASE WHEN (i_category_id#37 = 2) THEN 1 ELSE 0 END as bigint)) AS clicks_in_2#178L, sum(cast(CASE WHEN (i_category_id#37 = 3) THEN 1 ELSE 0 END as bigint)) AS clicks_in_3#179L, sum(cast(CASE WHEN (i_category_id#37 = 4) THEN 1 ELSE 0 END as bigint)) AS clicks_in_4#180L, sum(cast(CASE WHEN (i_category_id#37 = 5) THEN 1 ELSE 0 END as bigint)) AS clicks_in_5#181L, sum(cast(CASE WHEN (i_category_id#37 = 6) THEN 1 ELSE 0 END as bigint)) AS clicks_in_6#182L, sum(cast(CASE WHEN (i_category_id#37 = 7) THEN 1 ELSE 0 END as bigint)) AS clicks_in_7#183L]
+   :  :     +- Join Inner, ((wcs_item_sk#0 = i_item_sk#36) && isnotnull(wcs_user_sk#1))
+   :  :        :- SubqueryAlias web_clickstreams
+   :  :        :  +- Relation[wcs_item_sk#0,wcs_user_sk#1] csv
+   :  :        +- SubqueryAlias it
+   :  :           +- SubqueryAlias item
+   :  :              +- Relation[i_item_sk#36,i_category_id#37,i_category#38L] csv
+   :  +- SubqueryAlias ct
+   :     +- SubqueryAlias customer
+   :        +- Relation[c_customer_sk#86,c_current_cdemo_sk#87] csv
+   +- SubqueryAlias customer_demographics
+      +- Relation[cd_demo_sk#122,cd_gender#123,cd_education_status#124] csv
+
+== Optimized Logical Plan ==
+Project [wcs_user_sk#1, clicks_in_category#176L, CASE WHEN (cd_education_status#124 = 8303423) THEN 1 ELSE 0 END AS college_education#184, CASE WHEN (cd_gender#123 = 1) THEN 1 ELSE 0 END AS male#185, clicks_in_1#177L, clicks_in_2#178L, clicks_in_3#179L, clicks_in_4#180L, clicks_in_5#181L, clicks_in_6#182L, clicks_in_7#183L]
++- Join Inner, (c_current_cdemo_sk#87 = cd_demo_sk#122)
+   :- Project [wcs_user_sk#1, clicks_in_category#176L, clicks_in_1#177L, clicks_in_2#178L, clicks_in_3#179L, clicks_in_4#180L, clicks_in_5#181L, clicks_in_6#182L, clicks_in_7#183L, c_current_cdemo_sk#87]
+   :  +- Join Inner, (wcs_user_sk#1 = c_customer_sk#86)
+   :     :- Aggregate [wcs_user_sk#1], [wcs_user_sk#1, sum(cast(CASE WHEN (i_category#38L = 90882) THEN 1 ELSE 0 END as bigint)) AS clicks_in_category#176L, sum(cast(CASE WHEN (i_category_id#37 = 1) THEN 1 ELSE 0 END as bigint)) AS clicks_in_1#177L, sum(cast(CASE WHEN (i_category_id#37 = 2) THEN 1 ELSE 0 END as bigint)) AS clicks_in_2#178L, sum(cast(CASE WHEN (i_category_id#37 = 3) THEN 1 ELSE 0 END as bigint)) AS clicks_in_3#179L, sum(cast(CASE WHEN (i_category_id#37 = 4) THEN 1 ELSE 0 END as bigint)) AS clicks_in_4#180L, sum(cast(CASE WHEN (i_category_id#37 = 5) THEN 1 ELSE 0 END as bigint)) AS clicks_in_5#181L, sum(cast(CASE WHEN (i_category_id#37 = 6) THEN 1 ELSE 0 END as bigint)) AS clicks_in_6#182L, sum(cast(CASE WHEN (i_category_id#37 = 7) THEN 1 ELSE 0 END as bigint)) AS clicks_in_7#183L]
+   :     :  +- Project [wcs_user_sk#1, i_category_id#37, i_category#38L]
+   :     :     +- Join Inner, (wcs_item_sk#0 = i_item_sk#36)
+   :     :        :- Filter (isnotnull(wcs_user_sk#1) && isnotnull(wcs_item_sk#0))
+   :     :        :  +- InMemoryRelation [wcs_item_sk#0, wcs_user_sk#1], true, 10000, StorageLevel(disk, memory, deserialized, 1 replicas)
+   :     :        :     :  +- *Scan csv [wcs_item_sk#0,wcs_user_sk#1] Format: CSV, InputPaths: file:/home/whassan/tmp/csv/q05/web_clickstreams_sanitized_1f.csv, PushedFilters: [], ReadSchema: struct<wcs_item_sk:int,wcs_user_sk:int>
+   :     :        +- Filter isnotnull(i_item_sk#36)
+   :     :           +- InMemoryRelation [i_item_sk#36, i_category_id#37, i_category#38L], true, 10000, StorageLevel(disk, memory, deserialized, 1 replicas)
+   :     :              :  +- *Scan csv [i_item_sk#36,i_category_id#37,i_category#38L] Format: CSV, InputPaths: file:/home/whassan/tmp/csv/q05/item_sanitized_1f.csv, PushedFilters: [], ReadSchema: struct<i_item_sk:int,i_category_id:int,i_category:bigint>
+   :     +- Filter (isnotnull(c_customer_sk#86) && isnotnull(c_current_cdemo_sk#87))
+   :        +- InMemoryRelation [c_customer_sk#86, c_current_cdemo_sk#87], true, 10000, StorageLevel(disk, memory, deserialized, 1 replicas)
+   :           :  +- *Scan csv [c_customer_sk#86,c_current_cdemo_sk#87] Format: CSV, InputPaths: file:/home/whassan/tmp/csv/q05/customer_sanitized_1f.csv, PushedFilters: [], ReadSchema: struct<c_customer_sk:int,c_current_cdemo_sk:int>
+   +- Filter isnotnull(cd_demo_sk#122)
+      +- InMemoryRelation [cd_demo_sk#122, cd_gender#123, cd_education_status#124], true, 10000, StorageLevel(disk, memory, deserialized, 1 replicas)
+         :  +- *Scan csv [cd_demo_sk#122,cd_gender#123,cd_education_status#124] Format: CSV, InputPaths: file:/home/whassan/tmp/csv/q05/customer_demographics_sanitized_1f.csv, PushedFilters: [], ReadSchema: struct<cd_demo_sk:int,cd_gender:int,cd_education_status:int>
+
+== Physical Plan ==
+*Project [wcs_user_sk#1, clicks_in_category#176L, CASE WHEN (cd_education_status#124 = 8303423) THEN 1 ELSE 0 END AS college_education#184, CASE WHEN (cd_gender#123 = 1) THEN 1 ELSE 0 END AS male#185, clicks_in_1#177L, clicks_in_2#178L, clicks_in_3#179L, clicks_in_4#180L, clicks_in_5#181L, clicks_in_6#182L, clicks_in_7#183L]
++- *SortMergeJoin [c_current_cdemo_sk#87], [cd_demo_sk#122], Inner
+   :- *Sort [c_current_cdemo_sk#87 ASC], false, 0
+   :  +- Exchange hashpartitioning(c_current_cdemo_sk#87, 200)
+   :     +- *Project [wcs_user_sk#1, clicks_in_category#176L, clicks_in_1#177L, clicks_in_2#178L, clicks_in_3#179L, clicks_in_4#180L, clicks_in_5#181L, clicks_in_6#182L, clicks_in_7#183L, c_current_cdemo_sk#87]
+   :        +- *SortMergeJoin [wcs_user_sk#1], [c_customer_sk#86], Inner
+   :           :- *Sort [wcs_user_sk#1 ASC], false, 0
+   :           :  +- *HashAggregate(keys=[wcs_user_sk#1], functions=[sum(cast(CASE WHEN (i_category#38L = 90882) THEN 1 ELSE 0 END as bigint)), sum(cast(CASE WHEN (i_category_id#37 = 1) THEN 1 ELSE 0 END as bigint)), sum(cast(CASE WHEN (i_category_id#37 = 2) THEN 1 ELSE 0 END as bigint)), sum(cast(CASE WHEN (i_category_id#37 = 3) THEN 1 ELSE 0 END as bigint)), sum(cast(CASE WHEN (i_category_id#37 = 4) THEN 1 ELSE 0 END as bigint)), sum(cast(CASE WHEN (i_category_id#37 = 5) THEN 1 ELSE 0 END as bigint)), sum(cast(CASE WHEN (i_category_id#37 = 6) THEN 1 ELSE 0 END as bigint)), sum(cast(CASE WHEN (i_category_id#37 = 7) THEN 1 ELSE 0 END as bigint))], output=[wcs_user_sk#1, clicks_in_category#176L, clicks_in_1#177L, clicks_in_2#178L, clicks_in_3#179L, clicks_in_4#180L, clicks_in_5#181L, clicks_in_6#182L, clicks_in_7#183L])
+   :           :     +- Exchange hashpartitioning(wcs_user_sk#1, 200)
+   :           :        +- *HashAggregate(keys=[wcs_user_sk#1], functions=[partial_sum(cast(CASE WHEN (i_category#38L = 90882) THEN 1 ELSE 0 END as bigint)), partial_sum(cast(CASE WHEN (i_category_id#37 = 1) THEN 1 ELSE 0 END as bigint)), partial_sum(cast(CASE WHEN (i_category_id#37 = 2) THEN 1 ELSE 0 END as bigint)), partial_sum(cast(CASE WHEN (i_category_id#37 = 3) THEN 1 ELSE 0 END as bigint)), partial_sum(cast(CASE WHEN (i_category_id#37 = 4) THEN 1 ELSE 0 END as bigint)), partial_sum(cast(CASE WHEN (i_category_id#37 = 5) THEN 1 ELSE 0 END as bigint)), partial_sum(cast(CASE WHEN (i_category_id#37 = 6) THEN 1 ELSE 0 END as bigint)), partial_sum(cast(CASE WHEN (i_category_id#37 = 7) THEN 1 ELSE 0 END as bigint))], output=[wcs_user_sk#1, sum#284L, sum#285L, sum#286L, sum#287L, sum#288L, sum#289L, sum#290L, sum#291L])
+   :           :           +- *Project [wcs_user_sk#1, i_category_id#37, i_category#38L]
+   :           :              +- *SortMergeJoin [wcs_item_sk#0], [i_item_sk#36], Inner
+   :           :                 :- *Sort [wcs_item_sk#0 ASC], false, 0
+   :           :                 :  +- Exchange hashpartitioning(wcs_item_sk#0, 200)
+   :           :                 :     +- *Filter (isnotnull(wcs_user_sk#1) && isnotnull(wcs_item_sk#0))
+   :           :                 :        +- InMemoryTableScan [wcs_item_sk#0, wcs_user_sk#1], [isnotnull(wcs_user_sk#1), isnotnull(wcs_item_sk#0)]
+   :           :                 :           :  +- InMemoryRelation [wcs_item_sk#0, wcs_user_sk#1], true, 10000, StorageLevel(disk, memory, deserialized, 1 replicas)
+   :           :                 :           :     :  +- *Scan csv [wcs_item_sk#0,wcs_user_sk#1] Format: CSV, InputPaths: file:/home/whassan/tmp/csv/q05/web_clickstreams_sanitized_1f.csv, PushedFilters: [], ReadSchema: struct<wcs_item_sk:int,wcs_user_sk:int>
+   :           :                 +- *Sort [i_item_sk#36 ASC], false, 0
+   :           :                    +- Exchange hashpartitioning(i_item_sk#36, 200)
+   :           :                       +- *Filter isnotnull(i_item_sk#36)
+   :           :                          +- InMemoryTableScan [i_item_sk#36, i_category_id#37, i_category#38L], [isnotnull(i_item_sk#36)]
+   :           :                             :  +- InMemoryRelation [i_item_sk#36, i_category_id#37, i_category#38L], true, 10000, StorageLevel(disk, memory, deserialized, 1 replicas)
+   :           :                             :     :  +- *Scan csv [i_item_sk#36,i_category_id#37,i_category#38L] Format: CSV, InputPaths: file:/home/whassan/tmp/csv/q05/item_sanitized_1f.csv, PushedFilters: [], ReadSchema: struct<i_item_sk:int,i_category_id:int,i_category:bigint>
+   :           +- *Sort [c_customer_sk#86 ASC], false, 0
+   :              +- Exchange hashpartitioning(c_customer_sk#86, 200)
+   :                 +- *Filter (isnotnull(c_customer_sk#86) && isnotnull(c_current_cdemo_sk#87))
+   :                    +- InMemoryTableScan [c_customer_sk#86, c_current_cdemo_sk#87], [isnotnull(c_customer_sk#86), isnotnull(c_current_cdemo_sk#87)]
+   :                       :  +- InMemoryRelation [c_customer_sk#86, c_current_cdemo_sk#87], true, 10000, StorageLevel(disk, memory, deserialized, 1 replicas)
+   :                       :     :  +- *Scan csv [c_customer_sk#86,c_current_cdemo_sk#87] Format: CSV, InputPaths: file:/home/whassan/tmp/csv/q05/customer_sanitized_1f.csv, PushedFilters: [], ReadSchema: struct<c_customer_sk:int,c_current_cdemo_sk:int>
+   +- *Sort [cd_demo_sk#122 ASC], false, 0
+      +- Exchange hashpartitioning(cd_demo_sk#122, 200)
+         +- *Filter isnotnull(cd_demo_sk#122)
+            +- InMemoryTableScan [cd_demo_sk#122, cd_gender#123, cd_education_status#124], [isnotnull(cd_demo_sk#122)]
+               :  +- InMemoryRelation [cd_demo_sk#122, cd_gender#123, cd_education_status#124], true, 10000, StorageLevel(disk, memory, deserialized, 1 replicas)
+               :     :  +- *Scan csv [cd_demo_sk#122,cd_gender#123,cd_education_status#124] Format: CSV, InputPaths: file:/home/whassan/tmp/csv/q05/customer_demographics_sanitized_1f.csv, PushedFilters: [], ReadSchema: struct<cd_demo_sk:int,cd_gender:int,cd_education_status:int>
