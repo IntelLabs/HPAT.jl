@@ -793,10 +793,10 @@ function pattern_match_call_rebalance(func::GlobalRef, arr::LHSVar, count::LHSVa
         # copy old data
         s *= "int64_t __hpat_new_data_ind_$c_arr = 0;\n"
         s *= "for(int64_t i=0; i<MIN(__hpat_old_size_$c_arr, $c_count); i++) {\n"
-        s *= "   for(int64_t j=0; i<__hpat_row_size_$c_arr; j++){\n"
+        s *= "   for(int64_t j=0; j<__hpat_row_size_$c_arr; j++){\n"
         s *= "    __hpat_tmp_$c_arr[__hpat_new_data_ind_$c_arr] = $c_arr.data[__hpat_new_data_ind_$c_arr];\n"
+        s *= "    __hpat_new_data_ind_$c_arr++;\n"
         s *= "    }"
-        s *= "    __hpat_new_data_ind_$c_arr += __hpat_row_size_$c_arr;\n"
         s *= "}\n"
         # my diff, all diffs
         s *= "int64_t _my_diff_$c_arr = __hpat_old_size_$c_arr-$c_count;\n"
