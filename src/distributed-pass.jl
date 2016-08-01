@@ -343,7 +343,7 @@ end
 
 function from_assignment_alloc(node::Expr, state::DistPassState, arr::LHSVar, rhs::Expr)
   @dprintln(3,"from assingment alloc: ", node)
-  if isONE_D(arr,state)
+  if isONE_D(arr,state) && state.arrs_dist_info[arr].dim_sizes[end]!=-1
       @dprintln(3,"DistPass allocation array: ", arr)
       #shape = get_alloc_shape(node.args[2].args[2:end])
       #old_size = shape[end]
@@ -384,7 +384,7 @@ function from_assignment_alloc(node::Expr, state::DistPassState, arr::LHSVar, rh
       #debug_size_print = :(println("size ",$darr_count_var))
       #push!(res,debug_size_print)
       return res
-  elseif isTWO_D(arr,state)
+  elseif isTWO_D(arr,state) && state.arrs_dist_info[arr].dim_sizes[end]!=-1
     return from_assignment_alloc_2d(node, state, arr, rhs)
   end
   return [node]
