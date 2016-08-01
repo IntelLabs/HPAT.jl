@@ -91,7 +91,7 @@ function pattern_match_call_join_seq(linfo, f::GlobalRef, id, table_new_cols_len
     t2_c1_join = ParallelAccelerator.CGen.from_expr(table2_cols[1],linfo)
     s *= "int $t1c1_length_join = $t1_c1_join.ARRAYLEN() ;\n "
     s *= "int $t2c1_length_join = $t2_c1_join.ARRAYLEN() ;\n "
-    s *= "int $joined_table_length = $t2c1_length_join + $t2c1_length_join ;\n "
+    s *= "int $joined_table_length = $t2c1_length_join * $t2c1_length_join ;\n "
     # Instantiation of columns for  output table
     for col_name in table_new_cols
         arr_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
@@ -321,7 +321,7 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
     # Initiatilizing new table(output table) arrays
     for (index, col_name) in enumerate(table1_cols)
         table_new_col_name = ParallelAccelerator.CGen.from_expr(table_new_cols[index],linfo)
-        s *= "$table_new_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $rsize_t1 + $rsize_t2);\n"
+        s *= "$table_new_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $rsize_t1 * $rsize_t2);\n"
         count = count + 1
     end
     for (index, col_name) in enumerate(table2_cols)
@@ -329,7 +329,7 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
             continue
         end
         table_new_col_name = ParallelAccelerator.CGen.from_expr(table_new_cols[index+count-1],linfo)
-        s *= "$table_new_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $rsize_t1 + $rsize_t2);\n"
+        s *= "$table_new_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $rsize_t1 * $rsize_t2);\n"
     end
     # Use any sorting algorithm here before merging
     # Right now using simple bubble sort
