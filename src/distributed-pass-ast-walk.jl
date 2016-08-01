@@ -93,7 +93,7 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
             setSEQ(toLHSVar(node.args[2]),state)
         elseif func==:__hpat_join
             # output columns of join can have variable length on different processors
-            # set dimension to -1
+            # set partitioning to ONE_D_VAR
             # node.args[3] gives number of output columns
             start_col_ind = 6
             end_col_ind = start_col_ind + node.args[3] - 1
@@ -105,7 +105,7 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
             end
         elseif func==:__hpat_filter
             # output columns of filter can have variable length on different processors
-            # set dimension to -1
+            # set partitioning to ONE_D_VAR
             # node.args[4] gives number of output columns
             start_col_ind = 5
             end_col_ind = start_col_ind + node.args[4] - 1
@@ -117,11 +117,13 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
             end
         elseif func==:__hpat_aggregate
             # output columns of aggregate can have variable length on different processors
-            # set dimension to -1
+            # set partitioning to ONE_D_VAR
             # node.args[4] gives number of output columns
             # start index is 2*node.args[4] because we need to skips expression columns and functions
             start_col_ind = (2*node.args[4]) + 5
             end_col_ind = start_col_ind + node.args[4] - 1
+            # one extra output to account for output key column
+            end_col_ind += 1
             for col_ind in start_col_ind:end_col_ind
                 col = node.args[col_ind]
                 # table columns are 1D
