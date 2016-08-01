@@ -346,8 +346,8 @@ function translate_aggregate(aggregate_node,state)
     out_arr = toLHSVar(aggregate_node.args[1])
     # convert _agg_out_t2_in_t1 to t2, t1
     out_names = string(out_arr)[10:end]
-    in_c = search(out_names,"in").start
-    t1 = Symbol(out_names[in_c+3:end])
+    in_c = search(out_names,"#").start
+    t1 = Symbol(out_names[in_c+2:end])
     t2 = Symbol(out_names[1:in_c-2])
 
     t1_cols = state.tableCols[t1]

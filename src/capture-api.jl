@@ -36,6 +36,7 @@ using HPAT.ONE_D
 
 import CompilerTools.DebugMsg
 DebugMsg.init()
+#using Debug
 
 """ At macro level, translate DataSource into function calls so that type inference
     and ParallelAccelerator compilation works with knowledge of calls and allocations for arrays.
@@ -216,7 +217,6 @@ function translate_join(lhs, rhs, state)
     # save new table
     state.tableCols[lhs] = [new_key;rest_cols1;rest_cols2]
     @dprintln(3, "new table join output: ",lhs," ", state.tableCols[lhs])
-
     # pass tables as array of columns since [t1_c1,t1_c2...] flattens to single array instead of array of arrays
     # eg. t1 = Array(Vector,n)
     # HACK: the table names are extracted from these variable names in DomainPass
@@ -313,7 +313,7 @@ function translate_aggregate(lhs, rhs, state)
     end
     append!(out_e,out_dummies)
 
-    out_var = Symbol("_agg_out_$(lhs)_in_$(t1)")
+    out_var = Symbol("_agg_out_$(lhs)_#_$(t1)")
 
     # assign types of output columns
     # we know the type of key column already
