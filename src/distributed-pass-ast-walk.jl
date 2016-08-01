@@ -101,7 +101,7 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
                 col = node.args[col_ind]
                 # table columns are 1D
                 @assert length(state.arrs_dist_info[col].dim_sizes)==1
-                state.arrs_dist_info[col].dim_sizes[1] = -1
+                state.arrs_dist_info[col].partitioning = ONE_D_VAR
             end
         elseif func==:__hpat_filter
             # output columns of filter can have variable length on different processors
@@ -113,7 +113,7 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
                 col = node.args[col_ind]
                 # table columns are 1D
                 @assert length(state.arrs_dist_info[col].dim_sizes)==1
-                state.arrs_dist_info[col].dim_sizes[1] = -1
+                state.arrs_dist_info[col].partitioning = ONE_D_VAR
             end
         elseif func==:__hpat_aggregate
             # output columns of aggregate can have variable length on different processors
@@ -126,7 +126,7 @@ function get_arr_dist_info(node::Expr, state::DistPassState, top_level_number, i
                 col = node.args[col_ind]
                 # table columns are 1D
                 @assert length(state.arrs_dist_info[col].dim_sizes)==1
-                state.arrs_dist_info[col].dim_sizes[1] = -1
+                state.arrs_dist_info[col].partitioning = ONE_D_VAR
             end
         end
         return node

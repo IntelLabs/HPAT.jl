@@ -43,6 +43,7 @@ using HPAT.Partitioning
 using HPAT.SEQ
 using HPAT.TWO_D
 using HPAT.ONE_D
+using HPAT.ONE_D_VAR
 
 using ParallelAccelerator
 import ParallelAccelerator.ParallelIR
@@ -126,7 +127,7 @@ function from_root(function_name, ast::Tuple)
 end
 
 type ArrDistInfo
-    partitioning::Partitioning      # partitioning of array (SEQ,ONE_D,TWO_D)
+    partitioning::Partitioning      # partitioning of array (SEQ, ONE_D_VAR, TWO_D, ONE_D)
     dim_sizes::Array{Union{RHSVar,Int,Expr},1}      # sizes of array dimensions
     # assuming only last dimension is partitioned
     arr_id::Int # assign ID to distributed array to access partitioning info later
@@ -175,6 +176,7 @@ type DistPassState
 end
 
 isSEQ(arr,state) = (state.arrs_dist_info[arr].partitioning==SEQ)
+isONE_D_VAR(arr,state) = (state.arrs_dist_info[arr].partitioning==ONE_D_VAR)
 isONE_D(arr,state) = (state.arrs_dist_info[arr].partitioning==ONE_D)
 isTWO_D(arr,state) = (state.arrs_dist_info[arr].partitioning==TWO_D)
 
@@ -343,7 +345,7 @@ end
 
 function from_assignment_alloc(node::Expr, state::DistPassState, arr::LHSVar, rhs::Expr)
   @dprintln(3,"from assingment alloc: ", node)
-  if isONE_D(arr,state) && !(-1 in state.arrs_dist_info[arr].dim_sizes)
+  if isONE_D(arr,state)
       @dprintln(3,"DistPass allocation array: ", arr)
       #shape = get_alloc_shape(node.args[2].args[2:end])
       #old_size = shape[end]
@@ -384,7 +386,7 @@ function from_assignment_alloc(node::Expr, state::DistPassState, arr::LHSVar, rh
       #debug_size_print = :(println("size ",$darr_count_var))
       #push!(res,debug_size_print)
       return res
-  elseif isTWO_D(arr,state) && !(-1 in state.arrs_dist_info[arr].dim_sizes)
+  elseif isTWO_D(arr,state)
     return from_assignment_alloc_2d(node, state, arr, rhs)
   end
   return [node]
@@ -699,25 +701,6 @@ end
 function from_parfor_1d(node::Expr, state, parfor)
   @dprintln(3,"DistPass translating 1d parfor: ", parfor.unique_id)
 
-  # special handling of variable length arrays
-  is_var_length = false
-  for arr in state.parfor_arrays[parfor.unique_id]
-    if (-1 in state.arrs_dist_info[arr].dim_sizes)
-      is_var_length = true
-      break
-    end
-  end
-   if is_var_length
-     for arr in state.parfor_arrays[parfor.unique_id]
-          state.arrs_dist_info[arr].dim_sizes[end]=-1
-     end
-       # TODO join output table cols gets -1 dim_sizes which is input to filter
-        # for arr in state.parfor_arrays[parfor.unique_id]
-        #     @assert state.arrs_dist_info[arr].dim_sizes[1]==-1 "$arr parfor array should be variable length"
-        # end
-    return [node]
-  end
-
   # TODO: assuming 1st loop nest is the last dimension
   loopnest = parfor.loopNests[1]
   # TODO: build a constant table and check the loop variables at this stage
@@ -830,7 +813,7 @@ function from_call(node::Expr, state)
         end
 
         return [node]
-    elseif func==GlobalRef(HPAT.API,:Kmeans) && isONE_D(toLHSVar(node.args[3]), state)
+    elseif func==GlobalRef(HPAT.API,:Kmeans) && (isONE_D(toLHSVar(node.args[3]), state) || isONE_D_VAR(toLHSVar(node.args[3]), state))
         arr = toLHSVar(node.args[3])
         @dprintln(3,"DistPass kmeans call for array: ", arr)
         node.args[1] = GlobalRef(HPAT.API,:Kmeans_dist)
@@ -848,35 +831,39 @@ function from_call(node::Expr, state)
         push!(node.args, state.arrs_dist_info[arr].starts[end], state.arrs_dist_info[arr].counts[end],
                 state.arrs_dist_info[arr].dim_sizes[1], state.arrs_dist_info[arr].dim_sizes[end])
         return [rebalance_out; node]
-    elseif (func==GlobalRef(HPAT.API,:LinearRegression) || func==GlobalRef(HPAT.API,:NaiveBayes)) && isONE_D(toLHSVar(node.args[3]),state) && isONE_D(toLHSVar(node.args[4]),state)
+    elseif func==GlobalRef(HPAT.API,:LinearRegression) || func==GlobalRef(HPAT.API,:NaiveBayes)
         arr1 = toLHSVar(node.args[3])
         arr2 = toLHSVar(node.args[4])
         @dprintln(3,"DistPass LinearRegression/NaiveBayes call for arrays: ", arr1," ", arr2)
-        node.args[1].name = symbol("$(func)_dist")
+        # both arrays can be 1D or variable length 1D
+        if (isONE_D(arr1,state) || isONE_D_VAR(arr1,state)) &&
+            (isONE_D(arr2,state) || isONE_D_VAR(arr2,state))
 
-        extra_daal_includes = """ #include "daal.h"
-        using namespace daal;
-        using namespace daal::data_management;
-        using namespace daal::algorithms;
-        """
-        HPAT.addHpatInclude(extra_daal_includes,"-daal", "-daal")
-        # rebalance array if necessary
-        # table operations like filter produce irregular chunk sizes on different processors
-        rebalance_out = gen_rebalance_array(arr, state)
+            node.args[1].name = symbol("$(func)_dist")
 
-        push!(node.args, state.arrs_dist_info[arr1].starts[end], state.arrs_dist_info[arr1].counts[end],
-                state.arrs_dist_info[arr1].dim_sizes[1], state.arrs_dist_info[arr1].dim_sizes[end])
-        push!(node.args, state.arrs_dist_info[arr2].starts[end], state.arrs_dist_info[arr2].counts[end],
-                state.arrs_dist_info[arr2].dim_sizes[1], state.arrs_dist_info[arr2].dim_sizes[end])
-        return [node]
+            extra_daal_includes = """ #include "daal.h"
+            using namespace daal;
+            using namespace daal::data_management;
+            using namespace daal::algorithms;
+            """
+            HPAT.addHpatInclude(extra_daal_includes,"-daal", "-daal")
+            # rebalance array if necessary
+            # table operations like filter produce irregular chunk sizes on different processors
+            rebalance_out1 = gen_rebalance_array(arr1, state)
+            rebalance_out2 = gen_rebalance_array(arr2, state)
+
+            push!(node.args, state.arrs_dist_info[arr1].starts[end], state.arrs_dist_info[arr1].counts[end],
+                    state.arrs_dist_info[arr1].dim_sizes[1], state.arrs_dist_info[arr1].dim_sizes[end])
+            push!(node.args, state.arrs_dist_info[arr2].starts[end], state.arrs_dist_info[arr2].counts[end],
+                    state.arrs_dist_info[arr2].dim_sizes[1], state.arrs_dist_info[arr2].dim_sizes[end])
+            return [rebalance_out1; rebalance_out2; node]
+        end
     elseif isBaseFunc(func, :arraysize) && (isONE_D(toLHSVar(node.args[2]),state) || isTWO_D(toLHSVar(node.args[2]),state))
         arr = toLHSVar(node.args[2])
-        @dprintln(3,"found arraysize on dist array: ",node," ",arr)
-        # don't replace if it is variable length
+        # don't replace if it is variable length (ONE_D_VAR)
         # can be 2D, like hcat-transpose of variable length arrays
-        if (-1 in state.arrs_dist_info[arr].dim_sizes)
-          return [node]
-        end
+        @dprintln(3,"found arraysize on dist array: ",node," ",arr)
+
         # replace last dimension size queries since it is partitioned
         #if node.args[3]==length(state.arrs_dist_info[arr].dim_sizes)
         #    return [state.arrs_dist_info[arr].dim_sizes[end]]
@@ -886,11 +873,9 @@ function from_call(node::Expr, state)
         return [state.arrs_dist_info[arr].dim_sizes[node.args[3]]]
     elseif isBaseFunc(func,:arraylen) && (isONE_D(toLHSVar(node.args[2]), state) || isTWO_D(toLHSVar(node.args[2]),state))
         arr = toLHSVar(node.args[2])
-        # don't replace if it is variable length
+        # don't replace if it is variable length (ONE_D_VAR)
         # can be 2D, like hcat-transpose of variable length arrays
-        if (-1 in state.arrs_dist_info[arr].dim_sizes)
-          return [node]
-        end
+
         #len = parse(foldl((a,b)->"$a*$b", "1",state.arrs_dist_info[arr].dim_sizes))
         len = mk_mult_int_expr(state.arrs_dist_info[arr].dim_sizes)
         @dprintln(3,"found arraylen on dist array: ",node," ",arr," len: ",len)
@@ -947,7 +932,7 @@ end
 """
 function gen_rebalance_array(arr::LHSVar, state)
   # no need to rebalance if not variable chunk length
-  if !(-1 in state.arrs_dist_info[arr].dim_sizes)
+  if !isONE_D_VAR(arr, state)
     return Any[]
   end
 

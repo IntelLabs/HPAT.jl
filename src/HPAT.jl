@@ -70,7 +70,7 @@ function setBlockSize(v::Int)
 end
 
 # smaller value means higher precedence
-@enum Partitioning SEQ=1 TWO_D=2 ONE_D=3
+@enum Partitioning SEQ=1 ONE_D_VAR=2 TWO_D=3 ONE_D=4
 
 include("api.jl")
 using HPAT.API
