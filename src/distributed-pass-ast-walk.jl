@@ -374,10 +374,15 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
             end
             state.arrs_dist_info[lhs].partitioning = min_partitioning
         elseif isBaseFunc(func,:transpose!)
+            # arg1 of transpose!() is also output and needs to be updated
+            out_arg = toLHSVar(rhs.args[2])
             state.arrs_dist_info[lhs].dim_sizes[2] = state.arrs_dist_info[toLHSVar(rhs.args[3])].dim_sizes[1]
+            state.arrs_dist_info[out_arg].dim_sizes[2] = state.arrs_dist_info[toLHSVar(rhs.args[3])].dim_sizes[1]
             state.arrs_dist_info[lhs].dim_sizes[1] = state.arrs_dist_info[toLHSVar(rhs.args[3])].dim_sizes[2]
+            state.arrs_dist_info[out_arg].dim_sizes[1] = state.arrs_dist_info[toLHSVar(rhs.args[3])].dim_sizes[2]
             partitioning = min(state.arrs_dist_info[lhs].partitioning, state.arrs_dist_info[toLHSVar(rhs.args[3])].partitioning)
             state.arrs_dist_info[lhs].partitioning = state.arrs_dist_info[toLHSVar(rhs.args[3])].partitioning = partitioning
+            state.arrs_dist_info[out_arg].partitioning = partitioning
         end
     else
         # lhs is sequential if rhs is unknown
