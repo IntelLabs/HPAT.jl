@@ -321,7 +321,7 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
     # Initiatilizing new table(output table) arrays
     for (index, col_name) in enumerate(table1_cols)
         table_new_col_name = ParallelAccelerator.CGen.from_expr(table_new_cols[index],linfo)
-        s *= "$table_new_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $rsize_t1 * $rsize_t2);\n"
+        s *= "std::vector< int64_t> *vec_$(join_rand)_$table_new_col_name = new std::vector< int64_t>() ; \n"
         count = count + 1
     end
     for (index, col_name) in enumerate(table2_cols)
@@ -329,7 +329,7 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
             continue
         end
         table_new_col_name = ParallelAccelerator.CGen.from_expr(table_new_cols[index+count-1],linfo)
-        s *= "$table_new_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $rsize_t1 * $rsize_t2);\n"
+        s *= "std::vector< int64_t> *vec_$(join_rand)_$table_new_col_name = new std::vector< int64_t>() ; \n"
     end
     # Use any sorting algorithm here before merging
     # Right now using simple bubble sort
@@ -377,7 +377,7 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
     for (index, col_name) in enumerate(table1_cols)
         table_new_col_name = ParallelAccelerator.CGen.from_expr(table_new_cols[index],linfo)
         table1_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
-        s *= "$table_new_col_name.ARRAYELEM($table_new_counter_join) = $table1_col_name.ARRAYELEM($left); \n"
+        s *= "vec_$(join_rand)_$table_new_col_name->push_back( $table1_col_name.ARRAYELEM($left) );\n"
         count = count + 1
     end
     for (index, col_name) in enumerate(table2_cols)
@@ -386,7 +386,7 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
         end
         table_new_col_name = ParallelAccelerator.CGen.from_expr(table_new_cols[index+count-1],linfo)
         table2_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
-        s *= "$table_new_col_name.ARRAYELEM($table_new_counter_join) =  $table2_col_name.ARRAYELEM($right); \n"
+        s *= "vec_$(join_rand)_$table_new_col_name->push_back( $table2_col_name.ARRAYELEM($right) ); \n"
     end
     s *= "$table_new_counter_join++;\n"
 
@@ -396,7 +396,7 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
     for (index, col_name) in enumerate(table1_cols)
         table_new_col_name = ParallelAccelerator.CGen.from_expr(table_new_cols[index],linfo)
         table1_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
-        s *= "$table_new_col_name.ARRAYELEM($table_new_counter_join) = $table1_col_name.ARRAYELEM(tmp_$left); \n"
+        s *= "vec_$(join_rand)_$table_new_col_name->push_back( $table1_col_name.ARRAYELEM(tmp_$left) ); \n"
         count = count + 1
     end
     for (index, col_name) in enumerate(table2_cols)
@@ -405,7 +405,7 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
         end
         table_new_col_name = ParallelAccelerator.CGen.from_expr(table_new_cols[index+count-1],linfo)
         table2_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
-        s *= "$table_new_col_name.ARRAYELEM($table_new_counter_join) =  $table2_col_name.ARRAYELEM($right); \n"
+        s *= "vec_$(join_rand)_$table_new_col_name->push_back( $table2_col_name.ARRAYELEM($right) ); \n"
     end
     s *= "tmp_$left++;\n"
     s *= "$table_new_counter_join++;\n"
@@ -417,7 +417,7 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
     for (index, col_name) in enumerate(table1_cols)
         table_new_col_name = ParallelAccelerator.CGen.from_expr(table_new_cols[index],linfo)
         table1_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
-        s *= "$table_new_col_name.ARRAYELEM($table_new_counter_join) = $table1_col_name.ARRAYELEM($left); \n"
+        s *= "vec_$(join_rand)_$table_new_col_name->push_back( $table1_col_name.ARRAYELEM($left) ); \n"
         count = count + 1
     end
     for (index, col_name) in enumerate(table2_cols)
@@ -426,7 +426,7 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
         end
         table_new_col_name = ParallelAccelerator.CGen.from_expr(table_new_cols[index+count-1],linfo)
         table2_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
-        s *= "$table_new_col_name.ARRAYELEM($table_new_counter_join) =  $table2_col_name.ARRAYELEM(tmp_$right); \n"
+        s *= "vec_$(join_rand)_$table_new_col_name->push_back( $table2_col_name.ARRAYELEM(tmp_$right) ); \n"
     end
     s *= "tmp_$right++;\n"
     s *= "$table_new_counter_join++;\n"
@@ -441,12 +441,20 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
     s *= "$right++;\n"
     s *= "}\n" # while condition
 
-    # fixing size of arrays after joining
-    for col_name in table_new_cols
-        table_new_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
-        s *= "$table_new_col_name.dims[0] = $table_new_counter_join - 1;\n"
+    count = 0
+    # Initializing new table(output table) arrays and copy from values from vectors
+    for (index, col_name) in enumerate(table1_cols)
+        table_new_col_name = ParallelAccelerator.CGen.from_expr(table_new_cols[index],linfo)
+        s *= "$table_new_col_name = j2c_array<int64_t>::new_j2c_array_1d(  vec_$(join_rand)_$table_new_col_name->data() , vec_$(join_rand)_$table_new_col_name->size() );\n"
+        count = count + 1
     end
-
+    for (index, col_name) in enumerate(table2_cols)
+        if index == 1
+            continue
+        end
+        table_new_col_name = ParallelAccelerator.CGen.from_expr(table_new_cols[index+count-1],linfo)
+        s *= "$table_new_col_name = j2c_array<int64_t>::new_j2c_array_1d(  vec_$(join_rand)_$table_new_col_name->data() , vec_$(join_rand)_$table_new_col_name->size() );\n"
+    end
     return s
 end
 
