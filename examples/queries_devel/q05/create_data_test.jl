@@ -27,10 +27,9 @@ function generate_dataset(wcs_user_sk, wcs_item_sk, i_item_sk, i_category_id, i_
     i_df = readtable(open(table_i_path))
     c_df = readtable(open(table_c_path))
     cd_df = readtable(open(table_cd_path))
-
-    append!(wcs_user_sk, wcs_df[1])
+    append!(wcs_item_sk, wcs_df[1])
     #replace NA values in Dataframes with -2147483648
-    append!(wcs_item_sk, convert(Array, wcs_df[2], typemin(Int32)))
+    append!(wcs_user_sk, convert(Array, wcs_df[2], typemin(Int32)))
 
     append!(i_item_sk, i_df[1])
     append!(i_category_id, i_df[2])
@@ -55,8 +54,8 @@ function main()
         table_c_path=ARGS[4]
         table_cd_path=ARGS[5]
     end
-    wcs_user_sk = Int64[]
     wcs_item_sk = Int64[]
+    wcs_user_sk = Int64[]
     i_item_sk = Int64[]
     i_category_id = Int64[]
     i_category = Int64[]
@@ -79,8 +78,8 @@ function main()
     if isfile(file_name)
         rm(file_name)
     end
-    h5write(file_name ,"/wcs_user_sk", wcs_user_sk)
     h5write(file_name ,"/wcs_item_sk", wcs_item_sk)
+    h5write(file_name ,"/wcs_user_sk", wcs_user_sk)
     h5write(file_name ,"/i_item_sk", i_item_sk)
     h5write(file_name ,"/i_category_id",i_category_id)
     h5write(file_name ,"/i_category", i_category)
