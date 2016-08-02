@@ -155,7 +155,7 @@ function translate_table_oprs(nodes::Array{Any,1}, state::DomainState)
         if isa(nodes[i],Expr) && nodes[i].head==:(=) && isCall(nodes[i].args[2])
             func_call = nodes[i].args[2].args[1]
             if func_call==GlobalRef(HPAT.API, :join)
-                remove_before,remove_after,ast = translate_join(nodes[i],state)
+                remove_before,remove_after,ast = translate_join(nodes[i], nodes, i,state)
                 skip += remove_after
                 s_start = (length(new_nodes)-remove_before)+1
                 s_end = length(new_nodes)
@@ -291,7 +291,7 @@ end
         _sale_items_i_class_id = (Base.copy!)($(Expr(:new, :((top(getfield))(Base,:LinearFast)::Type{Base.LinearFast}))),GenSym(17),$(Expr(:new, :((top(getfield))(Base,:LinearFast)::Type{Base.LinearFast}))),GenSym(14))::Array{Int64,1} # /home/etotoni/.julia/v0.4/HPAT/examples/queries_devel/tests/test_q26.jl, line 14:
 
 """
-function translate_join(join_node,state)
+function translate_join(join_node, nodes, curr_pos, state)
     @dprintln(3, "translating join: ", join_node)
     new_join_node = Any[]
     state.table_oprs_counter += 1
@@ -316,11 +316,34 @@ function translate_join(join_node,state)
     t1_num_cols = length(t1_cols)
     t2_num_cols = length(t2_cols)
 
+    t2_end = 2*t2_num_cols
+
+    t1_start = t2_end + 3
+    t1_end = 2*(t1_num_cols-1) + t1_start
+    # Extract inputs columns from nodes above join node
+    t2_cols_sorted = []
+    t1_cols_sorted = []
+    for i in 2:2:t2_end
+        append!(t2_cols_sorted, [nodes[curr_pos - i].args[2].name])
+    end
+    for i in t1_start:2:t1_end
+        append!(t1_cols_sorted, [nodes[curr_pos - i].args[2].name])
+    end
+    # As we read columns from bottom up we need to reverse them
+    t2_cols_sorted = t2_cols_sorted[end:-1:1]
+    t1_cols_sorted = t1_cols_sorted[end:-1:1]
+
     remove_before = 2*t1_num_cols+1+2*t2_num_cols+1
     remove_after =  4*t3_num_cols
-    push!(new_join_node, Expr(:join, t3, t1, t2, t3_cols, t1_cols, t2_cols,
-                     map(x->getColName(t3, x), t3_cols), map(x->getColName(t1, x), t1_cols), map(x->getColName(t2, x), t2_cols),opr_id_var))
+    push!(new_join_node, Expr(:join, t3, t1, t2, t3_cols, map(x->get_col_tablecol(x), t1_cols_sorted ), map(x->get_col_tablecol(x), t2_cols_sorted ),
+                              map(x->getColName(t3, x), t3_cols), t1_cols_sorted, t2_cols_sorted, opr_id_var))
     return remove_before, remove_after, new_join_node
+end
+
+# Extract from col from #t#col
+function get_col_tablecol(col)
+    arr = split(string(col),"#")
+    return Symbol(arr[3])
 end
 
 """   Example:

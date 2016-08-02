@@ -207,15 +207,23 @@ function translate_join(lhs, rhs, state)
     key2_arr = getColName(t2, key2)
     new_key = getQuoteValue(rhs.args[5])
     new_key_arr = getColName(lhs, new_key)
-
+    key1_index = findfirst(state.tableCols[t1],key1)
+    key2_index = findfirst(state.tableCols[t2],key2)
+    # Make key column first column and then append to it
+    t1_col_arrs_sorted = [key1_arr]
+    t2_col_arrs_sorted = [key2_arr]
     # get rest of the columns
     rest_cols1 = filter(x->x!=key1, state.tableCols[t1])
     rest_cols2 = filter(x->x!=key2, state.tableCols[t2])
     rest_cols1_arrs = map(x->getColName(t1,x),rest_cols1)
     rest_cols2_arrs = map(x->getColName(t2,x),rest_cols2)
+    append!(t1_col_arrs_sorted, rest_cols1_arrs)
+    append!(t2_col_arrs_sorted, rest_cols2_arrs)
     rest_cols3_arrs = map(x->getColName(lhs,x),[rest_cols1;rest_cols2])
     # save new table
     state.tableCols[lhs] = [new_key;rest_cols1;rest_cols2]
+    #@assert key1==t1_col_arrs_sorted[1] "Join key $key1 of table $t1 is not column 1"
+    #@assert key2==t2_col_arrs_sorted[1] "Join key $key2 of table $t2 is not column 1"
     @dprintln(3, "new table join output: ",lhs," ", state.tableCols[lhs])
     # pass tables as array of columns since [t1_c1,t1_c2...] flattens to single array instead of array of arrays
     # eg. t1 = Array(Vector,n)
@@ -228,8 +236,8 @@ function translate_join(lhs, rhs, state)
     t2_col_arr = :($_join_t2 = Array(Vector,$(t2_num_cols)))
     # assign column arrays
     # e.g. t1[1] = _t1_c1
-    assign1 = [ Expr(:(=),:($_join_t1[$i]),getColName(t1,state.tableCols[t1][i])) for i in 1:length(state.tableCols[t1]) ]
-    assign2 = [ Expr(:(=),:($_join_t2[$i]),getColName(t2,state.tableCols[t2][i])) for i in 1:length(state.tableCols[t2]) ]
+    assign1 = [ Expr(:(=),:($_join_t1[$i]), t1_col_arrs_sorted[i]) for i in 1:length(t1_col_arrs_sorted) ]
+    assign2 = [ Expr(:(=),:($_join_t2[$i]), t2_col_arrs_sorted[i]) for i in 1:length(t2_col_arrs_sorted) ]
 
     #out = [t1_col_arr;t2_col_arr]
     # TODO: assign types
@@ -239,9 +247,9 @@ function translate_join(lhs, rhs, state)
     _j_out = Symbol("_join_out_$lhs")
     join_call = :( $_j_out = $(g_call)($_join_t1, $_join_t2) )
 
-    col_types = [ state.tableTypes[t1][1] ]
-    col_types1 = [ state.tableTypes[t1][i+1] for i in 1:length(rest_cols1)]
-    col_types2 = [ state.tableTypes[t2][i+1] for i in 1:length(rest_cols2)]
+    col_types = [ get_column_type(state, t1, key1) ]
+    col_types1 = [ get_column_type(state, t1, i) for i in rest_cols1]
+    col_types2 = [ get_column_type(state, t2, i) for i in rest_cols2]
     col_types = [col_types;col_types1;col_types2]
     # save new table types
     state.tableTypes[lhs] = col_types
@@ -254,6 +262,13 @@ function translate_join(lhs, rhs, state)
     @dprintln(3,"join returns: ",ret)
     return ret
 end
+
+# Return type for given table and column
+function get_column_type(state, t, col)
+    index_col = findfirst(state.tableCols[t], col)
+    return state.tableTypes[t][index_col]
+end
+
 
 """
     example: t4 = aggregate(t3, :userid, :sumo2 = sum(:val2==1.1), :size_val3 = size(:val3))
