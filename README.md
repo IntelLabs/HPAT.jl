@@ -37,7 +37,7 @@ $ julia ~/.julia/v0.4/MPI/deps/build.jl
 ## Performance Comparison with Spark\*
 ### Logistic Regression
 
-Front page of [Spark\* website](http://spark.apache.org/) demonstrates over two orders of manitude
+Front page of [Spark\* website](http://spark.apache.org/) demonstrates over two orders of magnitude
 speedup compared to Hadoop\* on [Logistic Regression](https://github.com/apache/spark/blob/master/examples/src/main/python/logistic_regression.py) example. Simply put, Spark\* keeps data
 in memory while Hadoop\* reads and writes to disks frequently.
 
