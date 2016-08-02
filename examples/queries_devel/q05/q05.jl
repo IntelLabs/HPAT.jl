@@ -14,6 +14,8 @@ ParallelAccelerator.DomainIR.set_debug_level(3)
     item = DataSource(DataTable{:i_item_sk=Int64,:i_category_id=Int64,:i_category=Int64}, HDF5, file_name)
     customer = DataSource(DataTable{:c_customer_sk=Int64,:c_current_cdemo_sk=Int64}, HDF5, file_name)
     customer_demographics = DataSource(DataTable{:cd_demo_sk=Int64,:cd_gender=Int64,:cd_education_status=Int64}, HDF5, file_name)
+    # Used for Not NULL
+    web_clickstreams = web_clickstreams[:wcs_item_sk>typemin(Int32)]
 
     user_items = join(web_clickstreams, item, :wcs_item_sk==:i_item_sk, :user_items_sk)
 

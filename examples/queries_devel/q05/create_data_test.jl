@@ -28,19 +28,22 @@ function generate_dataset(wcs_user_sk, wcs_item_sk, i_item_sk, i_category_id, i_
     c_df = readtable(open(table_c_path))
     cd_df = readtable(open(table_cd_path))
 
-    append!(wcs_user_sk,wcs_user_df[1])
-    append!(wcs_item_sk,wcs_user_df[2])
+    append!(wcs_user_sk, wcs_df[1])
+    #replace NA values in Dataframes with -2147483648
+    append!(wcs_item_sk, convert(Array, wcs_df[2], typemin(Int32)))
 
-    append!(i_item_sk,item_df[1])
-    append!(i_category_id,item_df[2])
-    append!(i_category,item_df[3])
+    append!(i_item_sk, i_df[1])
+    append!(i_category_id, i_df[2])
+    append!(i_category, i_df[3])
 
-    append!(c_customer_sk,item_df[1])
-    append!(c_current_cdemo_sk,item_df[2])
+    append!(c_customer_sk, c_df[1])
+    #replace NA values in Dataframes with -2147483648
+    append!(c_current_cdemo_sk, convert(Array, c_df[2], typemin(Int32)))
 
-    append!(cd_demo_sk,item_df[1])
-    append!(cd_gender,item_df[2])
-    append!(cd_education_status,item_df[3])
+    append!(cd_demo_sk, cd_df[1])
+    #replace NA values in Dataframes with -2147483648
+    append!(cd_gender, convert(Array, cd_df[2], typemin(Int32)))
+    append!(cd_education_status, convert(Array, cd_df[3], typemin(Int32)))
 end
 
 function main()
@@ -68,7 +71,7 @@ function main()
     end
 
     if option == 1
-        generate_dataset(wcs_user_sk, wcs_item_sk, i_item_sk, i_category_id, i_category, c_customer_sk, c_current_cdemo_sk, cd_demo_sk, cd_gender, cd_education_status)
+        generate_dataset(wcs_user_sk, wcs_item_sk, i_item_sk, i_category_id, i_category, c_customer_sk, c_current_cdemo_sk, cd_demo_sk, cd_gender, cd_education_status, table_wcs_path, table_i_path, table_c_path, table_cd_path)
     end
     println(":D Done reading into arrays whole dataset")
     file_name = "test_q05.hdf5"
