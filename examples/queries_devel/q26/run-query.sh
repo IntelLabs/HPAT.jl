@@ -3,6 +3,15 @@
 # Uncomment following line for debuggin
 #set -x
 
+# IMPORTANT
+# Statically add DAAL libraries because version is not same on all pse nodes
+# Add MPI_Wtime() in .cpp before compiling to collect statistics
+# HPAT Config 1 =  turn off openmp by commenting enableomp in domain pass, set num_threads in cgen daal to 1 and compile using -daal=sequential remove -qopenmp
+# Command to compile Config 1 = mpiicpc -O3 -std=c++11  -I/usr/local/hdf5//include /opt/intel/DAAL/compilers_and_libraries_2016.3.210/linux/daal/lib/intel64_lin/libdaal_core.a   /opt/intel/DAAL/compilers_and_libraries_2016.3.210/linux/daal/lib/intel64_lin/libdaal_sequential.a  -g   -fpic  -o main1 main1.cc -Wl, -Bstatic -ldaal_core -ldaal_sequential -Wl, -Bdynamic -mkl -L/usr/local/hdf5//lib -lhdf5  -lm
+
+# HPAT Config 2 = Default behaviour of HPAT
+# Command to Compile = mpiicpc -O3 -std=c++11  -I/usr/local/hdf5//include  -qopenmp /opt/intel/DAAL/compilers_and_libraries_2016.3.210/linux/daal/lib/intel64_lin/libdaal_core.a   /opt/intel/DAAL/compilers_and_libraries_2016.3.210/linux/daal/lib/intel64_lin/libdaal_thread.a -L/opt/intel/DAAL/compilers_and_libraries_2016.3.210/linux/tbb/lib/intel64_lin/gcc4.4/  -g   -fpic  -o main1 main1.cc -Wl, -Bstatic -ldaal_core -ldaal_thread -Wl, -Bdynamic -ltbb -mkl -L/usr/local/hdf5//lib -lhdf5  -lm
+
 # Set DIRs according to your environment
 ROOT_DIR=${HOME}
 SPARK_DIR=${ROOT_DIR}/spark/
@@ -52,20 +61,26 @@ for dataset_factor in "10" "100" "150" "200" "250" "300"; do
     fi
     echo ":D Running Spark"
     ${SPARK_DIR}/bin/spark-submit --conf spark.sql.autoBroadcastJoinThreshold=-1 --master spark://172.16.144.26:7080 --executor-memory 8G --driver-memory 8G  --jars /home/whassan/commons-csv-1.1.jar,/home/whassan/spark-csv_2.10-1.4.0.jar   --class Query26  ~/spark-sql-query-tests/target/scala-2.10/query26_2.10-0.1.jar $table1_path $table2_path &> tmp_spark.txt
-    
-    
+
+
     time_q26_spark=`cat tmp_spark.txt  | grep '\*\*\*\*\*\*' | cut -d ' ' -f 6`
     echo "Time took for Query 26[Spark]: "$time_q26_spark
     rm tmp_spark.txt
 
     echo ":D Copying to hdf5"
     julia ${HPAT_DATAGEN_DIR}/create_data_test_q26.jl 1 "$table1_path" "$table2_path"
-    echo ":D Running HPAT"
-    mpirun -hosts psephi07-ib,psephi08-ib,psephi09-ib,psephi10-ib -n 16 -ppn 4 $HPAT_CGEN_BINARY_DIR/main1 2>&1 > tmp_hpat.txt
-    time_q26_hpat=`cat tmp_hpat.txt  | grep '\*\*\*\*\*\*' | cut -d ' ' -f 6`
-    echo "Time took for Query 26[Hpat]: "$time_q26_hpat
-    rm tmp_hpat.txt
+    echo ":D Running HPAT Config 1"
+    mpirun -hosts psephi07-ib,psephi08-ib,psephi09-ib,psephi10-ib -n 144 -ppn 36 $HPAT_CGEN_BINARY_DIR/main1-config1 2>&1 > tmp_hpat_config1.txt
+    time_q26_hpat_config1=`cat tmp_hpat_config1.txt  | grep '\*\*\*\*\*\*' | cut -d ' ' -f 6`
+    echo "Time took for Query 26[Hpat]: "$time_q26_hpat_config1
+    rm tmp_hpat_config1.txt
 
-    echo "$dataset_factor,$table1_rows,$table2_rows,$time_q26_spark,$time_q26_hpat" >>  ${RESULT_FILE}
+    echo ":D Running HPAT  Config 2"
+    mpirun -hosts psephi07-ib,psephi08-ib,psephi09-ib,psephi10-ib -n 144 -ppn 36 $HPAT_CGEN_BINARY_DIR/main1-config2 2>&1 > tmp_hpat_config2.txt
+    time_q26_hpat_config2=`cat tmp_hpat_config2.txt  | grep '\*\*\*\*\*\*' | cut -d ' ' -f 6`
+    echo "Time took for Query 26[Hpat]: "$time_q26_hpat_config2
+    rm tmp_hpat_config2.txt
+
+    echo "$dataset_factor,$table1_rows,$table2_rows,$time_q26_spark,$time_q26_hpat_config1,$time_q26_hpat_config2" >>  ${RESULT_FILE}
 
 done
