@@ -474,7 +474,7 @@ function pattern_match_call_agg_seq(linfo, f::GlobalRef,  id, groupby_key, num_e
     expr_func_output_list = expr_func_output_list[1]
     exprs_list = expr_func_output_list[1:num_exprs]
     funcs_list = expr_func_output_list[num_exprs+1:(2*num_exprs)]
-    agg_rand = string(id)
+
     # first element of output list is the groupbykey column
     output_cols_list = expr_func_output_list[(2*num_exprs)+1 : end]
     agg_key_col_input = ParallelAccelerator.CGen.from_expr(groupby_key, linfo)
@@ -500,7 +500,7 @@ function pattern_match_call_agg_seq(linfo, f::GlobalRef,  id, groupby_key, num_e
         s *= "$arr_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $agg_key_map_temp.size());\n"
     end
     # copy back the values from map into arrays
-    counter_agg = "counter_agg$agg_rand"
+    counter_agg = "counter_agg$id"
     s *= "int $counter_agg = 1;\n"
     s *= "for(auto i : $agg_key_map_temp){\n"
     for (index, value) in enumerate(output_cols_list)
@@ -523,7 +523,7 @@ function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs
     if f.name!=:__hpat_aggregate
         return s
     end
-    # TODO remove aggregate random. Use aggregate id/counter in domain pass and pass to this function
+
     HPAT_path = joinpath(dirname(@__FILE__), "..")
     HPAT_includes = string("\n#include <unordered_map>\n")
     ParallelAccelerator.CGen.addCgenUserOptions(ParallelAccelerator.CGen.CgenUserOptions(HPAT_includes,"",""))
@@ -531,46 +531,46 @@ function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs
     expr_func_output_list = expr_func_output_list[1]
     exprs_list = expr_func_output_list[1:num_exprs]
     funcs_list = expr_func_output_list[num_exprs+1:(2*num_exprs)]
-    agg_rand = string(id)
+
     # first element of output list is the groupbykey column
     output_cols_list = expr_func_output_list[(2*num_exprs)+1 : end]
     agg_key_col_input = ParallelAccelerator.CGen.from_expr(groupby_key, linfo)
     agg_key_col_output = ParallelAccelerator.CGen.from_expr(output_cols_list[1], linfo)
-    agg_key_col_input_len = "agg_key_col_input_len_"*agg_rand
+    agg_key_col_input_len = "agg_key_col_input_len_$id"
     s *= "int $agg_key_col_input_len = $agg_key_col_input.ARRAYLEN();\n"
 
     # Sending counts
-    scount = "scount_"*agg_rand
-    s *= "int * $scount;\n"
+    scount = "scount_$id"
+    s *= "int *$scount;\n"
     s *= "$scount = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
-    s *= "memset ($scount, 0, sizeof(int)*__hpat_num_pes);\n"
+    s *= "memset($scount, 0, sizeof(int)*__hpat_num_pes);\n"
 
-    scount_tmp = "scount_tmp_"*agg_rand
+    scount_tmp = "scount_tmp_$id"
     s *= "int * $scount_tmp;\n"
     s *= "$scount_tmp = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
-    s *= "memset ($scount_tmp, 0, sizeof(int)*__hpat_num_pes);\n"
+    s *= "memset($scount_tmp, 0, sizeof(int)*__hpat_num_pes);\n"
 
     # Receiving counts
-    rsize = "rsize_"*agg_rand
+    rsize = "rsize_$id"
     s *= "int  $rsize = 0;\n"
-    rcount = "rcount_"*agg_rand
+    rcount = "rcount_$id"
     s *= "int * $rcount;\n"
     s *= "$rcount = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
 
     # Displacement arrays for both tables
-    sdis = "sdis_"*agg_rand
-    rdis = "rdis_"*agg_rand
-    s *= "int * $sdis;\n"
-    s *= "int * $rdis;\n"
+    sdis = "sdis_$id"
+    rdis = "rdis_$id"
+    s *= "int *$sdis;\n"
+    s *= "int *$rdis;\n"
     s *= "$sdis = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
     s *= "$rdis = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
 
     agg_key_map_temp = "temp_map_$agg_key_col_output"
     s *= "std::unordered_map<int,int> $agg_key_map_temp ;\n"
-    agg_temp_counter = "agg_temp_counter_" * agg_rand
-    s *= "int $agg_temp_counter = 0;"
+    agg_temp_counter = "agg_temp_counter_$id"
+    s *= "int $agg_temp_counter = 0;\n"
     # Counting displacements for table
-    s *= "for (int i = 1 ; i <  $agg_key_col_input_len + 1 ; i++){\n"
+    s *= "for (int i=1; i < $agg_key_col_input_len + 1; i++){\n"
     s *= "if ($agg_key_map_temp.find($agg_key_col_input.ARRAYELEM(i)) == $agg_key_map_temp.end()){\n"
     s *= "$agg_key_map_temp[$agg_key_col_input.ARRAYELEM(i)] = 1;\n"
     s *= "int node_id = $agg_key_col_input.ARRAYELEM(i) % __hpat_num_pes ;\n"
@@ -581,7 +581,7 @@ function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs
 
     s *= "$sdis[0]=0;\n"
     s *= "for(int i=1;i < __hpat_num_pes;i++){\n"
-    s *= "$sdis[i]=$scount[i-1] + $sdis[i-1];\n"
+    s *= "$sdis[i] = $scount[i-1] + $sdis[i-1];\n"
     s *= "}\n"
 
     s *= "MPI_Alltoall($scount,1,MPI_INT,$rcount,1,MPI_INT,MPI_COMM_WORLD);\n"
@@ -603,12 +603,12 @@ function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs
             """
 
     # First column is groupbykey which is handled separately
-    agg_key_col_input_tmp = agg_key_col_input * "_tmp_agg_" * agg_rand
-    j2c_type = get_j2c_type_from_array(groupby_key,linfo)
+    agg_key_col_input_tmp = agg_key_col_input * "_tmp_agg_$id"
+    j2c_type = get_j2c_type_from_array(groupby_key, linfo)
     s *= "j2c_array< $j2c_type > $agg_key_col_input_tmp = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, $agg_temp_counter);\n"
     for (index, col_name) in enumerate(exprs_list)
         expr_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
-        expr_name_tmp = expr_name * "_tmp_agg_" * agg_rand
+        expr_name_tmp = expr_name * "_tmp_agg_$id"
         j2c_type = get_j2c_type_from_array(output_cols_list[index + 1 ],linfo)
         s *= "j2c_array< $j2c_type > $expr_name_tmp = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, $agg_temp_counter);\n"
     end
@@ -616,23 +616,23 @@ function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs
     s *= "for(int i = 1 ; i < $agg_key_col_input.ARRAYLEN() + 1 ; i++){\n"
     s *= "int node_id = $agg_key_col_input.ARRAYELEM(i) % __hpat_num_pes ;\n"
     s *= "if ($agg_key_map_temp.find($agg_key_col_input.ARRAYELEM(i)) == $agg_key_map_temp.end()){\n"
-    agg_write_index = "agg_write_index_" * agg_rand
-    s *= "int $agg_write_index =  $sdis[node_id]+$scount_tmp[node_id]+1 ;\n"
-    s *= "$agg_key_map_temp[$agg_key_col_input.ARRAYELEM(i)] = $agg_write_index ;\n"
+    agg_write_index = "agg_write_index_$id"
+    s *= "int $agg_write_index = $sdis[node_id]+$scount_tmp[node_id]+1 ;\n"
+    s *= "$agg_key_map_temp[$agg_key_col_input.ARRAYELEM(i)] = $agg_write_index;\n"
     s *= "$agg_key_col_input_tmp.ARRAYELEM($agg_write_index) = $agg_key_col_input.ARRAYELEM(i);\n"
     for (index, func) in enumerate(funcs_list)
         expr_name = ParallelAccelerator.CGen.from_expr(exprs_list[index],linfo)
-        expr_name_tmp = expr_name * "_tmp_agg_" * agg_rand
+        expr_name_tmp = expr_name * "_tmp_agg_$id"
         s *= return_combiner_string_with_closure_first_elem(expr_name_tmp, expr_name, func, agg_write_index)
     end
     s *= "$scount_tmp[node_id]++;\n"
     s *= "}\n"
     s *= "else{\n"
-    current_write_index = "current_write_index" * agg_rand
-    s *= "int $current_write_index = $agg_key_map_temp[$agg_key_col_input.ARRAYELEM(i)]; \n"
+    current_write_index = "current_write_index$id"
+    s *= "int $current_write_index = $agg_key_map_temp[$agg_key_col_input.ARRAYELEM(i)];\n"
     for (index, func) in enumerate(funcs_list)
         expr_name = ParallelAccelerator.CGen.from_expr(exprs_list[index],linfo)
-        expr_name_tmp = expr_name * "_tmp_agg_" * agg_rand
+        expr_name_tmp = expr_name * "_tmp_agg_$id"
         s *= return_combiner_string_with_closure_second_elem(expr_name_tmp, expr_name, func, current_write_index)
     end
     s *= "}\n"
@@ -653,7 +653,7 @@ function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs
         mpi_type = get_mpi_type_from_array(output_cols_list[index + 1], linfo)
         j2c_type = get_j2c_type_from_array(output_cols_list[index + 1], linfo)
         expr_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
-        expr_name_tmp = expr_name * "_tmp_agg_" * agg_rand
+        expr_name_tmp = expr_name * "_tmp_agg_$id"
         s *= " j2c_array< $j2c_type > rbuf_$expr_name = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, $rsize);\n"
         s *= """ MPI_Alltoallv($expr_name_tmp.getData(), $scount, $sdis, $mpi_type,
                                          rbuf_$expr_name.getData(), $rcount, $rdis, $mpi_type, MPI_COMM_WORLD);
@@ -667,8 +667,8 @@ function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs
         s *= "$arr_col_name = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, $agg_key_col_input.ARRAYLEN());\n"
     end
 
-    agg_write_index = "agg_write_index_" * agg_rand
-    s *= "int $agg_write_index = 1;"
+    agg_write_index = "agg_write_index_$id"
+    s *= "int $agg_write_index = 1;\n"
     s *= "for(int i = 1 ; i < $agg_key_col_input.ARRAYLEN() + 1 ; i++){\n"
     s *= "if ($agg_key_map_temp.find($agg_key_col_input.ARRAYELEM(i)) == $agg_key_map_temp.end()){"
     s *= "$agg_key_map_temp[$agg_key_col_input.ARRAYELEM(i)] = $agg_write_index ;\n"
@@ -683,8 +683,8 @@ function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs
     s *= "$agg_write_index++;\n"
     s *= "}\n"
     s *= "else{\n"
-    current_write_index = "current_write_index" * agg_rand
-    s *= "int $current_write_index = $agg_key_map_temp[$agg_key_col_input.ARRAYELEM(i)]; \n"
+    current_write_index = "current_write_index$id"
+    s *= "int $current_write_index = $agg_key_map_temp[$agg_key_col_input.ARRAYELEM(i)];\n"
     for (index, func) in enumerate(funcs_list)
         expr_name = ParallelAccelerator.CGen.from_expr(exprs_list[index],linfo)
         rbuf_expr_name = "rbuf_" * expr_name
@@ -693,7 +693,7 @@ function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs
     end
     s *= "}\n"
     s *= "}\n"
-    counter_agg = "counter_agg$agg_rand"
+    counter_agg = "counter_agg$id"
     s *= "int $counter_agg = $agg_key_map_temp.size();\n"
     for col_name in output_cols_list
         j2c_type = get_j2c_type_from_array(col_name,linfo)
@@ -770,12 +770,12 @@ end
 function return_reduction_string_with_closure_second_elem(new_column_name,expr_arr,func, current_index)
     s = ""
     if string(func) == "Main.length"
-        s *= "$new_column_name.ARRAYELEM($current_index) += $expr_arr.ARRAYELEM(i) ; \n"
+        s *= "$new_column_name.ARRAYELEM($current_index) += $expr_arr.ARRAYELEM(i); \n"
     elseif string(func) == "Main.sum"
-        s *= "$new_column_name.ARRAYELEM($current_index) +=  $expr_arr.ARRAYELEM(i)  ;\n\n"
+        s *= "$new_column_name.ARRAYELEM($current_index) +=  $expr_arr.ARRAYELEM(i);\n"
     elseif string(func) == "Main.max"
-        s *= "if ($new_column_name.ARRAYELEM($current_index) < $expr_arr.ARRAYELEM(i)) \n"
-        s *= "$new_column_name.ARRAYELEM($current_index) = $expr_arr.ARRAYELEM(i) ;}\n\n"
+        s *= "if ($new_column_name.ARRAYELEM($current_index) < $expr_arr.ARRAYELEM(i))\n"
+        s *= "$new_column_name.ARRAYELEM($current_index) = $expr_arr.ARRAYELEM(i);}\n"
     end
     return s
 end
@@ -846,7 +846,7 @@ function pattern_match_call_rebalance(func::GlobalRef, arr::LHSVar, count::LHSVa
         s *= "delete[] _all_reqs;\n"
         # delete old array, assign new
         s *= "delete[] $c_arr.data;\n"
-        s *= "$c_arr.data = __hpat_tmp_$c_arr;"
+        s *= "$c_arr.data = __hpat_tmp_$c_arr;\n"
     end
     return s
 end
