@@ -154,7 +154,24 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
     table_new_cols = table_columns[1:table_new_cols_len]
     table1_cols = table_columns[table_new_cols_len+1:table_new_cols_len+table1_cols_len]
     table2_cols = table_columns[table_new_cols_len+table1_cols_len+1:end]
+
     join_rand = string(id)
+    join_num_pes = "join_num_pes_" * string(id)
+    join_comm = "join_comm_" * string(id)
+    s *= "int $join_num_pes;\n"
+    s *= "MPI_Comm $join_comm;\n"
+
+    if haskey(ENV, "ENABLE_GAAS")
+        s *= " $join_num_pes = " * ENV["ENABLE_GAAS"] * ";\n"
+        s *= " $join_comm = __hpat_bridge_comm;\n"
+    else
+        s *= " $join_num_pes = __hpat_num_pes ;\n"
+        s *= " $join_comm = MPI_COMM_WORLD ;\n"
+    end
+
+    if haskey(ENV, "ENABLE_GAAS")
+        s *= gatherv_part_of_gass(table1_cols, table2_cols, string(id), linfo)
+    end
 
     # Sending counts for both tables
     scount_t1 = "scount_t1_"*join_rand
@@ -168,17 +185,17 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
     s *= "int * $scount_t1_tmp;\n"
     s *= "int * $scount_t2_tmp;\n"
 
-    s *= "$scount_t1 = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
-    s *= "memset ($scount_t1, 0, sizeof(int)*__hpat_num_pes);\n"
+    s *= "$scount_t1 = (int*)malloc(sizeof(int)* $join_num_pes);\n"
+    s *= "memset ($scount_t1, 0, sizeof(int)* $join_num_pes);\n"
 
-    s *= "$scount_t1_tmp = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
-    s *= "memset ($scount_t1_tmp, 0, sizeof(int)*__hpat_num_pes);\n"
+    s *= "$scount_t1_tmp = (int*)malloc(sizeof(int)* $join_num_pes);\n"
+    s *= "memset ($scount_t1_tmp, 0, sizeof(int)* $join_num_pes);\n"
 
-    s *= "$scount_t2 = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
-    s *= "memset ($scount_t2, 0, sizeof(int)*__hpat_num_pes);\n"
+    s *= "$scount_t2 = (int*)malloc(sizeof(int)* $join_num_pes);\n"
+    s *= "memset ($scount_t2, 0, sizeof(int)* $join_num_pes);\n"
 
-    s *= "$scount_t2_tmp = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
-    s *= "memset ($scount_t2_tmp, 0, sizeof(int)*__hpat_num_pes);\n"
+    s *= "$scount_t2_tmp = (int*)malloc(sizeof(int)* $join_num_pes);\n"
+    s *= "memset ($scount_t2_tmp, 0, sizeof(int)* $join_num_pes);\n"
 
     # Receiving counts for both tables
     rsize_t1 = "rsize_t1_"*join_rand
@@ -190,22 +207,22 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
     rcount_t2 = "rcount_t2_"*join_rand
     s *= "int * $rcount_t1;\n"
     s *= "int * $rcount_t2;\n"
-    s *= "$rcount_t1 = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
-    s *= "$rcount_t2 = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
+    s *= "$rcount_t1 = (int*)malloc(sizeof(int)* $join_num_pes);\n"
+    s *= "$rcount_t2 = (int*)malloc(sizeof(int)* $join_num_pes);\n"
 
     # Displacement arrays for both tables
     sdis_t1 = "sdis_t1_"*join_rand
     rdis_t1 = "rdis_t1_"*join_rand
     s *= "int * $sdis_t1;\n"
     s *= "int * $rdis_t1;\n"
-    s *= "$sdis_t1 = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
-    s *= "$rdis_t1 = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
+    s *= "$sdis_t1 = (int*)malloc(sizeof(int)* $join_num_pes);\n"
+    s *= "$rdis_t1 = (int*)malloc(sizeof(int)* $join_num_pes);\n"
     sdis_t2 = "sdis_t2_"*join_rand
     rdis_t2 = "rdis_t2_"*join_rand
     s *= "int * $sdis_t2;\n"
     s *= "int * $rdis_t2;\n"
-    s *= "$sdis_t2 = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
-    s *= "$rdis_t2 = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
+    s *= "$sdis_t2 = (int*)malloc(sizeof(int)* $join_num_pes);\n"
+    s *= "$rdis_t2 = (int*)malloc(sizeof(int)* $join_num_pes);\n"
 
     t1c1_length_join = "t1c1_length_join"*join_rand
     t2c1_length_join = "t2c1_length_join"*join_rand
@@ -217,16 +234,16 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
 
     # Starting for table 1
     s *= "for (int i = 1 ; i <  $t1c1_length_join + 1 ; i++){\n"
-    s *= "int node_id = $t1_c1_join.ARRAYELEM(i) % __hpat_num_pes ;\n"
+    s *= "int node_id = $t1_c1_join.ARRAYELEM(i) % $join_num_pes ;\n"
     s *= "$scount_t1[node_id]++;"
     s *= "}\n"
 
     s *= "$sdis_t1[0]=0;\n"
-    s *= "for(int i=1;i < __hpat_num_pes;i++){\n"
+    s *= "for(int i=1;i < $join_num_pes ;i++){\n"
     s *= "$sdis_t1[i]=$scount_t1[i-1] + $sdis_t1[i-1];\n"
     s *= "}\n"
 
-    s *= "MPI_Alltoall($scount_t1,1,MPI_INT,$rcount_t1,1,MPI_INT,MPI_COMM_WORLD);\n"
+    s *= "MPI_Alltoall($scount_t1,1,MPI_INT,$rcount_t1,1,MPI_INT, $join_comm);\n"
 
     # Declaring temporary buffers
     # Assuming that all of them have same length
@@ -237,7 +254,7 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
         s *= "j2c_array< int64_t > $table1_col_name_tmp = j2c_array<int64_t>::new_j2c_array_1d(NULL, $t1c1_length_join );\n"
     end
     s *= "for (int i = 1 ; i <  $t1c1_length_join + 1 ; i++){\n"
-    s *= "int node_id = $t1_c1_join.ARRAYELEM(i) % __hpat_num_pes ;\n"
+    s *= "int node_id = $t1_c1_join.ARRAYELEM(i) % $join_num_pes ;\n"
     for (index, col_name) in enumerate(table1_cols)
         table1_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
         table1_col_name_tmp = table1_col_name * "_tmp_join_" * join_rand
@@ -248,7 +265,7 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
 
     # Starting for table 2
     s *= "for (int i = 1 ; i <  $t2c1_length_join + 1 ; i++){\n"
-    s *= "int node_id = $t2_c1_join.ARRAYELEM(i) % __hpat_num_pes ;\n"
+    s *= "int node_id = $t2_c1_join.ARRAYELEM(i) % $join_num_pes ;\n"
     s *= "$scount_t2[node_id]++;"
     s *= "}\n"
 
@@ -267,7 +284,7 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
     end
 
     s *= "for (int i = 1 ; i <   $t2c1_length_join + 1 ; i++){\n"
-    s *= "int node_id = $t2_c1_join.ARRAYELEM(i) % __hpat_num_pes ;\n"
+    s *= "int node_id = $t2_c1_join.ARRAYELEM(i) % $join_num_pes ;\n"
     for (index, col_name) in enumerate(table2_cols)
         table2_col_name =ParallelAccelerator.CGen.from_expr(col_name,linfo)
         table2_col_name_tmp =  table2_col_name * "_tmp_join_" * join_rand
@@ -280,7 +297,7 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
     s *= """
               $rdis_t1[0]=0;
               $rdis_t2[0]=0;
-              for(int i=1;i < __hpat_num_pes;i++){
+              for(int i=1;i < $join_num_pes ;i++){
                   $rdis_t1[i]=$rcount_t1[i-1] + $rdis_t1[i-1];
                   $rdis_t2[i]=$rcount_t2[i-1] + $rdis_t2[i-1];
               }
@@ -288,7 +305,7 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
 
     # Summing up receiving counts
     s *= """
-            for(int i=0;i<__hpat_num_pes;i++){
+            for(int i=0;i< $join_num_pes ;i++){
                 $rsize_t1=$rsize_t1 + $rcount_t1[i];
                 $rsize_t2=$rsize_t2 + $rcount_t2[i];
               }
@@ -298,7 +315,7 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
         table1_col_name_tmp = table1_col_name *"_tmp_join_" * join_rand
         s *= " j2c_array< int64_t > rbuf_$table1_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $rsize_t1);\n"
         s *= """ MPI_Alltoallv($table1_col_name_tmp.getData(), $scount_t1, $sdis_t1, MPI_INT64_T,
-                                     rbuf_$table1_col_name.getData(), $rcount_t1, $rdis_t1, MPI_INT64_T, MPI_COMM_WORLD);
+                                     rbuf_$table1_col_name.getData(), $rcount_t1, $rdis_t1, MPI_INT64_T, $join_comm);
                      """
         s *= " $table1_col_name = rbuf_$table1_col_name; \n"
     end
@@ -309,7 +326,7 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
         table2_col_name_tmp = table2_col_name * "_tmp_join_" * join_rand
         s *= " j2c_array< int64_t > rbuf_$table2_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $rsize_t2);\n"
         s *= """ MPI_Alltoallv($table2_col_name_tmp.getData(), $scount_t2, $sdis_t2, MPI_INT64_T,
-                                     rbuf_$table2_col_name.getData(), $rcount_t2, $rdis_t2, MPI_INT64_T, MPI_COMM_WORLD);
+                                     rbuf_$table2_col_name.getData(), $rcount_t2, $rdis_t2, MPI_INT64_T, $join_comm);
                      """
         s *= " $table2_col_name = rbuf_$table2_col_name; \n"
     end
@@ -331,6 +348,11 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
         table_new_col_name = ParallelAccelerator.CGen.from_expr(table_new_cols[index+count-1],linfo)
         s *= "std::vector< int64_t> *vec_$(join_rand)_$table_new_col_name = new std::vector< int64_t>() ; \n"
     end
+
+    if haskey(ENV, "ENABLE_GAAS")
+        s *= scatterv_part_of_gass(table1_cols, table2_cols, string(id), linfo)
+    end
+
     # Use any sorting algorithm here before merging
     # Right now using simple bubble sort
     # TODO add tim sort here too
@@ -853,4 +875,71 @@ end
 
 function pattern_match_call_rebalance(func::ANY, arr::ANY, count::ANY, linfo)
     return ""
+end
+
+function gatherv_part_of_gass(table1_cols, table2_cols, id, linfo)
+    s = "\n /* Starting Gatherv of gass */ \n"
+    table_cols =  [table1_cols; table2_cols]
+    for (index, col_name) in enumerate(table_cols)
+        table_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
+        table_gather_displs =  table_col_name * "_gather_displs_t_" * id
+        table_gather_rcounts = table_col_name * "_gather_rcounts_t_" * id
+        table_gather_num = table_col_name * "_gather_num_t_" * id
+        # initialize all the variable for tables
+        s *= "int * $table_gather_displs , * $table_gather_rcounts , $table_gather_num;\n"
+        s *= "$table_gather_num = $table_col_name.ARRAYLEN();\n"
+        # For node 0
+        s *= "$table_gather_rcounts = (int *)malloc(__hpat_num_pes_local*sizeof(int));\n"
+        s *= "memset ($table_gather_rcounts, 0, sizeof(int)*__hpat_num_pes_local);\n"
+        s *= "MPI_Gather( &$table_gather_num, 1, MPI_INT, $table_gather_rcounts, 1, MPI_INT, 0, __hpat_local_comm);\n"
+        # For node 0
+        s *= "$table_gather_displs = (int *)malloc(__hpat_num_pes_local*sizeof(int));\n"
+        s *= "$table_gather_displs[0] = 0;\n"
+        s *= "for (int i=1; i<__hpat_num_pes_local; ++i) {\n"
+        s *= "$table_gather_displs[i] = $table_gather_displs[i-1]+ $table_gather_rcounts[i-1];\n"
+        s *= "}\n"
+        table_gather_rsize = table_col_name * "_gather_rsize_t_" * id
+        s *= "int $table_gather_rsize = 0;\n"
+        s *= "for(int i=0;i< __hpat_num_pes_local;i++){\n"
+    	s *= "$table_gather_rsize = $table_gather_rsize + $table_gather_rcounts[i];\n"
+        s *= "}\n"
+        # Uncomment for debugging
+        # s *= "if (__hpat_node_id_local == 0)\n"
+        # s *= "std::cout <<\"table1 $table_col_name: At node 0 After gather recieved = \" << $table_gather_rsize << std::endl;\n"
+        table_gather_rbuf = table_col_name * "_gather_rbuf_t_" * id
+        s *= "j2c_array< int64_t > $table_gather_rbuf = j2c_array<int64_t>::new_j2c_array_1d(NULL, $table_gather_rsize);\n"
+        s *= "MPI_Gatherv($table_col_name.getData(), $table_gather_num, MPI_INT64_T, $table_gather_rbuf.getData(), $table_gather_rcounts, $table_gather_displs, MPI_INT64_T, 0, __hpat_local_comm);\n"
+        s *= "$table_col_name = $table_gather_rbuf;\n"
+    end
+    return s
+end
+
+function scatterv_part_of_gass(table1_cols, table2_cols, id, linfo)
+    s = "\n /* Starting Scatterv of gass */ \n"
+    table_cols =  [table1_cols; table2_cols]
+    for (index, col_name) in enumerate(table_cols)
+        table_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
+        table_scatter_count =  table_col_name * "_scatter_count_t_" * id
+        table_scatter_displs = table_col_name * "_scatter_displs_t_" * id
+        s *= "int * $table_scatter_count, * $table_scatter_displs ;\n"
+        s *= "$table_scatter_count = (int*)malloc(__hpat_num_pes_local * sizeof(int));\n"
+        s *= "memset ($table_scatter_count, 0, sizeof(int)*__hpat_num_pes_local);\n"
+        s *= "for (int i = 1 ; i <  $table_col_name.ARRAYLEN() + 1 ; i++){\n"
+        s *= "int node_id = $table_col_name.ARRAYELEM(i) % __hpat_num_pes_local ;\n"
+        s *= "$table_scatter_count[node_id]++;\n"
+        s *= "}\n"
+        table_scatter_input = table_col_name * "_scatter_input_t_" * id
+        s *= "int $table_scatter_input = 0;\n"
+        s *= "MPI_Scatter($table_scatter_count, 1, MPI_INT, &$table_scatter_input,1,MPI_INT,0, __hpat_local_comm);\n"
+        s *= "$table_scatter_displs = (int *)malloc(__hpat_num_pes_local*sizeof(int));\n"
+        s *= "$table_scatter_displs[0] = 0;\n"
+        s *= "for (int i=1; i<__hpat_num_pes_local; ++i) {\n"
+        s *= "$table_scatter_displs[i] = $table_scatter_displs[i-1]+$table_scatter_count[i-1];\n"
+        s *= "}\n"
+        table_scatter_rbuf = table_col_name * "_scatter_rbuf_t_" * id
+        s *= "j2c_array< int64_t > $table_scatter_rbuf;\n"
+        s *= "$table_scatter_rbuf = j2c_array<int64_t>::new_j2c_array_1d(NULL, $table_scatter_input);\n"
+        s *= "MPI_Scatterv($table_col_name.getData(), $table_scatter_count , $table_scatter_displs, MPI_INT64_T, $table_scatter_rbuf.getData(), $table_scatter_input, MPI_INT64_T, 0, __hpat_local_comm);\n"
+    end
+    return s
 end

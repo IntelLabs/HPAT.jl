@@ -295,6 +295,12 @@ function genDistributedInit(state::DistPassState)
     num_pes_assign = Expr(:(=), :__hpat_num_pes, numPesCall)
     node_id_assign = Expr(:(=), :__hpat_node_id, nodeIdCall)
     res = Any[initCall; num_pes_assign; node_id_assign]
+    if haskey(ENV, "ENABLE_GAAS")
+        # Just to make things working for now
+        # Add variables like above so that it does not break in future
+        initCallGAAS = Expr(:call, GlobalRef(HPAT.API,:hpat_dist_init_gaas))
+        append!(res,[initCallGAAS])
+    end
 
     # generate 2D init if there is any 2D array or parfor
     if any([state.arrs_dist_info[arr].partitioning==TWO_D for arr in keys(state.arrs_dist_info)]) ||

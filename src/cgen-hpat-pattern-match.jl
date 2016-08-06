@@ -47,7 +47,30 @@ function pattern_match_call_dist_init(f::GlobalRef,linfo)
     end
 end
 
+function pattern_match_call_dist_init_gaas(f::GlobalRef,linfo)
+    # TODO Make separate functions for each call below as done by HPAT
+    # This can break in future
+    if f.name==:hpat_dist_init_gaas
+        s = ""
+        s *= "int32_t __hpat_node_id_local;\n"
+        s *= "int32_t __hpat_num_pes_local;\n"
+        s *= "MPI_Comm __hpat_local_comm;\n"
+        s *= "MPI_Comm __hpat_bridge_comm;\n"
+        s *= "MPI_Comm_split_type(MPI_COMM_WORLD, MPI_COMM_TYPE_SHARED,__hpat_node_id, MPI_INFO_NULL, &__hpat_local_comm);\n"
+        s *= "MPI_Comm_rank(__hpat_local_comm,&__hpat_node_id_local);\n"
+        s *= "MPI_Comm_split(MPI_COMM_WORLD, __hpat_node_id_local, __hpat_node_id, &__hpat_bridge_comm);\n"
+        s *= "MPI_Comm_size(__hpat_local_comm,&__hpat_num_pes_local);\n"
+        return s
+    else
+        return ""
+    end
+end
+
 function pattern_match_call_dist_init(f::Any,linfo)
+    return ""
+end
+
+function pattern_match_call_dist_init_gaas(f::Any,linfo)
     return ""
 end
 
@@ -1176,6 +1199,7 @@ function pattern_match_call(ast::Array{Any, 1}, linfo)
   if length(ast)==1
     @dprintln(3,"ast1_typ = ", typeof(ast[1]))
     s *= pattern_match_call_dist_init(ast[1], linfo)
+    s *= pattern_match_call_dist_init_gaas(ast[1], linfo)
     s *= pattern_match_call_dist_init2d(ast[1], linfo)
     s *= pattern_match_call_get_sec_since_epoch(ast[1], linfo)
   elseif length(ast)==2
