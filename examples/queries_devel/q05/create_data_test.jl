@@ -27,22 +27,22 @@ function generate_dataset(wcs_user_sk, wcs_item_sk, i_item_sk, i_category_id, i_
     i_df = readtable(open(table_i_path))
     c_df = readtable(open(table_c_path))
     cd_df = readtable(open(table_cd_path))
-    append!(wcs_item_sk, wcs_df[1])
-    #replace NA values in Dataframes with -2147483648
-    append!(wcs_user_sk, convert(Array, wcs_df[2], typemin(Int32)))
+    append!(wcs_item_sk, convert(Array, wcs_df[1], typemax(Int32)))
+    #replace NA values in Dataframes with 2147483648
+    append!(wcs_user_sk, convert(Array, wcs_df[2], typemax(Int32)))
 
     append!(i_item_sk, i_df[1])
     append!(i_category_id, i_df[2])
     append!(i_category, i_df[3])
 
     append!(c_customer_sk, c_df[1])
-    #replace NA values in Dataframes with -2147483648
-    append!(c_current_cdemo_sk, convert(Array, c_df[2], typemin(Int32)))
+    #replace NA values in Dataframes with 2147483648
+    append!(c_current_cdemo_sk, convert(Array, c_df[2], typemax(Int32)))
 
     append!(cd_demo_sk, cd_df[1])
-    #replace NA values in Dataframes with -2147483648
-    append!(cd_gender, convert(Array, cd_df[2], typemin(Int32)))
-    append!(cd_education_status, convert(Array, cd_df[3], typemin(Int32)))
+    #replace NA values in Dataframes with 2147483648
+    append!(cd_gender, convert(Array, cd_df[2],  typemax(Int32)))
+    append!(cd_education_status, convert(Array, cd_df[3], typemax(Int32)))
 end
 
 function main()
