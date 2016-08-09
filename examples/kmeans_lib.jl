@@ -13,14 +13,14 @@ if (length(ARGS) > 0)
 	K = parse(Int, ARGS[1])
 end
 
-c2 = calcKmeans(K,ENV["SCRATCH"]*"/benchmark_data/kmeans_small.hdf5")
+c2 = calcKmeans(K, HPAT.getDefaultDataPath()*"/kmeans_small.hdf5")
 rank = MPI.Comm_rank(MPI.COMM_WORLD)
 pes = MPI.Comm_size(MPI.COMM_WORLD)
 
 
 MPI.Barrier(MPI.COMM_WORLD)
 t1 = time_ns()
-c2 = calcKmeans(K,ENV["SCRATCH"]*"/benchmark_data/kmeans_large.hdf5")
+c2 = calcKmeans(K, HPAT.getDefaultDataPath()*"/kmeans_large.hdf5")
 t2 = time_ns()
 
 if rank==0

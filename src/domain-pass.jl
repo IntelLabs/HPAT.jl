@@ -419,6 +419,7 @@ function translate_hpat_dist_calls(lhs::LHSVar, rhs::Expr, hpat_call::Symbol, st
         HPAT.enableOMP()
         # no change
         #return [Expr(:(=),lhs,rhs)]
+        # instead of assignment, return a call with lhs as 1st argument
         return [Expr(:call,GlobalRef(HPAT.API,hpat_call), lhs,rhs.args[2:end]...)]
     else # not handled yet
         return [Expr(:(=),lhs,rhs)]
@@ -435,6 +436,12 @@ function getHPATcall(call::Expr)
         # remove in 0.5
         if call.args[1]==GlobalRef(Main,:Kmeans)
             call.args[1]=GlobalRef(HPAT.API,:Kmeans)
+        end
+        if call.args[1]==GlobalRef(Main,:LinearRegression)
+            call.args[1]=GlobalRef(HPAT.API,:LinearRegression)
+        end
+        if call.args[1]==GlobalRef(Main,:NaiveBayes)
+            call.args[1]=GlobalRef(HPAT.API,:NaiveBayes)
         end
         return getHPATcall_inner(call.args[1])
     end

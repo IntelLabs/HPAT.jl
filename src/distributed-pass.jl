@@ -820,6 +820,7 @@ function from_call(node::Expr, state)
 
         return [node]
     elseif func==GlobalRef(HPAT.API,:Kmeans) && (isONE_D(toLHSVar(node.args[3]), state) || isONE_D_VAR(toLHSVar(node.args[3]), state))
+        # 1st call argument (node.args[2]) is coeffs (lhs of original source code)
         arr = toLHSVar(node.args[3])
         @dprintln(3,"DistPass kmeans call for array: ", arr)
         node.args[1] = GlobalRef(HPAT.API,:Kmeans_dist)
@@ -838,6 +839,7 @@ function from_call(node::Expr, state)
                 state.arrs_dist_info[arr].dim_sizes[1], state.arrs_dist_info[arr].dim_sizes[end])
         return [rebalance_out; node]
     elseif func==GlobalRef(HPAT.API,:LinearRegression) || func==GlobalRef(HPAT.API,:NaiveBayes)
+        # 1st call argument (node.args[2]) is coeffs (lhs of original source code)
         arr1 = toLHSVar(node.args[3])
         arr2 = toLHSVar(node.args[4])
         @dprintln(3,"DistPass LinearRegression/NaiveBayes call for arrays: ", arr1," ", arr2)
@@ -845,7 +847,7 @@ function from_call(node::Expr, state)
         if (isONE_D(arr1,state) || isONE_D_VAR(arr1,state)) &&
             (isONE_D(arr2,state) || isONE_D_VAR(arr2,state))
 
-            node.args[1].name = symbol("$(func)_dist")
+            node.args[1] = GlobalRef(HPAT.API, symbol("$(func.name)_dist"))
 
             extra_daal_includes = """ #include "daal.h"
             using namespace daal;
