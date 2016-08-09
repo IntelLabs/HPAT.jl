@@ -16,7 +16,7 @@ pes = MPI.Comm_size(MPI.COMM_WORLD)
 
 MPI.Barrier(MPI.COMM_WORLD)
 t1 = time_ns()
-c2 = calcLinearRegression(HPAT.getDefaultDataPath()**"/linear_regression_train_large.hdf5")
+c2 = calcLinearRegression(HPAT.getDefaultDataPath()*"/linear_regression_train_large.hdf5")
 t2 = time_ns()
 
 if rank==0

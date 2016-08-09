@@ -860,10 +860,17 @@ function from_call(node::Expr, state)
             rebalance_out1 = gen_rebalance_array(arr1, state)
             rebalance_out2 = gen_rebalance_array(arr2, state)
 
+            # response array could be 1D or 2D array
+            # number of responses for each feature is 1 if 1D array to use same 2D DAAL table interface
+            response_col_size = state.arrs_dist_info[arr2].dim_sizes[1]
+            if length(state.arrs_dist_info[arr2].dim_sizes)==1
+                response_col_size = 1
+            end
+
             push!(node.args, state.arrs_dist_info[arr1].starts[end], state.arrs_dist_info[arr1].counts[end],
                     state.arrs_dist_info[arr1].dim_sizes[1], state.arrs_dist_info[arr1].dim_sizes[end])
             push!(node.args, state.arrs_dist_info[arr2].starts[end], state.arrs_dist_info[arr2].counts[end],
-                    state.arrs_dist_info[arr2].dim_sizes[1], state.arrs_dist_info[arr2].dim_sizes[end])
+                    response_col_size, state.arrs_dist_info[arr2].dim_sizes[end])
             return [rebalance_out1; rebalance_out2; node]
         end
     elseif isBaseFunc(func, :arraysize) && (isONE_D(toLHSVar(node.args[2]),state) || isTWO_D(toLHSVar(node.args[2]),state))
