@@ -1,4 +1,5 @@
 using HPAT
+using HPAT.API.LinearRegression
 HPAT.CaptureAPI.set_debug_level(3)
 HPAT.DomainPass.set_debug_level(3)
 HPAT.DataTablePass.set_debug_level(3)
@@ -33,17 +34,21 @@ ParallelAccelerator.DomainIR.set_debug_level(3)
                                                          :clicks_in_7 = sum(:i_category_id==7))
     customer_clicks = join(user_clicks_in_cat, customer, :wcs_user_sk==:c_customer_sk, :customer_clicks_sk)
     customer_demo_clicks = join(customer_clicks, customer_demographics, :c_current_cdemo_sk==:cd_demo_sk , :customer_demo_clicks_sk)
-    # data = hcat( convert(Vector{Int64}, customer_demo_clicks[:cd_education_status].==education),
-    #         convert(Vector{Int64}, customer_demo_clicks[:cd_gender].==gender),
-    #         customer_demo_clicks[:clicks_in_1],
-    #         customer_demo_clicks[:clicks_in_2],
-    #         customer_demo_clicks[:clicks_in_3],
-    #         customer_demo_clicks[:clicks_in_4],
-    #         customer_demo_clicks[:clicks_in_5],
-    #         customer_demo_clicks[:clicks_in_6],
-    #         customer_demo_clicks[:clicks_in_7])
-
-    # model = HPAT.API.LogisticRegression(data, customer_demo_clicks[:clicks_in_category])
+    # To make int array from bool
+    college_education = 1.*(customer_demo_clicks[:cd_education_status].==education)
+    male = 1.*(customer_demo_clicks[:cd_gender].==gender)
+    responses = 1.0 .*(customer_demo_clicks[:clicks_in_category])
+    data = transpose(hcat(college_education,
+            male,
+            customer_demo_clicks[:clicks_in_1],
+            customer_demo_clicks[:clicks_in_2],
+            customer_demo_clicks[:clicks_in_3],
+            customer_demo_clicks[:clicks_in_4],
+            customer_demo_clicks[:clicks_in_5],
+            customer_demo_clicks[:clicks_in_6],
+            customer_demo_clicks[:clicks_in_7]))
+    pointsF = convert(Matrix{Float64},data)
+    model = LinearRegression(pointsF, responses)
     return customer_demo_clicks[:customer_demo_clicks_sk], customer_demo_clicks[:cd_gender]
 end
 
