@@ -834,8 +834,8 @@ function pattern_match_call_rebalance(func::GlobalRef, arr::LHSVar, count::LHSVa
         # s *= "printf(\"__hpat_node_id:%d my_size:%d my_count:%d total_size:%d my_diff:%d\\n\", __hpat_node_id, my_size, my_count, total_size, my_diff);"
         s *= "MPI_Allgather(&_my_diff_$c_arr, 1, MPI_LONG_LONG_INT, _all_diff_$c_arr, 1, MPI_LONG_LONG_INT, MPI_COMM_WORLD);\n"
         # printf("__hpat_node_id:%d all_diff[0]:%d all_diff[1]:%d ... all_diff[n-1]:%d\n", __hpat_node_id, all_diff[0], all_diff[1], all_diff[num_pes-1]);
-        s *= "MPI_Request *_all_reqs = new MPI_Request[__hpat_num_pes];\n"
-        s *= "int _curr_req = 0;\n"
+        s *= "MPI_Request *_all_reqs_$c_arr = new MPI_Request[__hpat_num_pes];\n"
+        s *= "int _curr_req_$c_arr = 0;\n"
         #// for each potential receiver
         s *= "for(int i=0; i<__hpat_num_pes; i++) {\n"
         #// if receiver
@@ -848,12 +848,12 @@ function pattern_match_call_rebalance(func::GlobalRef, arr::LHSVar, count::LHSVa
         #// if I'm receiver
         s *= "         if(__hpat_node_id==i) {\n"
         #//printf("__hpat_node_id:%d receiving from:%d size:%d\n", __hpat_node_id, j, send_size);
-        s *= "            MPI_Irecv(&__hpat_tmp_$c_arr[__hpat_new_data_ind_$c_arr], __hpat_row_size_$c_arr*_send_size, $mpi_typ, j, 0, MPI_COMM_WORLD, &_all_reqs[_curr_req++]);\n"
+        s *= "            MPI_Irecv(&__hpat_tmp_$c_arr[__hpat_new_data_ind_$c_arr], __hpat_row_size_$c_arr*_send_size, $mpi_typ, j, 0, MPI_COMM_WORLD, &_all_reqs_$c_arr[_curr_req_$c_arr++]);\n"
         s *= "            __hpat_new_data_ind_$c_arr += __hpat_row_size_$c_arr*_send_size;\n"
         s *= "         }\n"
         s *= "         if(__hpat_node_id==j) {\n"
         #s *= "            printf("rank:%d sending to:%d size:%d\n", __hpat_node_id, i, send_size);
-        s *= "            MPI_Isend(&$c_arr.data[__hpat_new_data_ind_$c_arr], __hpat_row_size_$c_arr*_send_size, $mpi_typ, i, 0, MPI_COMM_WORLD, &_all_reqs[_curr_req++]);\n"
+        s *= "            MPI_Isend(&$c_arr.data[__hpat_new_data_ind_$c_arr], __hpat_row_size_$c_arr*_send_size, $mpi_typ, i, 0, MPI_COMM_WORLD, &_all_reqs_$c_arr[_curr_req_$c_arr++]);\n"
         s *= "            __hpat_new_data_ind_$c_arr += __hpat_row_size_$c_arr*_send_size;\n"
         s *= "         }\n"
         s *= "         _all_diff_$c_arr[i] += _send_size;\n"
@@ -863,9 +863,9 @@ function pattern_match_call_rebalance(func::GlobalRef, arr::LHSVar, count::LHSVa
         s *= "   }\n"
         s *= " }\n"
         s *= "}\n"
-        s *= "MPI_Waitall(_curr_req, _all_reqs, MPI_STATUSES_IGNORE);\n"
+        s *= "MPI_Waitall(_curr_req_$c_arr, _all_reqs_$c_arr, MPI_STATUSES_IGNORE);\n"
         s *= "delete[] _all_diff_$c_arr;\n"
-        s *= "delete[] _all_reqs;\n"
+        s *= "delete[] _all_reqs_$c_arr;\n"
         # delete old array, assign new
         s *= "delete[] $c_arr.data;\n"
         s *= "$c_arr.data = __hpat_tmp_$c_arr;\n"
