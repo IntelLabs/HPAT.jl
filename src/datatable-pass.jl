@@ -303,13 +303,13 @@ function rename_symbols(node::Symbol, rename_map::Dict{Symbol,Symbol}, top_level
     return new_sym
 end
 
-function rename_symbols(node::SymbolNode, rename_map::Dict{Symbol,Symbol}, top_level_number, is_top_level, read)
+function rename_symbols(node::TypedVar, rename_map::Dict{Symbol,Symbol}, top_level_number, is_top_level, read)
     typ = node.typ
     new_sym = toLHSVar(node)
     while haskey(rename_map, new_sym)
       new_sym = rename_map[new_sym]
     end
-    return SymbolNode(new_sym,typ)
+    return TypedVar(new_sym,typ)
 end
 
 function rename_symbols(node::ANY, rename_map::Dict{Symbol,Symbol}, top_level_number, is_top_level, read)

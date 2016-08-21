@@ -311,7 +311,7 @@ function translate_aggregate(lhs, rhs, state)
         e = AstWalk(e, convert_oprs_to_elementwise,  (t1, state.tableCols[t1]))
         # replace column name with actual array in expression
         e = AstWalk(e, replace_col_with_array,  (t1, state.tableCols[t1]))
-        out_e_arr = symbol("#$(lhs)#$(out_col)#e")
+        out_e_arr = Symbol("#$(lhs)#$(out_col)#e")
         push!(out_aggs, :(($out_e_arr,$e, $func)))
         push!(out_e,:($out_e_arr=$e))
         # to add types to aggregate output
@@ -439,7 +439,7 @@ function translate_data_sink(var, state, source_typ, other_args)
     @assert source_typ==:HDF5 || source_typ==:TXT "Only HDF5 and TXT (text) data sources supported for now."
 
     # desugar call
-    call_name = symbol("data_sink_$source_typ")
+    call_name = Symbol("data_sink_$source_typ")
     # GlobalRef since Julia doesn't resolve the module!
     api_call = GlobalRef(HPAT.API, call_name)
     rhs = Expr(:call, api_call, var, other_args...)
@@ -451,7 +451,7 @@ function translate_data_source(lhs, state, arr_var_expr, source_typ, other_args)
     @assert source_typ==:HDF5 || source_typ==:TXT "Only HDF5 and TXT (text) data sources supported for now."
 
     # desugar call
-    call_name = symbol("data_source_$source_typ")
+    call_name = Symbol("data_source_$source_typ")
     # GlobalRef since Julia doesn't resolve the module!
     api_call = GlobalRef(HPAT.API, call_name)
     rhs = Expr(:call, api_call, arr_var_expr, other_args...)
@@ -526,7 +526,7 @@ end
     Convert a table column to an array name
 """
 function getColName(t::Symbol, c::Symbol)
-    return symbol("#$(t)#$(c)")
+    return Symbol("#$(t)#$(c)")
 end
 
 """
