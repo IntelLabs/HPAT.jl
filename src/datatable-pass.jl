@@ -105,7 +105,7 @@ function from_root(function_name, ast::Tuple)
     print_tree(root_qtn)
     body.args = from_toplevel_body(body.args, root_qtn,tableCols, linfo)
     @dprintln(1,"DataTablePass.from_root returns function = ", function_name, " ast = ", body)
-    return LambdaVarInfoToLambda(linfo, body.args)
+    return LambdaVarInfoToLambda(linfo, body.args, ParallelAccelerator.DomainIR.AstWalk)
 end
 
 # nodes are :body of AST

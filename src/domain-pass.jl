@@ -431,7 +431,14 @@ function translate_hpat_dist_calls(lhs::ANY, rhs::ANY, hpat_call::Symbol, state)
 end
 
 function getHPATcall(call::Expr)
-    if call.head==:call
+    if isCall(call) || isInvoke(call)
+        local func = getCallFunction(call)
+        local args = getCallArguments(call)
+        # convert :invoke to :call to be consistent
+        if isInvoke(call)
+            call.head = :call
+            call.args = [func; args]
+        end
         # TODO: hack to get around Julia 0.4 function resolution issue (q26)
         # remove in 0.5
         if call.args[1]==GlobalRef(Main,:Kmeans)
@@ -490,8 +497,8 @@ function translate_data_source_HDF5(lhs::LHSVar, rhs::Expr, state)
     # generate array allocation
     size_expr = Any[]
     for i in dims:-1:1
-        size_i = symbol("__hpat_h5_dim_size_"*string(dsrc_num)*"_"*string(i))
-        CompilerTools.LambdaHandling.addLocalVariable(size_i, Int64, ISASSIGNEDONCE | ISASSIGNED, state.linfo)
+        size_i_name = Symbol("__hpat_h5_dim_size_"*string(dsrc_num)*"_"*string(i))
+        size_i = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(size_i_name, Int64, ISASSIGNEDONCE | ISASSIGNED, state.linfo))
         # size_i = addTempVariable(Int64, state.linfo)
         size_i_call = mk_call(GlobalRef(HPAT.API,:__hpat_get_H5_dim_size), [arr_size_var, i])
         push!(res, TypedExpr(Int64, :(=), size_i, size_i_call))
