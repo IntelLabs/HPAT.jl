@@ -182,7 +182,7 @@ function get_arr_dist_info_parfor(node, state, top_level_number, parfor)
         partitioning = SEQ
     end
 
-    indexVariable::Symbol = toLHSVar(parfor.loopNests[1].indexVariable)
+    indexVariable = toLHSVar(parfor.loopNests[1].indexVariable)
 
     allArrAccesses = merge(rws.readSet.arrays,rws.writeSet.arrays)
     myArrs = LHSVar[]
@@ -240,7 +240,7 @@ function get_arr_dist_info_parfor(node, state, top_level_number, parfor)
     return CompilerTools.AstWalker.ASTWALK_RECURSE
 end
 
-function isAccessIndexDependent(indices::Vector{Any}, indexVariable::Symbol, body_lives::BlockLiveness, state)
+function isAccessIndexDependent(indices::Vector{Any}, indexVariable::LHSVar, body_lives::BlockLiveness, state)
     # if any index is dependent
     return reduce(|, [ isAccessIndexDependent(indices[i], indexVariable, body_lives, state) for i in 1:length(indices)] )
 end
@@ -249,7 +249,7 @@ end
 For each statement of parfor's body, see if array access index is in Def set and parfor's indexVariable is in Use set.
 This is a hack to work around not having dependence analysis in CompilerTools.
 """
-function isAccessIndexDependent(index::LHSVar, indexVariable::Symbol, body_lives::BlockLiveness, state)
+function isAccessIndexDependent(index::LHSVar, indexVariable::LHSVar, body_lives::BlockLiveness, state)
     for bb in collect(values(body_lives.basic_blocks))
         for stmt in bb.statements
             if isBareParfor(stmt.tls.expr)
