@@ -38,12 +38,6 @@ end
 end
 
 @noinline function LinearRegression{T}(points::Matrix{T}, responses::Vector{T})
-    # TODO: actual sequential implementation
-    # return random result to enable type inference
-    return rand(T, size(points,1))
-end
-
-@noinline function LinearRegression{T}(points::Matrix{T}, responses::Vector{T})
     # TODO: write actual sequential implementation
     # return random result to enable type inference
     return rand(T, size(points,1),2)
