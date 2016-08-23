@@ -1,6 +1,6 @@
 module SourceTest
 
-#using HPAT
+using HPAT
 #HPAT.DomainPass.set_debug_level(3)
 #HPAT.DataTablePass.set_debug_level(3)
 

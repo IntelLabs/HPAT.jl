@@ -168,10 +168,10 @@ type DistPassState
     tuple_table              :: Dict{LHSVar,Array{Union{LHSVar,Int},1}}
     max_label :: Int # holds the max number of all LabelNodes
     user_partitionings::Dict{Symbol,Partitioning}
-
+    dist_vars::Dict{Symbol,LHSVar} # a dictionary for distributed variables such as __hpat_num_pes
     function DistPassState(linfo, lives, user_partitionings)
         new(Dict{LHSVar, Array{ArrDistInfo,1}}(), Dict{Int,Partitioning}(), Dict{Int,Vector{LHSVar}}(), linfo,0, lives,
-             Dict{LHSVar,Array{Union{LHSVar,Int},1}}(),0,user_partitionings)
+             Dict{LHSVar,Array{Union{LHSVar,Int},1}}(),0,user_partitionings, Dict{Symbol,LHSVar}())
     end
 end
 
@@ -289,11 +289,13 @@ function genDistributedInit(state::DistPassState)
     numPesCall = Expr(:call, GlobalRef(HPAT.API,:hpat_dist_num_pes))
     nodeIdCall = Expr(:call, GlobalRef(HPAT.API,:hpat_dist_node_id))
 
-    CompilerTools.LambdaHandling.addLocalVariable(symbol("__hpat_num_pes"), Int32, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-    CompilerTools.LambdaHandling.addLocalVariable(symbol("__hpat_node_id"), Int32, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+    pes_var = CompilerTools.LambdaHandling.addLocalVariable(Symbol("__hpat_num_pes"), Int32, ISASSIGNEDONCE | ISASSIGNED, state.LambdaVarInfo)
+    node_id_var = CompilerTools.LambdaHandling.addLocalVariable(Symbol("__hpat_node_id"), Int32, ISASSIGNEDONCE | ISASSIGNED, state.LambdaVarInfo)
+    state.dist_vars[:num_pes] = pes_var
+    state.dist_vars[:node_id] = node_id_var
 
-    num_pes_assign = Expr(:(=), :__hpat_num_pes, numPesCall)
-    node_id_assign = Expr(:(=), :__hpat_node_id, nodeIdCall)
+    num_pes_assign = Expr(:(=), pes_var, numPesCall)
+    node_id_assign = Expr(:(=), node_id_var, nodeIdCall)
     res = Any[initCall; num_pes_assign; node_id_assign]
     if haskey(ENV, "ENABLE_GAAS")
         # Just to make things working for now
@@ -316,10 +318,15 @@ function genDistributedInit(state::DistPassState)
                             """
       HPAT.addHpatInclude(extra_2D_includes,"","")
       initCall2d = Expr(:call, GlobalRef(HPAT.API,:hpat_dist_2d_init))
-      CompilerTools.LambdaHandling.addLocalVariable(symbol("__hpat_num_pes_x"), Int32, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-      CompilerTools.LambdaHandling.addLocalVariable(symbol("__hpat_num_pes_y"), Int32, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-      CompilerTools.LambdaHandling.addLocalVariable(symbol("__hpat_node_id_x"), Int32, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-      CompilerTools.LambdaHandling.addLocalVariable(symbol("__hpat_node_id_y"), Int32, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+      num_pes_x_var = CompilerTools.LambdaHandling.addLocalVariable(Symbol("__hpat_num_pes_x"), Int32, ISASSIGNEDONCE | ISASSIGNED, state.LambdaVarInfo)
+      num_pes_y_var = CompilerTools.LambdaHandling.addLocalVariable(Symbol("__hpat_num_pes_y"), Int32, ISASSIGNEDONCE | ISASSIGNED, state.LambdaVarInfo)
+      node_id_x_var = CompilerTools.LambdaHandling.addLocalVariable(Symbol("__hpat_node_id_x"), Int32, ISASSIGNEDONCE | ISASSIGNED, state.LambdaVarInfo)
+      node_id_y_var = CompilerTools.LambdaHandling.addLocalVariable(Symbol("__hpat_node_id_y"), Int32, ISASSIGNEDONCE | ISASSIGNED, state.LambdaVarInfo)
+      state.dist_vars[:num_pes_x] = num_pes_x_var
+      state.dist_vars[:num_pes_y] = num_pes_y_var
+      state.dist_vars[:node_id_x] = node_id_x_var
+      state.dist_vars[:node_id_y] = node_id_y_var
+
 
       res2 = Any[initCall2d]
       res = [res;res2]
@@ -379,11 +386,11 @@ function from_assignment_alloc(node::Expr, state::DistPassState, arr::LHSVar, rh
       CompilerTools.LambdaHandling.addLocalVariable(darr_count_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
 
 
-      darr_div_expr = Expr(:(=),darr_div_var, mk_div_int_expr(arr_tot_size,:__hpat_num_pes))
+      darr_div_expr = Expr(:(=),darr_div_var, mk_div_int_expr(arr_tot_size, state.dist_vars[:num_pes]))
       # zero-based index to match C interface of HDF5
       darr_start_expr = Expr(:(=), darr_start_var, mk_mult_int_expr([:__hpat_node_id,darr_div_var]))
       # darr_count_expr = :($darr_count_var = __hpat_node_id==__hpat_num_pes-1 ? $arr_tot_size-__hpat_node_id*$darr_div_var : $darr_div_var)
-      darr_count_expr = Expr(:(=), darr_count_var, mk_call(GlobalRef(HPAT.API,:__hpat_get_node_portion),[arr_tot_size, darr_div_var, :__hpat_num_pes, :__hpat_node_id]))
+      darr_count_expr = Expr(:(=), darr_count_var, mk_call(GlobalRef(HPAT.API,:__hpat_get_node_portion),[arr_tot_size, darr_div_var, state.dist_vars[:num_pes], :__hpat_node_id]))
 
       # set new divided allocation size
       rhs.args[end-1] = darr_count_var
@@ -434,8 +441,8 @@ function from_assignment_alloc_2d(node::Expr, state::DistPassState, arr::LHSVar,
   stride_y_var = symbol("__hpat_dist_arr_2d_stride_y_"*string(arr_id))
   CompilerTools.LambdaHandling.addLocalVariable(stride_x_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
   CompilerTools.LambdaHandling.addLocalVariable(stride_y_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-  stride_x_expr = Expr(:(=), stride_x_var, mk_mult_int_expr([:__hpat_num_pes_x,block_size_var]))
-  stride_y_expr = Expr(:(=), stride_y_var, mk_mult_int_expr([:__hpat_num_pes_y,block_size_var]))
+  stride_x_expr = Expr(:(=), stride_x_var, mk_mult_int_expr([state.dist_vars[:num_pes_x],block_size_var]))
+  stride_y_expr = Expr(:(=), stride_y_var, mk_mult_int_expr([state.dist_vars[:num_pes_y],block_size_var]))
   state.arrs_dist_info[arr].strides[end-1] = stride_x_var
   state.arrs_dist_info[arr].strides[end] = stride_y_var
 
@@ -454,10 +461,10 @@ function from_assignment_alloc_2d(node::Expr, state::DistPassState, arr::LHSVar,
   blocks_per_pe_y_var = symbol("__hpat_dist_arr_2d_blocks_per_pe_y_"*string(arr_id))
   CompilerTools.LambdaHandling.addLocalVariable(blocks_per_pe_x_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
   CompilerTools.LambdaHandling.addLocalVariable(blocks_per_pe_y_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-  bppx_div_expr = Expr(:(=),blocks_per_pe_x_var, mk_div_int_expr(num_blocks_x_var,:__hpat_num_pes_x))
-  bppy_div_expr = Expr(:(=),blocks_per_pe_y_var, mk_div_int_expr(num_blocks_y_var,:__hpat_num_pes_y))
-  extra_block_call_x = mk_call(GlobalRef(HPAT.API,:__hpat_add_extra_block),[blocks_per_pe_x_var, num_blocks_x_var,:__hpat_node_id_x,:__hpat_num_pes_x])
-  extra_block_call_y = mk_call(GlobalRef(HPAT.API,:__hpat_add_extra_block),[blocks_per_pe_y_var, num_blocks_y_var,:__hpat_node_id_y,:__hpat_num_pes_y])
+  bppx_div_expr = Expr(:(=),blocks_per_pe_x_var, mk_div_int_expr(num_blocks_x_var,state.dist_vars[:num_pes_x]))
+  bppy_div_expr = Expr(:(=),blocks_per_pe_y_var, mk_div_int_expr(num_blocks_y_var,state.dist_vars[:num_pes_y]))
+  extra_block_call_x = mk_call(GlobalRef(HPAT.API,:__hpat_add_extra_block),[blocks_per_pe_x_var, num_blocks_x_var,:__hpat_node_id_x,state.dist_vars[:num_pes_x]])
+  extra_block_call_y = mk_call(GlobalRef(HPAT.API,:__hpat_add_extra_block),[blocks_per_pe_y_var, num_blocks_y_var,:__hpat_node_id_y,state.dist_vars[:num_pes_y]])
   state.arrs_dist_info[arr].counts[end-1] = blocks_per_pe_x_var
   state.arrs_dist_info[arr].counts[end] = blocks_per_pe_y_var
 
@@ -466,9 +473,9 @@ function from_assignment_alloc_2d(node::Expr, state::DistPassState, arr::LHSVar,
   CompilerTools.LambdaHandling.addLocalVariable(leftovers_x_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
   CompilerTools.LambdaHandling.addLocalVariable(leftovers_y_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
   leftovers_x_expr = Expr(:(=), leftovers_x_var, mk_call(GlobalRef(HPAT.API,:__hpat_get_leftovers),
-                                  [num_blocks_x_var,:__hpat_node_id_x,:__hpat_num_pes_x,arr_tot_size_x,block_size_var]))
+                                  [num_blocks_x_var,:__hpat_node_id_x,state.dist_vars[:num_pes_x],arr_tot_size_x,block_size_var]))
   leftovers_y_expr = Expr(:(=), leftovers_y_var, mk_call(GlobalRef(HPAT.API,:__hpat_get_leftovers),
-                                  [num_blocks_y_var,:__hpat_node_id_y,:__hpat_num_pes_y,arr_tot_size_y,block_size_var]))
+                                  [num_blocks_y_var,:__hpat_node_id_y,state.dist_vars[:num_pes_y],arr_tot_size_y,block_size_var]))
   state.arrs_dist_info[arr].leftovers[end-1] = leftovers_x_var
   state.arrs_dist_info[arr].leftovers[end] = leftovers_y_var
 
@@ -521,11 +528,11 @@ function from_assignment_reshape(node::Expr, state::DistPassState, arr::LHSVar, 
       CompilerTools.LambdaHandling.addLocalVariable(darr_count_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
 
 
-      darr_div_expr = Expr(:(=), darr_div_var, mk_div_int_expr(arr_tot_size,:__hpat_num_pes))
+      darr_div_expr = Expr(:(=), darr_div_var, mk_div_int_expr(arr_tot_size, state.dist_vars[:num_pes]))
       # zero-based index to match C interface of HDF5
       darr_start_expr = Expr(:(=),darr_start_var, mk_mult_int_expr([:__hpat_node_id, darr_div_var]))
       #darr_count_expr = :($darr_count_var = __hpat_node_id==__hpat_num_pes-1 ? $arr_tot_size-__hpat_node_id*$darr_div_var : $darr_div_var)
-      darr_count_expr = Expr(:(=), darr_count_var, mk_call(GlobalRef(HPAT.API,:__hpat_get_node_portion),[arr_tot_size, darr_div_var, :__hpat_num_pes, :__hpat_node_id]))
+      darr_count_expr = Expr(:(=), darr_count_var, mk_call(GlobalRef(HPAT.API,:__hpat_get_node_portion),[arr_tot_size, darr_div_var, state.dist_vars[:num_pes], :__hpat_node_id]))
 
       # create a new tuple for reshape
       tup_call = Expr(:call, TopNode(:tuple), dim_sizes[1:end-1]... , darr_count_var)
@@ -730,7 +737,7 @@ function from_parfor_1d(node::Expr, state, parfor)
   loop_div_expr = Expr(:(=),loop_div_var, mk_div_int_expr(global_size,:__hpat_num_pes))
   loop_start_expr = Expr(:(=), loop_start_var, mk_add_int_expr(mk_mult_int_expr([:__hpat_node_id,loop_div_var]),1))
   #loop_end_expr = :($loop_end_var = __hpat_node_id==__hpat_num_pes-1 ?$(global_size):(__hpat_node_id+1)*$loop_div_var)
-  loop_end_expr = Expr(:(=), loop_end_var, mk_call(GlobalRef(HPAT.API,:__hpat_get_node_end),[global_size, loop_div_var, :__hpat_num_pes, :__hpat_node_id]))
+  loop_end_expr = Expr(:(=), loop_end_var, mk_call(GlobalRef(HPAT.API,:__hpat_get_node_end),[global_size, loop_div_var, state.dist_vars[:num_pes], :__hpat_node_id]))
 
   loopnest.lower = loop_start_var
   loopnest.upper = loop_end_var
@@ -981,10 +988,10 @@ function gen_rebalance_array(arr::LHSVar, state)
   CompilerTools.LambdaHandling.addLocalVariable(darr_div_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
   CompilerTools.LambdaHandling.addLocalVariable(darr_count_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
 
-  darr_div_expr = Expr(:(=),darr_div_var, mk_div_int_expr(darr_size_var,:__hpat_num_pes))
+  darr_div_expr = Expr(:(=),darr_div_var, mk_div_int_expr(darr_size_var, state.dist_vars[:num_pes]))
   # zero-based index to match C interface of HDF5
   darr_start_expr = Expr(:(=), darr_start_var, mk_mult_int_expr([:__hpat_node_id,darr_div_var]))
-  darr_count_expr = Expr(:(=), darr_count_var, mk_call(GlobalRef(HPAT.API,:__hpat_get_node_portion),[darr_size_var, darr_div_var, :__hpat_num_pes, :__hpat_node_id]))
+  darr_count_expr = Expr(:(=), darr_count_var, mk_call(GlobalRef(HPAT.API,:__hpat_get_node_portion),[darr_size_var, darr_div_var, state.dist_vars[:num_pes], :__hpat_node_id]))
   push!(out, darr_div_expr, darr_start_expr, darr_count_expr)
 
   rebalance_call = mk_call(GlobalRef(HPAT.API,:__hpat_arr_rebalance),[arr, darr_count_var])
