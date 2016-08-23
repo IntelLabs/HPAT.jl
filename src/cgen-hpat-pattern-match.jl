@@ -116,7 +116,9 @@ function pattern_match_call_dist_add_extra_block(f::GlobalRef, local_blocks::LHS
   s = ""
   if f==GlobalRef(HPAT.API,:__hpat_add_extra_block)
     # similar to numroc.f
-    s *= "$local_blocks += ($node_id<($total_blocks%$num_pes)?1:0);\n"
+    c_node_id = ParallelAccelerator.CGen.from_expr(node_id, linfo)
+    c_num_pes = ParallelAccelerator.CGen.from_expr(num_pes, linfo)
+    s *= "$local_blocks += ($c_node_id<($total_blocks%$c_num_pes)?1:0);\n"
   end
   return s
 end
@@ -132,7 +134,9 @@ function pattern_match_call_dist_get_leftovers(f::GlobalRef,
   if f==GlobalRef(HPAT.API,:__hpat_get_leftovers)
     c_total_data_size = ParallelAccelerator.CGen.from_expr(total_data_size, linfo)
     # similar to numroc.f
-    s *= "(($node_id==($total_blocks%$num_pes))? ($c_total_data_size%$block_size):0)"
+    c_node_id = ParallelAccelerator.CGen.from_expr(node_id, linfo)
+    c_num_pes = ParallelAccelerator.CGen.from_expr(num_pes, linfo)
+    s *= "(($c_node_id==($total_blocks%$c_num_pes))? ($c_total_data_size%$block_size):0)"
   end
   return s
 end
@@ -205,7 +209,9 @@ function pattern_match_call_dist_portion(f::GlobalRef, total::Union{RHSVar,Int},
     if f.name==:__hpat_get_node_portion
         c_total = ParallelAccelerator.CGen.from_expr(total, linfo)
         c_div = ParallelAccelerator.CGen.from_expr(div, linfo)
-        s = "(($node_id==$num_pes-1) ? $c_total-$node_id*$c_div : $c_div)"
+        c_node_id = ParallelAccelerator.CGen.from_expr(node_id, linfo)
+        c_num_pes = ParallelAccelerator.CGen.from_expr(num_pes, linfo)
+        s = "(($c_node_id==$c_num_pes-1) ? $c_total-$c_node_id*$c_div : $c_div)"
     end
     return s
 end
@@ -219,7 +225,9 @@ function pattern_match_call_dist_node_end(f::GlobalRef, total::RHSVar, div::RHSV
     if f.name==:__hpat_get_node_end
         c_total = ParallelAccelerator.CGen.from_expr(total, linfo)
         c_div = ParallelAccelerator.CGen.from_expr(div, linfo)
-        s = "(($node_id==$num_pes-1) ? $c_total : ($node_id+1)*$c_div)"
+        c_node_id = ParallelAccelerator.CGen.from_expr(node_id, linfo)
+        c_num_pes = ParallelAccelerator.CGen.from_expr(num_pes, linfo)
+        s = "(($c_node_id==$c_num_pes-1) ? $c_total : ($c_node_id+1)*$c_div)"
     end
     return s
 end
