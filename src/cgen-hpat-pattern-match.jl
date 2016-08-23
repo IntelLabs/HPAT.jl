@@ -190,8 +190,10 @@ function pattern_match_call_dist_reduce(f::GlobalRef, var::TypedVar, reductionFu
         else
             throw("CGen unsupported MPI reduction function")
         end
-
-        s="MPI_Reduce(&$(var.name), &$output, 1, $mpi_type, $mpi_func, 0, MPI_COMM_WORLD);"
+        var = toLHSVar(var)
+        c_var = ParallelAccelerator.CGen.from_expr(var, linfo)
+        c_output = ParallelAccelerator.CGen.from_expr(output, linfo)
+        s="MPI_Reduce(&$(c_var), &$c_output, 1, $mpi_type, $mpi_func, 0, MPI_COMM_WORLD);"
         # debug print for 1D_sum
         #s*="printf(\"len %d start %d end %d\\n\", parallel_ir_save_array_len_1_1, __hpat_loop_start_2, __hpat_loop_end_3);\n"
         return s
@@ -684,11 +686,14 @@ function pattern_match_call_data_src_read(f::GlobalRef, id::Int, arr::RHSVar, st
             throw("CGen unsupported HDF5 data type")
         end
 
+        c_start = ParallelAccelerator.CGen.from_expr(start, linfo)
+        c_count = ParallelAccelerator.CGen.from_expr(count, linfo)
+
         # assuming 1st dimension is partitined
         s =  "hsize_t CGen_HDF5_start_$num[data_ndim_$num];\n"
         s *= "hsize_t CGen_HDF5_count_$num[data_ndim_$num];\n"
-        s *= "CGen_HDF5_start_$num[0] = $start;\n"
-        s *= "CGen_HDF5_count_$num[0] = $count;\n"
+        s *= "CGen_HDF5_start_$num[0] = $c_start;\n"
+        s *= "CGen_HDF5_count_$num[0] = $c_count;\n"
         s *= "for(int i_CGen_dim=1; i_CGen_dim<data_ndim_$num; i_CGen_dim++) {\n"
         s *= "CGen_HDF5_start_$num[i_CGen_dim] = 0;\n"
         s *= "CGen_HDF5_count_$num[i_CGen_dim] = space_dims_$num[i_CGen_dim];\n"
@@ -711,10 +716,13 @@ function pattern_match_call_data_src_read(f::GlobalRef, id::Int, arr::RHSVar, st
         data_typ = eltype(ParallelAccelerator.CGen.getSymType(arr, linfo))
         t_typ = ParallelAccelerator.CGen.toCtype(data_typ)
 
+        c_start = ParallelAccelerator.CGen.from_expr(start, linfo)
+        c_count = ParallelAccelerator.CGen.from_expr(count, linfo)
+
         s = """
-            int64_t CGen_txt_start_$num = $start;
-            int64_t CGen_txt_count_$num = $count;
-            int64_t CGen_txt_end_$num = $start+$count;
+            int64_t CGen_txt_start_$num = $c_start;
+            int64_t CGen_txt_count_$num = $c_count;
+            int64_t CGen_txt_end_$num = $c_start+$c_count;
 
 
             // std::cout<<"rank: "<<__hpat_node_id<<" start: "<<CGen_txt_start_$num<<" end: "<<CGen_txt_end_$num<<" columnSize: "<<CGen_txt_col_size_$num<<std::endl;
@@ -1018,6 +1026,9 @@ function pattern_match_call_data_sink_write(f::GlobalRef, id::Int, hdf5_var, arr
             throw("CGen unsupported HDF5 data type")
         end
 
+        c_start = ParallelAccelerator.CGen.from_expr(start, linfo)
+        c_count = ParallelAccelerator.CGen.from_expr(count, linfo)
+
         # create dataset
         s *= " hid_t dataset_id_$num;\n"
         s *= " hid_t  filespace_$num, memspace_$num;\n"
@@ -1033,8 +1044,8 @@ function pattern_match_call_data_sink_write(f::GlobalRef, id::Int, hdf5_var, arr
         # assuming 1st dimension is partitined
         s *=  "hsize_t CGen_HDF5_start_$num[$num_dims];\n"
         s *= "hsize_t CGen_HDF5_count_$num[$num_dims];\n"
-        s *= "CGen_HDF5_start_$num[0] = $start;\n"
-        s *= "CGen_HDF5_count_$num[0] = $count;\n"
+        s *= "CGen_HDF5_start_$num[0] = $c_start;\n"
+        s *= "CGen_HDF5_count_$num[0] = $c_count;\n"
         #s *= "for(int i_CGen_dim=1; i_CGen_dim<$num_dims; i_CGen_dim++) {\n"
         for i in 1:length(tot_size)-1
             s *= "  CGen_HDF5_start_$num[$i] = 0;\n"
