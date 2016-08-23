@@ -396,9 +396,11 @@ function from_assignment_alloc(node::Expr, state::DistPassState, arr::LHSVar, rh
 
       darr_div_expr = Expr(:(=),darr_div_var, mk_div_int_expr(arr_tot_size, state.dist_vars[:num_pes]))
       # zero-based index to match C interface of HDF5
-      darr_start_expr = Expr(:(=), darr_start_var, mk_mult_int_expr([:__hpat_node_id,darr_div_var]))
+      darr_start_expr = Expr(:(=), darr_start_var, mk_mult_int_expr([state.dist_vars[:node_id], darr_div_var]))
       # darr_count_expr = :($darr_count_var = __hpat_node_id==__hpat_num_pes-1 ? $arr_tot_size-__hpat_node_id*$darr_div_var : $darr_div_var)
-      darr_count_expr = Expr(:(=), darr_count_var, mk_call(GlobalRef(HPAT.API,:__hpat_get_node_portion),[arr_tot_size, darr_div_var, state.dist_vars[:num_pes], :__hpat_node_id]))
+      darr_count_expr = Expr(:(=), darr_count_var, mk_call(
+          GlobalRef(HPAT.API,:__hpat_get_node_portion),
+              [arr_tot_size, darr_div_var, state.dist_vars[:num_pes], state.dist_vars[:node_id]]))
 
       # set new divided allocation size
       rhs.args[end-1] = darr_count_var
@@ -439,8 +441,10 @@ function from_assignment_alloc_2d(node::Expr, state::DistPassState, arr::LHSVar,
   start_y_var = symbol("__hpat_dist_arr_2d_start_y_"*string(arr_id))
   CompilerTools.LambdaHandling.addLocalVariable(start_x_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
   CompilerTools.LambdaHandling.addLocalVariable(start_y_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-  start_x_expr = Expr(:(=), start_x_var, mk_mult_int_expr([:__hpat_node_id_x,block_size_var]))
-  start_y_expr = Expr(:(=), start_y_var, mk_mult_int_expr([:__hpat_node_id_y,block_size_var]))
+  start_x_expr = Expr(:(=), start_x_var, mk_mult_int_expr(
+      [state.dist_vars[:node_id_x],block_size_var]))
+  start_y_expr = Expr(:(=), start_y_var, mk_mult_int_expr(
+      [state.dist_vars[:node_id_y],block_size_var]))
   state.arrs_dist_info[arr].starts[end-1] = start_x_var
   state.arrs_dist_info[arr].starts[end] = start_y_var
 
@@ -471,8 +475,10 @@ function from_assignment_alloc_2d(node::Expr, state::DistPassState, arr::LHSVar,
   CompilerTools.LambdaHandling.addLocalVariable(blocks_per_pe_y_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
   bppx_div_expr = Expr(:(=),blocks_per_pe_x_var, mk_div_int_expr(num_blocks_x_var,state.dist_vars[:num_pes_x]))
   bppy_div_expr = Expr(:(=),blocks_per_pe_y_var, mk_div_int_expr(num_blocks_y_var,state.dist_vars[:num_pes_y]))
-  extra_block_call_x = mk_call(GlobalRef(HPAT.API,:__hpat_add_extra_block),[blocks_per_pe_x_var, num_blocks_x_var,:__hpat_node_id_x,state.dist_vars[:num_pes_x]])
-  extra_block_call_y = mk_call(GlobalRef(HPAT.API,:__hpat_add_extra_block),[blocks_per_pe_y_var, num_blocks_y_var,:__hpat_node_id_y,state.dist_vars[:num_pes_y]])
+  extra_block_call_x = mk_call(GlobalRef(HPAT.API,:__hpat_add_extra_block),
+      [blocks_per_pe_x_var, num_blocks_x_var,state.dist_vars[:node_id_x],state.dist_vars[:num_pes_x]])
+  extra_block_call_y = mk_call(GlobalRef(HPAT.API,:__hpat_add_extra_block),
+      [blocks_per_pe_y_var, num_blocks_y_var,state.dist_vars[:node_id_y],state.dist_vars[:num_pes_y]])
   state.arrs_dist_info[arr].counts[end-1] = blocks_per_pe_x_var
   state.arrs_dist_info[arr].counts[end] = blocks_per_pe_y_var
 
@@ -481,9 +487,9 @@ function from_assignment_alloc_2d(node::Expr, state::DistPassState, arr::LHSVar,
   CompilerTools.LambdaHandling.addLocalVariable(leftovers_x_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
   CompilerTools.LambdaHandling.addLocalVariable(leftovers_y_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
   leftovers_x_expr = Expr(:(=), leftovers_x_var, mk_call(GlobalRef(HPAT.API,:__hpat_get_leftovers),
-                                  [num_blocks_x_var,:__hpat_node_id_x,state.dist_vars[:num_pes_x],arr_tot_size_x,block_size_var]))
+      [num_blocks_x_var,state.dist_vars[:node_id_x],state.dist_vars[:num_pes_x],arr_tot_size_x,block_size_var]))
   leftovers_y_expr = Expr(:(=), leftovers_y_var, mk_call(GlobalRef(HPAT.API,:__hpat_get_leftovers),
-                                  [num_blocks_y_var,:__hpat_node_id_y,state.dist_vars[:num_pes_y],arr_tot_size_y,block_size_var]))
+      [num_blocks_y_var,state.dist_vars[:node_id_y],state.dist_vars[:num_pes_y],arr_tot_size_y,block_size_var]))
   state.arrs_dist_info[arr].leftovers[end-1] = leftovers_x_var
   state.arrs_dist_info[arr].leftovers[end] = leftovers_y_var
 
@@ -538,9 +544,12 @@ function from_assignment_reshape(node::Expr, state::DistPassState, arr::LHSVar, 
 
       darr_div_expr = Expr(:(=), darr_div_var, mk_div_int_expr(arr_tot_size, state.dist_vars[:num_pes]))
       # zero-based index to match C interface of HDF5
-      darr_start_expr = Expr(:(=),darr_start_var, mk_mult_int_expr([:__hpat_node_id, darr_div_var]))
+      darr_start_expr = Expr(:(=),darr_start_var, mk_mult_int_expr(
+          [state.dist_vars[:node_id], darr_div_var]))
       #darr_count_expr = :($darr_count_var = __hpat_node_id==__hpat_num_pes-1 ? $arr_tot_size-__hpat_node_id*$darr_div_var : $darr_div_var)
-      darr_count_expr = Expr(:(=), darr_count_var, mk_call(GlobalRef(HPAT.API,:__hpat_get_node_portion),[arr_tot_size, darr_div_var, state.dist_vars[:num_pes], :__hpat_node_id]))
+      darr_count_expr = Expr(:(=), darr_count_var, mk_call(
+          GlobalRef(HPAT.API,:__hpat_get_node_portion),
+              [arr_tot_size, darr_div_var, state.dist_vars[:num_pes], state.dist_vars[:node_id]]))
 
       # create a new tuple for reshape
       tup_call = Expr(:call, TopNode(:tuple), dim_sizes[1:end-1]... , darr_count_var)
@@ -743,9 +752,12 @@ function from_parfor_1d(node::Expr, state, parfor)
   global_size = loopnest.upper
 
   loop_div_expr = Expr(:(=),loop_div_var, mk_div_int_expr(global_size,:__hpat_num_pes))
-  loop_start_expr = Expr(:(=), loop_start_var, mk_add_int_expr(mk_mult_int_expr([:__hpat_node_id,loop_div_var]),1))
+  loop_start_expr = Expr(:(=), loop_start_var, mk_add_int_expr(
+      mk_mult_int_expr([state.dist_vars[:node_id],loop_div_var]),1))
   #loop_end_expr = :($loop_end_var = __hpat_node_id==__hpat_num_pes-1 ?$(global_size):(__hpat_node_id+1)*$loop_div_var)
-  loop_end_expr = Expr(:(=), loop_end_var, mk_call(GlobalRef(HPAT.API,:__hpat_get_node_end),[global_size, loop_div_var, state.dist_vars[:num_pes], :__hpat_node_id]))
+  loop_end_expr = Expr(:(=), loop_end_var, mk_call(
+      GlobalRef(HPAT.API,:__hpat_get_node_end),
+          [global_size, loop_div_var, state.dist_vars[:num_pes], state.dist_vars[:node_id]]))
 
   loopnest.lower = loop_start_var
   loopnest.upper = loop_end_var
@@ -998,8 +1010,11 @@ function gen_rebalance_array(arr::LHSVar, state)
 
   darr_div_expr = Expr(:(=),darr_div_var, mk_div_int_expr(darr_size_var, state.dist_vars[:num_pes]))
   # zero-based index to match C interface of HDF5
-  darr_start_expr = Expr(:(=), darr_start_var, mk_mult_int_expr([:__hpat_node_id,darr_div_var]))
-  darr_count_expr = Expr(:(=), darr_count_var, mk_call(GlobalRef(HPAT.API,:__hpat_get_node_portion),[darr_size_var, darr_div_var, state.dist_vars[:num_pes], :__hpat_node_id]))
+  darr_start_expr = Expr(:(=), darr_start_var, mk_mult_int_expr(
+      [state.dist_vars[:node_id], darr_div_var]))
+  darr_count_expr = Expr(:(=), darr_count_var, mk_call(
+      GlobalRef(HPAT.API,:__hpat_get_node_portion),
+          [darr_size_var, darr_div_var, state.dist_vars[:num_pes], state.dist_vars[:node_id]]))
   push!(out, darr_div_expr, darr_start_expr, darr_count_expr)
 
   rebalance_call = mk_call(GlobalRef(HPAT.API,:__hpat_arr_rebalance),[arr, darr_count_var])
