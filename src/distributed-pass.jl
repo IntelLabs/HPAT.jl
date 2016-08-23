@@ -383,15 +383,18 @@ function from_assignment_alloc(node::Expr, state::DistPassState, arr::LHSVar, rh
 
       arr_id = getDistNewID(state)
       state.arrs_dist_info[arr].arr_id = arr_id
-      darr_start_var = symbol("__hpat_dist_arr_start_"*string(arr_id))
-      darr_div_var = symbol("__hpat_dist_arr_div_"*string(arr_id))
-      darr_count_var = symbol("__hpat_dist_arr_count_"*string(arr_id))
+      darr_start_var_name = Symbol("__hpat_dist_arr_start_"*string(arr_id))
+      darr_div_var_name = Symbol("__hpat_dist_arr_div_"*string(arr_id))
+      darr_count_var_name = Symbol("__hpat_dist_arr_count_"*string(arr_id))
       state.arrs_dist_info[arr].starts[end] = darr_start_var
       state.arrs_dist_info[arr].counts[end] = darr_count_var
 
-      CompilerTools.LambdaHandling.addLocalVariable(darr_start_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-      CompilerTools.LambdaHandling.addLocalVariable(darr_div_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-      CompilerTools.LambdaHandling.addLocalVariable(darr_count_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+      darr_start_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+          darr_start_var_name, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
+      darr_div_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+          darr_div_var_name, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
+      darr_count_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+          darr_count_var_name, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
 
 
       darr_div_expr = Expr(:(=),darr_div_var, mk_div_int_expr(arr_tot_size, state.dist_vars[:num_pes]))
@@ -988,10 +991,12 @@ function gen_rebalance_array(arr::LHSVar, state)
   state.arrs_dist_info[arr].arr_id = arr_id
 
   # get total array size with allreduce
-  darr_size_var = Symbol("_glob_arr_size_"*string(arr_id))
-  darr_loc_size_var = Symbol("_loc_arr_size_"*string(arr_id))
-  CompilerTools.LambdaHandling.addLocalVariable(darr_size_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-  CompilerTools.LambdaHandling.addLocalVariable(darr_loc_size_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+  darr_size_var_name = Symbol("_glob_arr_size_"*string(arr_id))
+  darr_loc_size_var_name = Symbol("_loc_arr_size_"*string(arr_id))
+  darr_size_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+      darr_size_var_name, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
+  darr_loc_size_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+      darr_loc_size_var_name, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
   size_var_init = Expr(:(=), darr_size_var, -1)
   # get size of last dimension, assume 1D partitioning
   loc_size_var_init = Expr(:(=), darr_loc_size_var, Expr(:call, GlobalRef(Base, :arraysize), arr, num_dims))
@@ -1002,15 +1007,18 @@ function gen_rebalance_array(arr::LHSVar, state)
   push!(out, reduceCall)
   state.arrs_dist_info[arr].dim_sizes[end] = darr_size_var
 
-  darr_start_var = symbol("__hpat_dist_arr_start_"*string(arr_id))
-  darr_div_var = symbol("__hpat_dist_arr_div_"*string(arr_id))
-  darr_count_var = symbol("__hpat_dist_arr_count_"*string(arr_id))
+  darr_start_var_name = Symbol("__hpat_dist_arr_start_"*string(arr_id))
+  darr_div_var_name = Symbol("__hpat_dist_arr_div_"*string(arr_id))
+  darr_count_var_name = Symbol("__hpat_dist_arr_count_"*string(arr_id))
   state.arrs_dist_info[arr].starts[end] = darr_start_var
   state.arrs_dist_info[arr].counts[end] = darr_count_var
 
-  CompilerTools.LambdaHandling.addLocalVariable(darr_start_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-  CompilerTools.LambdaHandling.addLocalVariable(darr_div_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-  CompilerTools.LambdaHandling.addLocalVariable(darr_count_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+  darr_start_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+      darr_start_var_name, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+  darr_div_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+      darr_div_var_name, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
+  darr_count_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+      darr_count_var_name, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
 
   darr_div_expr = Expr(:(=),darr_div_var, mk_div_int_expr(darr_size_var, state.dist_vars[:num_pes]))
   # zero-based index to match C interface of HDF5
