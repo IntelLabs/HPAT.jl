@@ -289,8 +289,11 @@ function genDistributedInit(state::DistPassState)
     numPesCall = Expr(:call, GlobalRef(HPAT.API,:hpat_dist_num_pes))
     nodeIdCall = Expr(:call, GlobalRef(HPAT.API,:hpat_dist_node_id))
 
-    pes_var = CompilerTools.LambdaHandling.addLocalVariable(Symbol("__hpat_num_pes"), Int32, ISASSIGNEDONCE | ISASSIGNED, state.LambdaVarInfo)
-    node_id_var = CompilerTools.LambdaHandling.addLocalVariable(Symbol("__hpat_node_id"), Int32, ISASSIGNEDONCE | ISASSIGNED, state.LambdaVarInfo)
+    pes_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+        Symbol("__hpat_num_pes"), Int32, ISASSIGNEDONCE | ISASSIGNED,state.LambdaVarInfo))
+    node_id_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+        Symbol("__hpat_node_id"), Int32, ISASSIGNEDONCE | ISASSIGNED, state.LambdaVarInfo))
+
     state.dist_vars[:num_pes] = pes_var
     state.dist_vars[:node_id] = node_id_var
 
@@ -318,10 +321,15 @@ function genDistributedInit(state::DistPassState)
                             """
       HPAT.addHpatInclude(extra_2D_includes,"","")
       initCall2d = Expr(:call, GlobalRef(HPAT.API,:hpat_dist_2d_init))
-      num_pes_x_var = CompilerTools.LambdaHandling.addLocalVariable(Symbol("__hpat_num_pes_x"), Int32, ISASSIGNEDONCE | ISASSIGNED, state.LambdaVarInfo)
-      num_pes_y_var = CompilerTools.LambdaHandling.addLocalVariable(Symbol("__hpat_num_pes_y"), Int32, ISASSIGNEDONCE | ISASSIGNED, state.LambdaVarInfo)
-      node_id_x_var = CompilerTools.LambdaHandling.addLocalVariable(Symbol("__hpat_node_id_x"), Int32, ISASSIGNEDONCE | ISASSIGNED, state.LambdaVarInfo)
-      node_id_y_var = CompilerTools.LambdaHandling.addLocalVariable(Symbol("__hpat_node_id_y"), Int32, ISASSIGNEDONCE | ISASSIGNED, state.LambdaVarInfo)
+      num_pes_x_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+          Symbol("__hpat_num_pes_x"), Int32, ISASSIGNEDONCE | ISASSIGNED, state.LambdaVarInfo))
+      num_pes_y_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+          Symbol("__hpat_num_pes_y"), Int32, ISASSIGNEDONCE | ISASSIGNED, state.LambdaVarInfo))
+      node_id_x_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+          Symbol("__hpat_node_id_x"), Int32, ISASSIGNEDONCE | ISASSIGNED, state.LambdaVarInfo))
+      node_id_y_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+          Symbol("__hpat_node_id_y"), Int32, ISASSIGNEDONCE | ISASSIGNED, state.LambdaVarInfo))
+
       state.dist_vars[:num_pes_x] = num_pes_x_var
       state.dist_vars[:num_pes_y] = num_pes_y_var
       state.dist_vars[:node_id_x] = node_id_x_var
