@@ -553,16 +553,19 @@ function from_assignment_reshape(node::Expr, state::DistPassState, arr::LHSVar, 
 
       arr_id = getDistNewID(state)
       state.arrs_dist_info[arr].arr_id = arr_id
-      darr_start_var = symbol("__hpat_dist_arr_start_"*string(arr_id))
-      darr_div_var = symbol("__hpat_dist_arr_div_"*string(arr_id))
-      darr_count_var = symbol("__hpat_dist_arr_count_"*string(arr_id))
+      darr_start_var_name = Symbol("__hpat_dist_arr_start_"*string(arr_id))
+      darr_div_var_name = Symbol("__hpat_dist_arr_div_"*string(arr_id))
+      darr_count_var_name = Symbol("__hpat_dist_arr_count_"*string(arr_id))
+
+      darr_start_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+          darr_start_var_name, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
+      darr_div_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+          darr_div_var_name, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
+      darr_count_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+          darr_count_var_name, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
+
       state.arrs_dist_info[arr].starts[end] = darr_start_var
       state.arrs_dist_info[arr].counts[end] = darr_count_var
-
-      CompilerTools.LambdaHandling.addLocalVariable(darr_start_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-      CompilerTools.LambdaHandling.addLocalVariable(darr_div_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-      CompilerTools.LambdaHandling.addLocalVariable(darr_count_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-
 
       darr_div_expr = Expr(:(=), darr_div_var, mk_div_int_expr(arr_tot_size, state.dist_vars[:num_pes]))
       # zero-based index to match C interface of HDF5
@@ -575,9 +578,10 @@ function from_assignment_reshape(node::Expr, state::DistPassState, arr::LHSVar, 
 
       # create a new tuple for reshape
       tup_call = Expr(:call, TopNode(:tuple), dim_sizes[1:end-1]... , darr_count_var)
-      reshape_tup_var = symbol("__hpat_dist_tup_var_"*string(arr_id))
+      reshape_tup_var_name = Symbol("__hpat_dist_tup_var_"*string(arr_id))
       tup_typ = CompilerTools.LambdaHandling.getType(rhs.args[3], state.LambdaVarInfo)
-      CompilerTools.LambdaHandling.addLocalVariable(reshape_tup_var, tup_typ, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+      reshape_tup_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+          reshape_tup_var_name, tup_typ, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
       tup_expr = Expr(:(=),reshape_tup_var,tup_call)
       rhs.args[3] = reshape_tup_var
       res = [darr_div_expr; darr_start_expr; darr_count_expr; tup_expr; node]
@@ -607,15 +611,17 @@ function from_assignment_gemm(node::Expr, state::DistPassState, lhs::LHSVar, rhs
     alloc_args[2] = out_dim_sizes
     alloc_call = ParallelIR.from_alloc(alloc_args)
     reduce_num = getDistNewID(state)
-    reduce_var = symbol("__hpat_gemm_reduce_"*string(reduce_num))
-    CompilerTools.LambdaHandling.addLocalVariable(reduce_var, out_typ, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+    reduce_var_name = Symbol("__hpat_gemm_reduce_"*string(reduce_num))
+    reduce_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+        reduce_var_name, out_typ, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
     reduce_var_init = Expr(:(=), reduce_var, Expr(:call,alloc_call...))
     # TODO: deallocate temporary array
     # reduce_var_dealloc = Expr(:call, TopNode(:ccall), QuoteNode(:jl_dealloc_array), reduce_var)
 
     # get reduction size
-    reduce_size_var = symbol("__hpat_gemm_reduce_size_"*string(reduce_num))
-    CompilerTools.LambdaHandling.addLocalVariable(reduce_size_var, Int, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+    reduce_size_var_name = Symbol("__hpat_gemm_reduce_size_"*string(reduce_num))
+    reduce_size_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+        reduce_size_var_name, Int, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
     size_expr = Expr(:(=), reduce_size_var, mk_mult_int_expr(out_dim_sizes))
 
     # add allreduce call
@@ -683,15 +689,17 @@ function from_assignment_gemv(node::Expr, state::DistPassState, lhs::LHSVar, rhs
     alloc_args[2] = out_dim_sizes
     alloc_call = ParallelIR.from_alloc(alloc_args)
     reduce_num = getDistNewID(state)
-    reduce_var = symbol("__hpat_gemv_reduce_"*string(reduce_num))
-    CompilerTools.LambdaHandling.addLocalVariable(reduce_var, out_typ, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+    reduce_var_name = Symbol("__hpat_gemv_reduce_"*string(reduce_num))
+    reduce_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+        reduce_var_name, out_typ, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
     reduce_var_init = Expr(:(=), reduce_var, Expr(:call,alloc_call...))
     # TODO: deallocate temporary array
     # reduce_var_dealloc = Expr(:call, TopNode(:ccall), QuoteNode(:jl_dealloc_array), reduce_var)
 
     # get reduction size
-    reduce_size_var = symbol("__hpat_gemv_reduce_size_"*string(reduce_num))
-    CompilerTools.LambdaHandling.addLocalVariable(reduce_size_var, Int, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+    reduce_size_var_name = Symbol("__hpat_gemv_reduce_size_"*string(reduce_num))
+    reduce_size_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+        reduce_size_var_name, Int, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
     size_expr = Expr(:(=), reduce_size_var, mk_mult_int_expr(out_dim_sizes))
 
     # add allreduce call
@@ -737,10 +745,11 @@ function from_parfor(node::Expr, state)
             label = next_label(state)
             label_node = LabelNode(label)
             goto_node = Expr(:gotoifnot, mk_call(GlobalRef(Base,:(===)),
-                [state.dist_vars[:node_id], 0], label)
+                [state.dist_vars[:node_id], 0]), label)
             # get broadcast size
-            bcast_size_var = symbol("__hpat_bcast_size_"*string(label))
-            CompilerTools.LambdaHandling.addLocalVariable(bcast_size_var, Int, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+            bcast_size_var_name = Symbol("__hpat_bcast_size_"*string(label))
+            bcast_size_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+                bcast_size_var_name, Int, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
             size_expr = Expr(:(=), bcast_size_var, mk_mult_int_expr(state.arrs_dist_info[write_arr].dim_sizes))
             bcast_expr = Expr(:call,GlobalRef(HPAT.API,:__hpat_dist_broadcast), write_arr, bcast_size_var)
 
@@ -759,13 +768,16 @@ function from_parfor_1d(node::Expr, state, parfor)
   # TODO: build a constant table and check the loop variables at this stage
   # @assert loopnest.lower==1 && loopnest.step==1 "DistPass only simple PIR loops supported now"
 
-  loop_start_var = symbol("__hpat_loop_start_"*string(parfor.unique_id))
-  loop_end_var = symbol("__hpat_loop_end_"*string(parfor.unique_id))
-  loop_div_var = symbol("__hpat_loop_div_"*string(parfor.unique_id))
+  loop_start_var_name = Symbol("__hpat_loop_start_"*string(parfor.unique_id))
+  loop_end_var_name = Symbol("__hpat_loop_end_"*string(parfor.unique_id))
+  loop_div_var_name = Symbol("__hpat_loop_div_"*string(parfor.unique_id))
 
-  CompilerTools.LambdaHandling.addLocalVariable(loop_start_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-  CompilerTools.LambdaHandling.addLocalVariable(loop_end_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
-  CompilerTools.LambdaHandling.addLocalVariable(loop_div_var, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+  loop_start_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+      loop_start_var_name, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
+  loop_end_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+      loop_end_var_name, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
+  loop_div_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+      loop_div_var_name, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
 
   #first_arr = state.parfor_info[parfor.unique_id][1];
   #@dprintln(3,"DistPass parfor first array ", first_arr)
