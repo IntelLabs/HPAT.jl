@@ -714,7 +714,8 @@ function from_parfor(node::Expr, state)
             # generate new label
             label = next_label(state)
             label_node = LabelNode(label)
-            goto_node = Expr(:gotoifnot, :(__hpat_node_id==0),label)
+            goto_node = Expr(:gotoifnot, mk_call(GlobalRef(Base,:(===)),
+                [state.dist_vars[:node_id], 0], label)
             # get broadcast size
             bcast_size_var = symbol("__hpat_bcast_size_"*string(label))
             CompilerTools.LambdaHandling.addLocalVariable(bcast_size_var, Int, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
