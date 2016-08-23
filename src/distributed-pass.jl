@@ -752,7 +752,8 @@ function from_parfor_1d(node::Expr, state, parfor)
   # some parfors have no arrays
   global_size = loopnest.upper
 
-  loop_div_expr = Expr(:(=),loop_div_var, mk_div_int_expr(global_size,:__hpat_num_pes))
+  loop_div_expr = Expr(:(=),loop_div_var, mk_div_int_expr(
+      global_size, state.dist_vars[:num_pes]))
   loop_start_expr = Expr(:(=), loop_start_var, mk_add_int_expr(
       mk_mult_int_expr([state.dist_vars[:node_id],loop_div_var]),1))
   #loop_end_expr = :($loop_end_var = __hpat_node_id==__hpat_num_pes-1 ?$(global_size):(__hpat_node_id+1)*$loop_div_var)
@@ -941,7 +942,7 @@ function adjust_arrayrefs(stmt::Expr, loopnest, top_level_number, is_top_level, 
         if isBaseFunc(topCall,:unsafe_arrayref) || isBaseFunc(topCall,:unsafe_arrayset)
             # TODO: simply divide the last dimension, more general partitioning needed
             index_arg = toLHSVar(stmt.args[end])
-            if isa(index_arg,Symbol) && index_arg==toLHSVar(loopnest.indexVariable)
+            if isa(index_arg, LHSVar) && index_arg==toLHSVar(loopnest.indexVariable)
                 stmt.args[end] = mk_add_int_expr(mk_sub_int_expr(toLHSVar(index_arg),loopnest.lower),1)
                 return stmt
             end
@@ -958,11 +959,13 @@ end
 function gen_dist_reductions(reductions::Array{PIRReduction,1}, state)
     res = Any[]
     for reduce in reductions
-        reduce_var = symbol("__hpat_reduce_"*string(getDistNewID(state)))
-        CompilerTools.LambdaHandling.addLocalVariable(reduce_var, reduce.reductionVar.typ, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo)
+        reduce_var_name = Symbol("__hpat_reduce_"*string(getDistNewID(state)))
+        reduce_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+            reduce_var_name, reduce.reductionVar.typ, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
 
         reduce_var_init = Expr(:(=), reduce_var, 0)
-        reduceCall = Expr(:call,GlobalRef(HPAT.API,:hpat_dist_allreduce),reduce.reductionVar,reduce.reductionFunc, reduce_var, 1)
+        reduceCall = Expr(:call,GlobalRef(HPAT.API,:hpat_dist_allreduce),
+            reduce.reductionVar,reduce.reductionFunc, reduce_var, 1)
         rootCopy = Expr(:(=), reduce.reductionVar, reduce_var)
         append!(res,[reduce_var_init; reduceCall; rootCopy])
     end
