@@ -116,9 +116,11 @@ function pattern_match_call_dist_add_extra_block(f::GlobalRef, local_blocks::LHS
   s = ""
   if f==GlobalRef(HPAT.API,:__hpat_add_extra_block)
     # similar to numroc.f
+    c_local_blocks = ParallelAccelerator.CGen.from_expr(local_blocks, linfo)
+    c_total_blocks = ParallelAccelerator.CGen.from_expr(total_blocks, linfo)
     c_node_id = ParallelAccelerator.CGen.from_expr(node_id, linfo)
     c_num_pes = ParallelAccelerator.CGen.from_expr(num_pes, linfo)
-    s *= "$local_blocks += ($c_node_id<($total_blocks%$c_num_pes)?1:0);\n"
+    s *= "$c_local_blocks += ($c_node_id<($c_total_blocks%$c_num_pes)?1:0);\n"
   end
   return s
 end
@@ -134,9 +136,11 @@ function pattern_match_call_dist_get_leftovers(f::GlobalRef,
   if f==GlobalRef(HPAT.API,:__hpat_get_leftovers)
     c_total_data_size = ParallelAccelerator.CGen.from_expr(total_data_size, linfo)
     # similar to numroc.f
+    c_total_blocks = ParallelAccelerator.CGen.from_expr(total_blocks, linfo)
+    c_block_size = ParallelAccelerator.CGen.from_expr(block_size, linfo)
     c_node_id = ParallelAccelerator.CGen.from_expr(node_id, linfo)
     c_num_pes = ParallelAccelerator.CGen.from_expr(num_pes, linfo)
-    s *= "(($c_node_id==($total_blocks%$c_num_pes))? ($c_total_data_size%$block_size):0)"
+    s *= "(($c_node_id==($c_total_blocks%$c_num_pes))? ($c_total_data_size%$c_block_size):0)"
   end
   return s
 end
@@ -1113,6 +1117,19 @@ function pattern_match_call_data_sink_write_2d(f::GlobalRef, id::Int, hdf5_var, 
             throw("CGen unsupported HDF5 data type")
         end
 
+        c_start_x = ParallelAccelerator.CGen.from_expr(start_x, linfo)
+        c_start_y = ParallelAccelerator.CGen.from_expr(start_y, linfo)
+        c_stride_x = ParallelAccelerator.CGen.from_expr(stride_x, linfo)
+        c_stride_y = ParallelAccelerator.CGen.from_expr(stride_y, linfo)
+        c_count_x = ParallelAccelerator.CGen.from_expr(count_x, linfo)
+        c_count_y = ParallelAccelerator.CGen.from_expr(count_y, linfo)
+        c_block_x = ParallelAccelerator.CGen.from_expr(block_x, linfo)
+        c_block_y = ParallelAccelerator.CGen.from_expr(block_y, linfo)
+        c_local_size_x = ParallelAccelerator.CGen.from_expr(local_size_x, linfo)
+        c_local_size_y = ParallelAccelerator.CGen.from_expr(local_size_y, linfo)
+        c_leftover_x = ParallelAccelerator.CGen.from_expr(leftover_x, linfo)
+        c_leftover_y = ParallelAccelerator.CGen.from_expr(leftover_y, linfo)
+
         # create dataset
         s *= " hid_t dataset_id_$num;\n"
         s *= " hid_t  filespace_$num, memspace_$num;\n"
@@ -1133,14 +1150,14 @@ function pattern_match_call_data_sink_write_2d(f::GlobalRef, id::Int, hdf5_var, 
         s *= "hsize_t CGen_HDF5_count_$num[$num_dims];\n"
         s *=  "hsize_t CGen_HDF5_block_$num[$num_dims];\n"
         # last 2 dimensions are set using distributed-pass data
-        s *= "CGen_HDF5_start_$num[0] = $start_y;\n"
-        s *= "CGen_HDF5_start_$num[1] = $start_x;\n"
-        s *= "CGen_HDF5_stride_$num[0] = $stride_y;\n"
-        s *= "CGen_HDF5_stride_$num[1] = $stride_x;\n"
-        s *= "CGen_HDF5_count_$num[0] = $count_y;\n"
-        s *= "CGen_HDF5_count_$num[1] = $count_x;\n"
-        s *= "CGen_HDF5_block_$num[0] = $block_y;\n"
-        s *= "CGen_HDF5_block_$num[1] = $block_x;\n"
+        s *= "CGen_HDF5_start_$num[0] = $c_start_y;\n"
+        s *= "CGen_HDF5_start_$num[1] = $c_start_x;\n"
+        s *= "CGen_HDF5_stride_$num[0] = $c_stride_y;\n"
+        s *= "CGen_HDF5_stride_$num[1] = $c_stride_x;\n"
+        s *= "CGen_HDF5_count_$num[0] = $c_count_y;\n"
+        s *= "CGen_HDF5_count_$num[1] = $c_count_x;\n"
+        s *= "CGen_HDF5_block_$num[0] = $c_block_y;\n"
+        s *= "CGen_HDF5_block_$num[1] = $c_block_x;\n"
 
         #s *= "for(int i_CGen_dim=1; i_CGen_dim<$num_dims; i_CGen_dim++) {\n"
         for i in 2:length(tot_size)-1
@@ -1157,27 +1174,27 @@ function pattern_match_call_data_sink_write_2d(f::GlobalRef, id::Int, hdf5_var, 
         s *= "assert(ret_$num != -1);\n"
 
         # y leftovers, x dimension as before
-        s *= "CGen_HDF5_start_$num[0] = $start_y+$stride_y*$count_y;\n"
-        s *= "CGen_HDF5_start_$num[1] = $start_x;\n"
+        s *= "CGen_HDF5_start_$num[0] = $c_start_y+$c_stride_y*$c_count_y;\n"
+        s *= "CGen_HDF5_start_$num[1] = $c_start_x;\n"
         s *= "CGen_HDF5_stride_$num[0] = 1;\n"
-        s *= "CGen_HDF5_stride_$num[1] = $stride_x;\n"
-        s *= "CGen_HDF5_count_$num[0] = $leftover_y;\n"
-        s *= "CGen_HDF5_count_$num[1] = $count_x;\n"
+        s *= "CGen_HDF5_stride_$num[1] = $c_stride_x;\n"
+        s *= "CGen_HDF5_count_$num[0] = $c_leftover_y;\n"
+        s *= "CGen_HDF5_count_$num[1] = $c_count_x;\n"
         s *= "CGen_HDF5_block_$num[0] = 1;\n"
-        s *= "CGen_HDF5_block_$num[1] = $block_x;\n"
+        s *= "CGen_HDF5_block_$num[1] = $c_block_x;\n"
 
         s *= """ret_$num = H5Sselect_hyperslab(filespace_$num, H5S_SELECT_OR,
                  CGen_HDF5_start_$num, CGen_HDF5_stride_$num, CGen_HDF5_count_$num, CGen_HDF5_block_$num);\n"""
         s *= "assert(ret_$num != -1);\n"
 
         # x leftovers, y dimension as before
-        s *= "CGen_HDF5_start_$num[0] = $start_y;\n"
-        s *= "CGen_HDF5_start_$num[1] = $start_x+$stride_x*$count_x;\n"
-        s *= "CGen_HDF5_stride_$num[0] = $stride_y;\n"
+        s *= "CGen_HDF5_start_$num[0] = $c_start_y;\n"
+        s *= "CGen_HDF5_start_$num[1] = $c_start_x+$c_stride_x*$c_count_x;\n"
+        s *= "CGen_HDF5_stride_$num[0] = $c_stride_y;\n"
         s *= "CGen_HDF5_stride_$num[1] = 1;\n"
-        s *= "CGen_HDF5_count_$num[0] = $count_y;\n"
-        s *= "CGen_HDF5_count_$num[1] = $leftover_x;\n"
-        s *= "CGen_HDF5_block_$num[0] = $block_y;\n"
+        s *= "CGen_HDF5_count_$num[0] = $c_count_y;\n"
+        s *= "CGen_HDF5_count_$num[1] = $c_leftover_x;\n"
+        s *= "CGen_HDF5_block_$num[0] = $c_block_y;\n"
         s *= "CGen_HDF5_block_$num[1] = 1;\n"
 
         s *= """ret_$num = H5Sselect_hyperslab(filespace_$num, H5S_SELECT_OR,
@@ -1185,12 +1202,12 @@ function pattern_match_call_data_sink_write_2d(f::GlobalRef, id::Int, hdf5_var, 
         s *= "assert(ret_$num != -1);\n"
 
         # both x-y leftovers
-        s *= "CGen_HDF5_start_$num[0] = $start_y+$stride_y*$count_y;\n"
-        s *= "CGen_HDF5_start_$num[1] = $start_x+$stride_x*$count_x;\n"
+        s *= "CGen_HDF5_start_$num[0] = $c_start_y+$c_stride_y*$c_count_y;\n"
+        s *= "CGen_HDF5_start_$num[1] = $c_start_x+$c_stride_x*$c_count_x;\n"
         s *= "CGen_HDF5_stride_$num[0] = 1;\n"
         s *= "CGen_HDF5_stride_$num[1] = 1;\n"
-        s *= "CGen_HDF5_count_$num[0] = $leftover_y;\n"
-        s *= "CGen_HDF5_count_$num[1] = $leftover_x;\n"
+        s *= "CGen_HDF5_count_$num[0] = $c_leftover_y;\n"
+        s *= "CGen_HDF5_count_$num[1] = $c_leftover_x;\n"
         s *= "CGen_HDF5_block_$num[0] = 1;\n"
         s *= "CGen_HDF5_block_$num[1] = 1;\n"
 
@@ -1200,8 +1217,8 @@ function pattern_match_call_data_sink_write_2d(f::GlobalRef, id::Int, hdf5_var, 
 
         # size of memory to read to
         s *=  "hsize_t CGen_HDF5_memsize_$num[$num_dims];\n"
-        s *= "CGen_HDF5_memsize_$num[0] = $local_size_y;\n"
-        s *= "CGen_HDF5_memsize_$num[1] = $local_size_x;\n"
+        s *= "CGen_HDF5_memsize_$num[0] = $c_local_size_y;\n"
+        s *= "CGen_HDF5_memsize_$num[1] = $c_local_size_x;\n"
 
         s *= "hid_t mem_dataspace_$num = H5Screate_simple ($num_dims, CGen_HDF5_memsize_$num, NULL);\n"
         s *= "assert (mem_dataspace_$num != -1);\n"
