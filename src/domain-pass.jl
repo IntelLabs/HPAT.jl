@@ -124,9 +124,9 @@ function from_expr(node::Expr, state::DomainState)
     head = node.head
     if head==:(=)
         return from_assignment(node, state)
-    elseif head==:call && node.args[1]==GlobalRef(HPAT.API,:data_sink_HDF5)
+    elseif getHPATcall(node)==:data_sink_HDF5
         return translate_data_sink_HDF5(node.args[2], node.args[3], node.args[4], state)
-    elseif head==:return && isa(node.args[1],Expr) && node.args[1].head==:call && node.args[1].args[1]==GlobalRef(HPAT.API,:data_sink_HDF5)
+    elseif head==:return && getHPATcall(node.args[1])==:data_sink_HDF5
         snode = node.args[1]
         s_expr = translate_data_sink_HDF5(snode.args[2], snode.args[3], snode.args[4], state)
         return Any[s_expr;Expr(:return,nothing)]
