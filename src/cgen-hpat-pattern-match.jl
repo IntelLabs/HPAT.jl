@@ -247,6 +247,7 @@ function pattern_match_call_dist_allreduce(f::GlobalRef, var::RHSVar, reductionF
         mpi_type = ""
         var = toLHSVar(var)
         c_var = ParallelAccelerator.CGen.from_expr(var, linfo)
+        c_size = ParallelAccelerator.CGen.from_expr(size, linfo)
         c_output = ParallelAccelerator.CGen.from_expr(output, linfo)
         var_typ = ParallelAccelerator.CGen.getSymType(var, linfo)
         is_array =  var_typ<:Array
@@ -268,7 +269,7 @@ function pattern_match_call_dist_allreduce(f::GlobalRef, var::RHSVar, reductionF
             throw("CGen unsupported MPI reduction function")
         end
 
-        s="MPI_Allreduce($c_var, $c_output, $size, $mpi_type, $mpi_func, MPI_COMM_WORLD);"
+        s="MPI_Allreduce($c_var, $c_output, $c_size, $mpi_type, $mpi_func, MPI_COMM_WORLD);"
         # debug print for 1D_sum
         #s*="printf(\"len %d start %d end %d\\n\", parallel_ir_save_array_len_1_1, __hpat_loop_start_2, __hpat_loop_end_3);\n"
         return s
@@ -719,7 +720,7 @@ function pattern_match_call_data_src_read(f::GlobalRef, id::Int, arr::RHSVar, st
         # assuming 1st dimension is partitined
         data_typ = eltype(ParallelAccelerator.CGen.getSymType(arr, linfo))
         t_typ = ParallelAccelerator.CGen.toCtype(data_typ)
-
+        carr = ParallelAccelerator.CGen.from_expr(toLHSVar(arr), linfo)
         c_start = ParallelAccelerator.CGen.from_expr(start, linfo)
         c_count = ParallelAccelerator.CGen.from_expr(count, linfo)
 
@@ -817,7 +818,7 @@ function pattern_match_call_data_src_read(f::GlobalRef, id::Int, arr::RHSVar, st
 
             char CGen_txt_sep_char_$num[] = \"\\n\";
             int64_t CGen_txt_curr_row_$num = 0;
-            $t_typ * CGen_txt_data_arr = ($t_typ *)$arr.getData();
+            $t_typ * CGen_txt_data_arr = ($t_typ *)$c_arr.getData();
             while(CGen_txt_curr_row_$num!=CGen_txt_count_$num)
             {
                 char* CGen_txt_line;
@@ -856,7 +857,7 @@ function pattern_match_call_data_src_read(f::GlobalRef, id::Int, arr::RHSVar, st
                         CGen_txt_data_arr[CGen_txt_data_ind_$num++] = strtod(CGen_txt_line,&CGen_txt_line);
                     else
                         CGen_txt_data_arr[CGen_txt_data_ind_$num++] = strtod(CGen_txt_line+1,&CGen_txt_line);
-         //           std::cout<<$arr[CGen_txt_data_ind_$num-1]<<std::endl;
+         //           std::cout<<$c_arr[CGen_txt_data_ind_$num-1]<<std::endl;
                 }
                 CGen_txt_curr_row_$num++;
             }
