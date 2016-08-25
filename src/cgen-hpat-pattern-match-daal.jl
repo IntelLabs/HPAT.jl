@@ -26,7 +26,7 @@ THE POSSIBILITY OF SUCH DAMAGE.
 
 
 function pattern_match_call_kmeans(f::GlobalRef, cluster_out::RHSVar, arr::RHSVar,
-                                   num_clusters::RHSVar, iterNum::RHSVar, start::Symbol, count::Symbol,
+                                   num_clusters::RHSVar, iterNum::RHSVar, start::LHSVar, count::LHSVar,
                                    col_size::Union{RHSVar,Int,Expr}, tot_row_size::Union{RHSVar,Int,Expr}, linfo)
     s = ""
     if f.name==:Kmeans_dist
@@ -36,6 +36,8 @@ function pattern_match_call_kmeans(f::GlobalRef, cluster_out::RHSVar, arr::RHSVa
         c_col_size = ParallelAccelerator.CGen.from_expr(col_size, linfo)
         c_tot_row_size = ParallelAccelerator.CGen.from_expr(tot_row_size, linfo)
         c_cluster_out = ParallelAccelerator.CGen.from_expr(cluster_out, linfo)
+        c_start = ParallelAccelerator.CGen.from_expr(start, linfo)
+        c_count = ParallelAccelerator.CGen.from_expr(count, linfo)
 
         s *= """
         services::Environment::getInstance()->setNumberOfThreads(omp_get_max_threads());
@@ -47,10 +49,10 @@ function pattern_match_call_kmeans(f::GlobalRef, cluster_out::RHSVar, arr::RHSVa
         int mpi_root = 0;
         int rankId = __hpat_node_id;
 
-        HomogenNumericTable<double>* dataTable = new HomogenNumericTable<double>((double*)$c_arr.getData(), $c_col_size, $count);
+        HomogenNumericTable<double>* dataTable = new HomogenNumericTable<double>((double*)$c_arr.getData(), $c_col_size, $c_count);
         services::SharedPtr<NumericTable> dataTablePointer(dataTable);
         kmeans::init::Distributed<step1Local,double,kmeans::init::randomDense>
-                       localInit($c_num_clusters, $c_tot_row_size, $start);
+                       localInit($c_num_clusters, $c_tot_row_size, $c_start);
         localInit.input.set(kmeans::init::data, dataTablePointer);
 
         /* Compute k-means */
@@ -219,9 +221,9 @@ function pattern_match_call_kmeans(f::ANY, cluster_out::ANY, arr::ANY, num_clust
 end
 
 function pattern_match_call_linear_regression(f::GlobalRef, coeff_out::RHSVar, points::RHSVar,
-                                   responses::RHSVar, start_points::Symbol, count_points::Symbol,
+                                   responses::RHSVar, start_points::LHSVar, count_points::LHSVar,
                                    col_size_points::Union{RHSVar,Int,Expr}, tot_row_size_points::Union{RHSVar,Int,Expr},
-                                   start_responses::Symbol, count_responses::Symbol,
+                                   start_responses::LHSVar, count_responses::LHSVar,
                                    col_size_responses::Union{RHSVar,Int,Expr}, tot_row_size_responses::Union{RHSVar,Int,Expr}, linfo)
     s = ""
     if f.name==:LinearRegression_dist
@@ -232,14 +234,19 @@ function pattern_match_call_linear_regression(f::GlobalRef, coeff_out::RHSVar, p
         c_col_size_responses = ParallelAccelerator.CGen.from_expr(col_size_responses, linfo)
         c_tot_row_size_responses = ParallelAccelerator.CGen.from_expr(tot_row_size_responses, linfo)
         c_coeff_out = ParallelAccelerator.CGen.from_expr(coeff_out, linfo)
+        c_start_points = ParallelAccelerator.CGen.from_expr(start_points, linfo)
+        c_count_points = ParallelAccelerator.CGen.from_expr(count_points, linfo)
+        c_start_responses = ParallelAccelerator.CGen.from_expr(start_responses, linfo)
+        c_count_responses = ParallelAccelerator.CGen.from_expr(count_responses, linfo)
+
         s = """
             assert($c_tot_row_size_points==$c_tot_row_size_responses);
             int mpi_root = 0;
             int rankId = __hpat_node_id;
             services::Environment::getInstance()->setNumberOfThreads(omp_get_max_threads());
 
-            HomogenNumericTable<double>* dataTable = new HomogenNumericTable<double>((double*)$c_points.getData(), $c_col_size_points, $count_points);
-            HomogenNumericTable<double>* responseTable = new HomogenNumericTable<double>((double*)$c_responses.getData(), $c_col_size_responses, $count_responses);
+            HomogenNumericTable<double>* dataTable = new HomogenNumericTable<double>((double*)$c_points.getData(), $c_col_size_points, $c_count_points);
+            HomogenNumericTable<double>* responseTable = new HomogenNumericTable<double>((double*)$c_responses.getData(), $c_col_size_responses, $c_count_responses);
             services::SharedPtr<NumericTable> trainData(dataTable);
             services::SharedPtr<NumericTable> trainDependentVariables(responseTable);
             services::SharedPtr<linear_regression::training::Result> trainingResult;
