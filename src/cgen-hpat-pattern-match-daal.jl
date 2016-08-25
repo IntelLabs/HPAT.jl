@@ -26,7 +26,7 @@ THE POSSIBILITY OF SUCH DAMAGE.
 
 
 function pattern_match_call_kmeans(f::GlobalRef, cluster_out::RHSVar, arr::RHSVar,
-                                   num_clusters::RHSVar, iterNum::RHSVar, start::LHSVar, count::LHSVar,
+                                   num_clusters::Union{RHSVar,Int}, iterNum::Union{RHSVar,Int}, start::LHSVar, count::LHSVar,
                                    col_size::Union{RHSVar,Int,Expr}, tot_row_size::Union{RHSVar,Int,Expr}, linfo)
     s = ""
     if f.name==:Kmeans_dist

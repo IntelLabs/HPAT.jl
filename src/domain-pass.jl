@@ -71,9 +71,10 @@ const generatedExprHeads = [:alloc,
 
 # ENTRY to DomainPass
 function from_root(function_name, ast)
-    @dprintln(1,"Starting main DomainPass.from_root.  function = ", function_name, " ast = ", ast)
 
     linfo, body = CompilerTools.LambdaHandling.lambdaToLambdaVarInfo(ast)
+    @dprintln(1,"Starting main DomainPass.from_root.  function = ", function_name, " ast = ", linfo, body)
+
     tableCols, tableTypes = get_table_meta(body)
     @dprintln(3,"HPAT tables: ", tableCols,tableTypes)
     state::DomainState = DomainState(linfo, 0, 0, tableCols, tableTypes)
@@ -417,6 +418,9 @@ function translate_hpat_dist_calls(lhs::LHSVar, rhs::Expr, hpat_call::Symbol, st
     elseif hpat_call in [:Kmeans,:LinearRegression,:NaiveBayes]
         # enable OpenMP for DAAL calls
         HPAT.enableOMP()
+        # set type for output since type inference is broken!
+        in_typ = CompilerTools.LambdaHandling.getType(rhs.args[2], state.linfo)
+        CompilerTools.LambdaHandling.setType(lhs, in_typ, state.linfo)
         # no change
         #return [Expr(:(=),lhs,rhs)]
         # instead of assignment, return a call with lhs as 1st argument
