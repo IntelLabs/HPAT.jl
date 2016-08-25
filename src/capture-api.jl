@@ -219,8 +219,7 @@ function translate_join(lhs, rhs, state)
 
     new_key = getQuoteValue(rhs.args[5])
     new_key_arr = getColName(lhs, new_key)
-    key1_index = findfirst(state.tableCols[t1],key1)
-    key2_index = findfirst(state.tableCols[t2],key2)
+
     # Make key column first column and then append to it
     t1_col_arrs_sorted = [key1_arr]
     t2_col_arrs_sorted = [key2_arr]
