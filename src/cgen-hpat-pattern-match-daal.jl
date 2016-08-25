@@ -343,9 +343,9 @@ function pattern_match_call_linear_regression(f::ANY, coeff_out::ANY, arr::ANY, 
 end
 
 function pattern_match_call_naive_bayes(f::GlobalRef, coeff_out::RHSVar, points::RHSVar,
-                                   labels::RHSVar, num_classes::Union{RHSVar,Int,Expr}, start_points::Symbol, count_points::Symbol,
+                                   labels::RHSVar, num_classes::Union{RHSVar,Int,Expr}, start_points::LHSVar, count_points::LHSVar,
                                    col_size_points::Union{RHSVar,Int,Expr}, tot_row_size_points::Union{RHSVar,Int,Expr},
-                                   start_labels::Symbol, count_labels::Symbol,
+                                   start_labels::LHSVar, count_labels::LHSVar,
                                    col_size_labels::Union{RHSVar,Int,Expr}, tot_row_size_labels::Union{RHSVar,Int,Expr}, linfo)
     s = ""
     if f.name==:NaiveBayes_dist
@@ -357,6 +357,10 @@ function pattern_match_call_naive_bayes(f::GlobalRef, coeff_out::RHSVar, points:
         c_tot_row_size_labels = ParallelAccelerator.CGen.from_expr(tot_row_size_labels, linfo)
         c_coeff_out = ParallelAccelerator.CGen.from_expr(coeff_out, linfo)
         c_num_classes = ParallelAccelerator.CGen.from_expr(num_classes, linfo)
+        c_start_points = ParallelAccelerator.CGen.from_expr(start_points, linfo)
+        c_count_points = ParallelAccelerator.CGen.from_expr(count_points, linfo)
+        c_start_labels = ParallelAccelerator.CGen.from_expr(start_labels, linfo)
+        c_count_labels = ParallelAccelerator.CGen.from_expr(count_labels, linfo)
 
         s = """
             assert($c_tot_row_size_points==$c_tot_row_size_labels);
@@ -364,8 +368,8 @@ function pattern_match_call_naive_bayes(f::GlobalRef, coeff_out::RHSVar, points:
             int rankId = __hpat_node_id;
             services::Environment::getInstance()->setNumberOfThreads(omp_get_max_threads());
 
-            HomogenNumericTable<double>* dataTable = new HomogenNumericTable<double>((double*)$c_points.getData(), $c_col_size_points, $count_points);
-            HomogenNumericTable<double>* responseTable = new HomogenNumericTable<double>((double*)$c_labels.getData(), $c_col_size_labels, $count_labels);
+            HomogenNumericTable<double>* dataTable = new HomogenNumericTable<double>((double*)$c_points.getData(), $c_col_size_points, $c_count_points);
+            HomogenNumericTable<double>* responseTable = new HomogenNumericTable<double>((double*)$c_labels.getData(), $c_col_size_labels, $c_count_labels);
             services::SharedPtr<NumericTable> trainData(dataTable);
             services::SharedPtr<NumericTable> trainGroundTruth(responseTable);
             services::SharedPtr<multinomial_naive_bayes::training::Result> trainingResult;
