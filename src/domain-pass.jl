@@ -157,9 +157,9 @@ function translate_table_oprs(nodes::Array{Any,1}, state::DomainState)
             local func_call = getCallFunction(nodes[i].args[2])
             local args = getCallArguments(nodes[i].args[2])
             # convert :invoke to :call to be consistent
-            if isInvoke(call)
+            if isInvoke(nodes[i].args[2])
                 nodes[i].args[2].head = :call
-                nodes[i].args[2].args = [func; args]
+                nodes[i].args[2].args = [func_call; args]
             end
             if func_call==GlobalRef(HPAT.API, :join)
                 remove_before,remove_after,ast = translate_join(nodes[i], nodes, i,state)
