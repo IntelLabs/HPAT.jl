@@ -197,14 +197,26 @@ function translate_join(lhs, rhs, state)
     # 1st and 2nd args are tables to join
     t1 = rhs.args[2]
     t2 = rhs.args[3]
-    @assert rhs.args[4].head==:comparison "invalid join key"
-    @assert rhs.args[4].args[2]==:(==) "invalid join key"
 
-    # get key columns
-    key1 = getQuoteValue(rhs.args[4].args[1])
+    # 0.5 uses (call == a b) for comparison
+    if VERSION > v"0.5.0-d"
+        @assert rhs.args[4].head==:call "invalid join key head"
+        @assert rhs.args[4].args[1]==:(==) "invalid join key"
+        # get key columns
+        key1 = getQuoteValue(rhs.args[4].args[2])
+        key2 = getQuoteValue(rhs.args[4].args[3])
+    else
+        # 0.4 uses (comparison a == b) for comparison
+        @assert rhs.args[4].head==:comparison "invalid join key head"
+        @assert rhs.args[4].args[2]==:(==) "invalid join key"
+        # get key columns
+        key1 = getQuoteValue(rhs.args[4].args[1])
+        key2 = getQuoteValue(rhs.args[4].args[3])
+    end
+
     key1_arr = getColName(t1, key1)
-    key2 = getQuoteValue(rhs.args[4].args[3])
     key2_arr = getColName(t2, key2)
+
     new_key = getQuoteValue(rhs.args[5])
     new_key_arr = getColName(lhs, new_key)
     key1_index = findfirst(state.tableCols[t1],key1)
