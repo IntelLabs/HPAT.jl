@@ -192,10 +192,8 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
     s *= "memset (scount_t2_tmp_$id, 0, sizeof(int)* join_num_pes_$id);\n"
 
     # Receiving counts for both tables
-    rsize_t1 = "rsize_t1_"*join_rand
-    rsize_t2 = "rsize_t2_"*join_rand
-    s *= "int  $rsize_t1 = 0;\n"
-    s *= "int  $rsize_t2 = 0;\n"
+    s *= "int rsize_t1_$id = 0;\n"
+    s *= "int rsize_t2_$id = 0;\n"
 
     rcount_t1 = "rcount_t1_"*join_rand
     rcount_t2 = "rcount_t2_"*join_rand
@@ -300,14 +298,14 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
     # Summing up receiving counts
     s *= """
             for(int i=0;i< join_num_pes_$id ;i++){
-                $rsize_t1=$rsize_t1 + $rcount_t1[i];
-                $rsize_t2=$rsize_t2 + $rcount_t2[i];
+                rsize_t1_$id = rsize_t1_$id + $rcount_t1[i];
+                rsize_t2_$id = rsize_t2_$id + $rcount_t2[i];
               }
         """
     for (index, col_name) in enumerate(table1_cols)
         table1_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
         table1_col_name_tmp = table1_col_name *"_tmp_join_" * join_rand
-        s *= " j2c_array< int64_t > rbuf_$table1_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $rsize_t1);\n"
+        s *= " j2c_array< int64_t > rbuf_$table1_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, rsize_t1_$id);\n"
         s *= """ MPI_Alltoallv($table1_col_name_tmp.getData(), scount_t1_$id, $sdis_t1, MPI_INT64_T,
                                      rbuf_$table1_col_name.getData(), $rcount_t1, $rdis_t1, MPI_INT64_T, join_comm_$id);
                      """
@@ -318,7 +316,7 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
     for (index, col_name) in enumerate(table2_cols)
         table2_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
         table2_col_name_tmp = table2_col_name * "_tmp_join_" * join_rand
-        s *= " j2c_array< int64_t > rbuf_$table2_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $rsize_t2);\n"
+        s *= " j2c_array< int64_t > rbuf_$table2_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, rsize_t2_$id);\n"
         s *= """ MPI_Alltoallv($table2_col_name_tmp.getData(), scount_t2_$id, $sdis_t2, MPI_INT64_T,
                                      rbuf_$table2_col_name.getData(), $rcount_t2, $rdis_t2, MPI_INT64_T, join_comm_$id);
                      """
@@ -375,8 +373,8 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
         table2_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
         s *= "$t2_all_arrays [$arr_index] = ( $j2c_type_t2 *) $table2_col_name.getData();\n"
     end
-    s *= "__hpat_timsort(( $j2c_type_t1 *) $t1_c1_join.getData(), $rsize_t1 , $t1_all_arrays, $t1_length - 1);\n"
-    s *= "__hpat_timsort(( $j2c_type_t2 *) $t2_c1_join.getData(), $rsize_t2 , $t2_all_arrays, $t2_length - 1);\n"
+    s *= "__hpat_timsort(( $j2c_type_t1 *) $t1_c1_join.getData(), rsize_t1_$id , $t1_all_arrays, $t1_length - 1);\n"
+    s *= "__hpat_timsort(( $j2c_type_t2 *) $t2_c1_join.getData(), rsize_t2_$id , $t2_all_arrays, $t2_length - 1);\n"
     # s *= "__hpat_quicksort($t1_all_arrays,$t1_length - 1, ( $j2c_type_t1 *) $t1_c1_join.getData(), 0, $rsize_t1 - 1);\n"
     # s *= "__hpat_quicksort($t2_all_arrays,$t2_length - 1, ( $j2c_type_t2 *) $t2_c1_join.getData(), 0, $rsize_t2 - 1);\n"
 
@@ -387,7 +385,7 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
     right = "right_join_table_" * join_rand
     s *= "int $left = 1;\n"
     s *= "int $right = 1;\n"
-    s *= "while ( ($left < $rsize_t1 + 1) && ($right < $rsize_t2 + 1) ){\n"
+    s *= "while ( ($left < rsize_t1_$id + 1) && ($right < rsize_t2_$id + 1) ){\n"
     s *= "if($t1_c1_join.ARRAYELEM($left) == $t2_c1_join.ARRAYELEM($right)){\n"
     count = 0
     for (index, col_name) in enumerate(table1_cols)
@@ -407,7 +405,7 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
     s *= "$table_new_counter_join++;\n"
 
     s *= "int tmp_$left = $left + 1 ;\n"
-    s *= "while((tmp_$left < $rsize_t1 + 1) && ($t1_c1_join.ARRAYELEM(tmp_$left) == $t2_c1_join.ARRAYELEM($right))){\n"
+    s *= "while((tmp_$left < rsize_t1_$id + 1) && ($t1_c1_join.ARRAYELEM(tmp_$left) == $t2_c1_join.ARRAYELEM($right))){\n"
     count = 0
     for (index, col_name) in enumerate(table1_cols)
         table_new_col_name = ParallelAccelerator.CGen.from_expr(table_new_cols[index],linfo)
@@ -428,7 +426,7 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
     s *= "}\n"
 
     s *= "int tmp_$right = $right + 1 ;\n"
-    s *= "while((tmp_$right < $rsize_t2 + 1) && ($t1_c1_join.ARRAYELEM($left) == $t2_c1_join.ARRAYELEM(tmp_$right))){\n"
+    s *= "while((tmp_$right < rsize_t2_$id + 1) && ($t1_c1_join.ARRAYELEM($left) == $t2_c1_join.ARRAYELEM(tmp_$right))){\n"
     count = 0
     for (index, col_name) in enumerate(table1_cols)
         table_new_col_name = ParallelAccelerator.CGen.from_expr(table_new_cols[index],linfo)
