@@ -173,28 +173,23 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
     end
 
     # Sending counts for both tables
-    scount_t1 = "scount_t1_"*join_rand
-    scount_t2 = "scount_t2_"*join_rand
+    s *= "int * scount_t1_$id;\n"
+    s *= "int * scount_t2_$id;\n"
 
-    scount_t1_tmp = "scount_t1_tmp_"*join_rand
-    scount_t2_tmp = "scount_t2_tmp_"*join_rand
-    s *= "int * $scount_t1;\n"
-    s *= "int * $scount_t2;\n"
+    s *= "int * scount_t1_tmp_$id;\n"
+    s *= "int * scount_t2_tmp_$id;\n"
 
-    s *= "int * $scount_t1_tmp;\n"
-    s *= "int * $scount_t2_tmp;\n"
+    s *= "scount_t1_$id = (int*)malloc(sizeof(int)* join_num_pes_$id);\n"
+    s *= "memset (scount_t1_$id, 0, sizeof(int)* join_num_pes_$id);\n"
 
-    s *= "$scount_t1 = (int*)malloc(sizeof(int)* join_num_pes_$id);\n"
-    s *= "memset ($scount_t1, 0, sizeof(int)* join_num_pes_$id);\n"
+    s *= "scount_t1_tmp_$id = (int*)malloc(sizeof(int)* join_num_pes_$id);\n"
+    s *= "memset (scount_t1_tmp_$id, 0, sizeof(int)* join_num_pes_$id);\n"
 
-    s *= "$scount_t1_tmp = (int*)malloc(sizeof(int)* join_num_pes_$id);\n"
-    s *= "memset ($scount_t1_tmp, 0, sizeof(int)* join_num_pes_$id);\n"
+    s *= "scount_t2_$id = (int*)malloc(sizeof(int)* join_num_pes_$id);\n"
+    s *= "memset (scount_t2_$id, 0, sizeof(int)* join_num_pes_$id);\n"
 
-    s *= "$scount_t2 = (int*)malloc(sizeof(int)* join_num_pes_$id);\n"
-    s *= "memset ($scount_t2, 0, sizeof(int)* join_num_pes_$id);\n"
-
-    s *= "$scount_t2_tmp = (int*)malloc(sizeof(int)* join_num_pes_$id);\n"
-    s *= "memset ($scount_t2_tmp, 0, sizeof(int)* join_num_pes_$id);\n"
+    s *= "scount_t2_tmp_$id = (int*)malloc(sizeof(int)* join_num_pes_$id);\n"
+    s *= "memset (scount_t2_tmp_$id, 0, sizeof(int)* join_num_pes_$id);\n"
 
     # Receiving counts for both tables
     rsize_t1 = "rsize_t1_"*join_rand
@@ -234,15 +229,15 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
     # Starting for table 1
     s *= "for (int i = 1 ; i <  $t1c1_length_join + 1 ; i++){\n"
     s *= "int node_id = $t1_c1_join.ARRAYELEM(i) % join_num_pes_$id ;\n"
-    s *= "$scount_t1[node_id]++;"
+    s *= "scount_t1_$id[node_id]++;"
     s *= "}\n"
 
     s *= "$sdis_t1[0]=0;\n"
     s *= "for(int i=1;i < join_num_pes_$id ;i++){\n"
-    s *= "$sdis_t1[i]=$scount_t1[i-1] + $sdis_t1[i-1];\n"
+    s *= "$sdis_t1[i]=scount_t1_$id[i-1] + $sdis_t1[i-1];\n"
     s *= "}\n"
 
-    s *= "MPI_Alltoall($scount_t1,1,MPI_INT,$rcount_t1,1,MPI_INT, join_comm_$id);\n"
+    s *= "MPI_Alltoall(scount_t1_$id,1,MPI_INT,rcount_t1_$id,1,MPI_INT, join_comm_$id);\n"
 
     # Declaring temporary buffers
     # Assuming that all of them have same length
@@ -257,23 +252,23 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
     for (index, col_name) in enumerate(table1_cols)
         table1_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
         table1_col_name_tmp = table1_col_name * "_tmp_join_" * join_rand
-        s *= "$table1_col_name_tmp.ARRAYELEM($sdis_t1[node_id]+$scount_t1_tmp[node_id]+1) = $table1_col_name.ARRAYELEM(i);\n"
+        s *= "$table1_col_name_tmp.ARRAYELEM($sdis_t1[node_id]+scount_t1_tmp_$id[node_id]+1) = $table1_col_name.ARRAYELEM(i);\n"
     end
-    s *= "$scount_t1_tmp[node_id]++;\n"
+    s *= "scount_t1_tmp_$id[node_id]++;\n"
     s *= "}\n"
 
     # Starting for table 2
     s *= "for (int i = 1 ; i <  $t2c1_length_join + 1 ; i++){\n"
     s *= "int node_id = $t2_c1_join.ARRAYELEM(i) % join_num_pes_$id ;\n"
-    s *= "$scount_t2[node_id]++;"
+    s *= "scount_t2_$id[node_id]++;"
     s *= "}\n"
 
     s *= "$sdis_t2[0]=0;\n"
     s *= "for(int i=1;i < __hpat_num_pes;i++){\n"
-    s *= "$sdis_t2[i]=$scount_t2[i-1] + $sdis_t2[i-1];\n"
+    s *= "$sdis_t2[i]=scount_t2_$id[i-1] + $sdis_t2[i-1];\n"
     s *= "}\n"
 
-    s *= "MPI_Alltoall($scount_t2,1,MPI_INT,$rcount_t2,1,MPI_INT,MPI_COMM_WORLD);\n"
+    s *= "MPI_Alltoall(scount_t2_$id,1,MPI_INT,$rcount_t2,1,MPI_INT,MPI_COMM_WORLD);\n"
 
     # Declaring temporary buffers
     for (index, col_name) in enumerate(table2_cols)
@@ -287,9 +282,9 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
     for (index, col_name) in enumerate(table2_cols)
         table2_col_name =ParallelAccelerator.CGen.from_expr(col_name,linfo)
         table2_col_name_tmp =  table2_col_name * "_tmp_join_" * join_rand
-        s *= "$table2_col_name_tmp.ARRAYELEM($sdis_t2[node_id]+$scount_t2_tmp[node_id]+1) = $table2_col_name.ARRAYELEM(i);\n"
+        s *= "$table2_col_name_tmp.ARRAYELEM($sdis_t2[node_id]+scount_t2_tmp_$id[node_id]+1) = $table2_col_name.ARRAYELEM(i);\n"
     end
-    s *= "$scount_t2_tmp[node_id]++;\n"
+    s *= "scount_t2_tmp_$id[node_id]++;\n"
     s *= "}\n"
 
     # Caculating displacements for both tables
@@ -313,7 +308,7 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
         table1_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
         table1_col_name_tmp = table1_col_name *"_tmp_join_" * join_rand
         s *= " j2c_array< int64_t > rbuf_$table1_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $rsize_t1);\n"
-        s *= """ MPI_Alltoallv($table1_col_name_tmp.getData(), $scount_t1, $sdis_t1, MPI_INT64_T,
+        s *= """ MPI_Alltoallv($table1_col_name_tmp.getData(), scount_t1_$id, $sdis_t1, MPI_INT64_T,
                                      rbuf_$table1_col_name.getData(), $rcount_t1, $rdis_t1, MPI_INT64_T, join_comm_$id);
                      """
         s *= " $table1_col_name = rbuf_$table1_col_name; \n"
@@ -324,7 +319,7 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
         table2_col_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
         table2_col_name_tmp = table2_col_name * "_tmp_join_" * join_rand
         s *= " j2c_array< int64_t > rbuf_$table2_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, $rsize_t2);\n"
-        s *= """ MPI_Alltoallv($table2_col_name_tmp.getData(), $scount_t2, $sdis_t2, MPI_INT64_T,
+        s *= """ MPI_Alltoallv($table2_col_name_tmp.getData(), scount_t2_$id, $sdis_t2, MPI_INT64_T,
                                      rbuf_$table2_col_name.getData(), $rcount_t2, $rdis_t2, MPI_INT64_T, join_comm_$id);
                      """
         s *= " $table2_col_name = rbuf_$table2_col_name; \n"
