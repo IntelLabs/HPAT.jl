@@ -265,6 +265,7 @@ function translate_filter(nodes::Array{Any,1},curr_pos,filter_node::Expr,state)
         end
         i -= 1
     end
+    in_col_arrs = in_col_arrs[end:-1:1]
     remove_before = curr_pos-i
 
     out_cols = state.tableCols[out_table_name]
