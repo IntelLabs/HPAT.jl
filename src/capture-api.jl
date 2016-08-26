@@ -160,7 +160,7 @@ function translate_filter(t_out::Symbol, t_in::Symbol, cond::Expr, state)
     # replace column name with actual array in expression
     cond = AstWalk(cond, replace_col_with_array,  (t_in, state.tableCols[t_in]))
     # evaluate the condition into a BitArray
-    cond_arr = Symbol("#$(t_in)#cond_e")
+    cond_arr = Symbol("@$(t_in)@cond_e")
     cond_assign = :( $cond_arr = $cond )
 
     t_in_num_cols = length(state.tableCols[t_in])
@@ -341,7 +341,7 @@ function translate_aggregate(lhs, rhs, state)
         e = AstWalk(e, convert_oprs_to_elementwise,  (t1, state.tableCols[t1]))
         # replace column name with actual array in expression
         e = AstWalk(e, replace_col_with_array,  (t1, state.tableCols[t1]))
-        out_e_arr = Symbol("#$(lhs)#$(out_col)#e")
+        out_e_arr = Symbol("@$(lhs)@$(out_col)@e")
         push!(out_aggs, :(($out_e_arr,$e, $func)))
         push!(out_e,:($out_e_arr=$e))
         # to add types to aggregate output
@@ -561,7 +561,7 @@ end
     Convert a table column to an array name
 """
 function getColName(t::Symbol, c::Symbol)
-    return Symbol("#$(t)#$(c)")
+    return Symbol("@$(t)@$(c)")
 end
 
 """

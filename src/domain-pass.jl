@@ -83,7 +83,7 @@ function from_root(function_name, ast)
     body.args = from_toplevel_body(body.args, state)
     @dprintln(1,"DomainPass.from_root returns function = ", function_name, " body = ", body)
     #println("DomainPass.from_root returns function = ", function_name, " body = ", body)
-    return LambdaVarInfoToLambda(state.linfo, body.args)
+    return LambdaVarInfoToLambda(state.linfo, body.args, ParallelAccelerator.DomainIR.AstWalk)
 end
 
 # information about AST gathered and used in DomainPass
@@ -192,8 +192,14 @@ function translate_table_oprs(nodes::Array{Any,1}, state::DomainState)
             end
         # TODO: any recursive case?
         # elseif isa(nodes[i],Expr) && nodes[i].head==:block
-        elseif isCall(nodes[i])
-            func_call = nodes[i].args[1]
+        elseif isCall(nodes[i]) || isInvoke(nodes[i])
+            func_call = getCallFunction(nodes[i])
+            args = getCallArguments(nodes[i])
+            # convert :invoke to :call to be consistent
+            if isInvoke(nodes[i])
+                nodes[i].head = :call
+                nodes[i].args = [func_call; args]
+            end
         end
         if length(out)==0
             push!(new_nodes, nodes[i])
@@ -265,42 +271,33 @@ end
 
     returns: number of junk nodes to remove before the join call
              number of junk nodes to remove after the join call
-             new ast :filter node
-
+             new ast :join node
     example:
-        _join_store_sales = (top(ccall))(:jl_alloc_array_1d,(top(apply_type))(Base.Array,Array{T,1},1)::Type{Array{Array{T,1},1}},(top(svec))(Base.Any,Base.Int)::SimpleVector,Array{Array{T,1},1},0,2,0)::Array{Array{T,1},1}
-        ##7583 = _store_sales_ss_item_sk::Array{Int64,1}
-        (ParallelAccelerator.API.setindex!)(_join_store_sales::Array{Array{T,1},1},##7583::Array{Int64,1},1)::Array{Array{T,1},1}
-        ##7584 = _store_sales_ss_customer_sk::Array{Int64,1}
-        (ParallelAccelerator.API.setindex!)(_join_store_sales::Array{Array{T,1},1},##7584::Array{Int64,1},2)::Array{Array{T,1},1}
-        _join_item = (top(ccall))(:jl_alloc_array_1d,(top(apply_type))(Base.Array,Array{T,1},1)::Type{Array{Array{T,1},1}},(top(svec))(Base.Any,Base.Int)::SimpleVector,Array{Array{T,1},1},0,3,0)::Array{Array{T,1},1}
-        ##7585 = _item_i_item_sk::Array{Int64,1}
-        (ParallelAccelerator.API.setindex!)(_join_item::Array{Array{T,1},1},##7585::Array{Int64,1},1)::Array{Array{T,1},1}
-        ##7586 = _item_i_category::Array{Int64,1}
-        (ParallelAccelerator.API.setindex!)(_join_item::Array{Array{T,1},1},##7586::Array{Int64,1},2)::Array{Array{T,1},1}
-        ##7587 = _item_i_class_id::Array{Int64,1}
-        (ParallelAccelerator.API.setindex!)(_join_item::Array{Array{T,1},1},##7587::Array{Int64,1},3)::Array{Array{T,1},1}
-        _join_out_sale_items = (HPAT.API.join)(_join_store_sales::Array{Array{T,1},1},_join_item::Array{Array{T,1},1})::Array{Array{Any,1},1}
-        GenSym(2) = (ParallelAccelerator.API.getindex)(_join_out_sale_items::Array{Array{Any,1},1},1)::Array{Any,1}
-        GenSym(3) = (Base.arraysize)(GenSym(2),1)::Int64
-        GenSym(5) = (top(ccall))(:jl_alloc_array_1d,(top(apply_type))(Base.Array,Int64,1)::Type{Array{Int64,1}},(top(svec))(Base.Any,Base.Int)::SimpleVector,Array{Int64,1},0,GenSym(3),0)::Array{Int64,1}
-        _sale_items_ss_item_sk = (Base.copy!)($(Expr(:new, :((top(getfield))(Base,:LinearFast)::Type{Base.LinearFast}))),GenSym(5),$(Expr(:new, :((top(getfield))(Base,:LinearFast)::Type{Base.LinearFast}))),GenSym(2))::Array{Int64,1}
-        GenSym(6) = (ParallelAccelerator.API.getindex)(_join_out_sale_items::Array{Array{Any,1},1},2)::Array{Any,1}
-        GenSym(7) = (Base.arraysize)(GenSym(6),1)::Int64
-        GenSym(9) = (top(ccall))(:jl_alloc_array_1d,(top(apply_type))(Base.Array,Int64,1)::Type{Array{Int64,1}},(top(svec))(Base.Any,Base.Int)::SimpleVector,Array{Int64,1},0,GenSym(7),0)::Array{Int64,1}
-        _sale_items_ss_customer_sk = (Base.copy!)($(Expr(:new, :((top(getfield))(Base,:LinearFast)::Type{Base.LinearFast}))),GenSym(9),$(Expr(:new, :((top(getfield))(Base,:LinearFast)::Type{Base.LinearFast}))),GenSym(6))::Array{Int64,1}
-        GenSym(10) = (ParallelAccelerator.API.getindex)(_join_out_sale_items::Array{Array{Any,1},1},3)::Array{Any,1}
-        GenSym(11) = (Base.arraysize)(GenSym(10),1)::Int64
-        GenSym(13) = (top(ccall))(:jl_alloc_array_1d,(top(apply_type))(Base.Array,Int64,1)::Type{Array{Int64,1}},(top(svec))(Base.Any,Base.Int)::SimpleVector,Array{Int64,1},0,GenSym(11),0)::Array{Int64,1}
-        _sale_items_i_category = (Base.copy!)($(Expr(:new, :((top(getfield))(Base,:LinearFast)::Type{Base.LinearFast}))),GenSym(13),$(Expr(:new, :((top(getfield))(Base,:LinearFast)::Type{Base.LinearFast}))),GenSym(10))::Array{Int64,1}
-        GenSym(14) = (ParallelAccelerator.API.getindex)(_join_out_sale_items::Array{Array{Any,1},1},4)::Array{Any,1}
-        GenSym(15) = (Base.arraysize)(GenSym(14),1)::Int64
-        GenSym(17) = (top(ccall))(:jl_alloc_array_1d,(top(apply_type))(Base.Array,Int64,1)::Type{Array{Int64,1}},(top(svec))(Base.Any,Base.Int)::SimpleVector,Array{Int64,1},0,GenSym(15),0)::Array{Int64,1}
-        _sale_items_i_class_id = (Base.copy!)($(Expr(:new, :((top(getfield))(Base,:LinearFast)::Type{Base.LinearFast}))),GenSym(17),$(Expr(:new, :((top(getfield))(Base,:LinearFast)::Type{Base.LinearFast}))),GenSym(14))::Array{Int64,1} # /home/etotoni/.julia/v0.4/HPAT/examples/queries_devel/tests/test_q26.jl, line 14:
-
+    _8 = (Core.ccall)(:jl_alloc_array_1d,(Core.apply_type)(Core.Array,Array{T,1},1)::Type{Array{Array{T,1},1}},(Core.svec)(Core.Any,Core.Int)::SimpleVector,(Core.apply_type)(Core.Array,Array{T,1},1)::Type{Array{Array{T,1},1}},0,2,0)::Array{Array{T,1},1}
+    _9 = _4
+    (ParallelAccelerator.API.setindex!)(_8,_9,1)::Array{Array{T,1},1}
+    _9
+    _10 = _5
+    (ParallelAccelerator.API.setindex!)(_8,_10,2)::Array{Array{T,1},1}
+    _10
+    _11 = (Core.ccall)(:jl_alloc_array_1d,(Core.apply_type)(Core.Array,Array{T,1},1)::Type{Array{Array{T,1},1}},(Core.svec)(Core.Any,Core.Int)::SimpleVector,(Core.apply_type)(Core.Array,Array{T,1},1)::Type{Array{Array{T,1},1}},0,2,0)::Array{Array{T,1},1}
+    _12 = _6
+    (ParallelAccelerator.API.setindex!)(_11,_12,1)::Array{Array{T,1},1}
+    _12
+    _13 = _7
+    (ParallelAccelerator.API.setindex!)(_11,_13,2)::Array{Array{T,1},1}
+    _13
+    _14 = (HPAT.API.join)(3,1,2,_8,_11)
+    SSAValue(0) = (ParallelAccelerator.API.getindex)(_14,1)
+    _15 = (Base.convert)(Array{Int64,1},SSAValue(0))::Array{Int64,1}
+    SSAValue(1) = (ParallelAccelerator.API.getindex)(_14,2)
+    _16 = (Core.typeassert)((Base.convert)(Array{Float64,1},SSAValue(1)),Array{Float64,1})::Array{Float64,1}
+    SSAValue(2) = (ParallelAccelerator.API.getindex)(_14,3)
+    _17 = (Core.typeassert)((Base.convert)(Array{Float64,1},SSAValue(2)),Array{Float64,1})::Array{Float64,1}
 """
 function translate_join(join_node, nodes, curr_pos, state)
     @dprintln(3, "translating join: ", join_node)
+
     new_join_node = Any[]
     state.table_oprs_counter += 1
     opr_num = state.table_oprs_counter
@@ -334,26 +331,72 @@ function translate_join(join_node, nodes, curr_pos, state)
     # Extract inputs columns from nodes above join node
     t2_cols_sorted = []
     t1_cols_sorted = []
-    for i in 2:2:t2_end
-        append!(t2_cols_sorted, [nodes[curr_pos - i].args[2].name])
+
+    # assuming Julia doesn't reorder nodes, produces same AST!
+    # read columns until array of array allocation in AST
+    # read t2 columns
+    i = curr_pos-1
+    while !isAllocAssignment(nodes[i])
+        if isArraySet(nodes[i])
+            set_in = nodes[i].args[3]
+            # previous node is array_col = set_in
+            @assert nodes[i-1].head==:(=) && nodes[i-1].args[1]==set_in
+            array_col = nodes[i-1].args[2]
+            # remove variable?
+            #CompilerTools.LambdaHandling.
+            push!(t2_cols_sorted, array_col)
+        end
+        i -= 1
     end
-    for i in t1_start:2:t1_end
-        append!(t1_cols_sorted, [nodes[curr_pos - i].args[2].name])
+    # read t1 columns
+    i -= 1
+    while !isAllocAssignment(nodes[i])
+        if isArraySet(nodes[i])
+            set_in = nodes[i].args[3]
+            # previous node is array_col = set_in
+            @assert nodes[i-1].head==:(=) && nodes[i-1].args[1]==set_in "array column set expected"
+            array_col = nodes[i-1].args[2]
+            # remove variable?
+            #CompilerTools.LambdaHandling.
+            push!(t1_cols_sorted, array_col)
+        end
+        i -= 1
     end
+
     # As we read columns from bottom up we need to reverse them
     t2_cols_sorted = t2_cols_sorted[end:-1:1]
     t1_cols_sorted = t1_cols_sorted[end:-1:1]
 
-    remove_before = 2*t1_num_cols+1+2*t2_num_cols+1
-    remove_after =  4*t3_num_cols
-    push!(new_join_node, Expr(:join, t3, t1, t2, t3_cols, map(x->get_col_tablecol(x), t1_cols_sorted ), map(x->get_col_tablecol(x), t2_cols_sorted ),
+    remove_before = curr_pos-i
+    remove_after =  2*t3_num_cols
+    push!(new_join_node, Expr(:join, t3, t1, t2, t3_cols, map(x->get_col_tablecol(x,state), t1_cols_sorted), map(x->get_col_tablecol(x,state), t2_cols_sorted ),
                               map(x->getColName(t3, x), t3_cols), t1_cols_sorted, t2_cols_sorted, opr_id_var))
     return remove_before, remove_after, new_join_node
 end
 
+function isAllocAssignment(node::Expr)
+    if node.head==:(=) && isa(node.args[2],Expr) && node.args[2].head==:call &&
+          node.args[2].args[1]==GlobalRef(Core,:ccall)
+        return true
+    end
+    return false
+end
+
+isAllocAssignment(node::ANY) = false
+
+function isArraySet(node::Expr)
+    if node.head==:call && node.args[1].name==:setindex!
+        return true
+    end
+    return false
+end
+
+isArraySet(node::ANY) = false
+
 # Extract from col from #t#col
-function get_col_tablecol(col)
-    arr = split(string(col),"#")
+function get_col_tablecol(col_slot, state)
+    col = CompilerTools.LambdaHandling.getVarDef(col_slot,state.linfo).name
+    arr = split(string(col),"@")
     return Symbol(arr[3])
 end
 
@@ -380,7 +423,7 @@ function translate_aggregate(aggregate_node,state)
     out_arr = toLHSVar(aggregate_node.args[1])
     # convert _agg_out_t2_in_t1 to t2, t1
     out_names = string(out_arr)[10:end]
-    in_c = search(out_names,"#").start
+    in_c = search(out_names,"@").start
     t1 = Symbol(out_names[in_c+2:end])
     t2 = Symbol(out_names[1:in_c-2])
 

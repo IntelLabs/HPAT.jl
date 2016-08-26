@@ -380,7 +380,7 @@ end
 """
 function replace_table_in_cond(node,table_name)
     arr2 = split(string(node.args[2].args[1][1].name),'#')
-    node.args[2].args[1][1] = Symbol(string("#",table_name,"#",arr2[3]))
+    node.args[2].args[1][1] = Symbol(string("@",table_name,"@",arr2[3]))
 end
 
 """
