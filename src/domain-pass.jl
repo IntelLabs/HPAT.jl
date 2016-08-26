@@ -366,11 +366,16 @@ function translate_join(join_node, nodes, curr_pos, state)
     # As we read columns from bottom up we need to reverse them
     t2_cols_sorted = t2_cols_sorted[end:-1:1]
     t1_cols_sorted = t1_cols_sorted[end:-1:1]
-
+    t3_arrs = []
+    for k in curr_pos+2:2:curr_pos+2*t3_num_cols
+        #@assert nodes[i].head==:(=) && nodes[i].args[2].args[1]==GlobalRef(Core,:typeassert)
+        #println(nodes[k])
+        push!(t3_arrs, nodes[k].args[1])
+    end
     remove_before = curr_pos-i
     remove_after =  2*t3_num_cols
     push!(new_join_node, Expr(:join, t3, t1, t2, t3_cols, map(x->get_col_tablecol(x,state), t1_cols_sorted), map(x->get_col_tablecol(x,state), t2_cols_sorted ),
-                              map(x->getColName(t3, x), t3_cols), t1_cols_sorted, t2_cols_sorted, opr_id_var))
+                              t3_arrs, t1_cols_sorted, t2_cols_sorted, opr_id_var))
     return remove_before, remove_after, new_join_node
 end
 
