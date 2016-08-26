@@ -181,7 +181,7 @@ function translate_filter(t_out::Symbol, t_in::Symbol, cond::Expr, state)
     #assigns_out = [ Expr(:(=), :($(t_out_col_arrs[i])) ,:($arg_arr_out[$i])) for i in 1:length(state.tableCols[t_out]) ]
 
     mod_call = GlobalRef(HPAT.API, :table_filter!)
-    filter_call = :( $arg_arr_out = ($mod_call)($cond_arr,($arg_arr_in)) )
+    filter_call = :( $arg_arr_out = ($mod_call)($t_in_id,$t_out_id,$cond_arr,($arg_arr_in)) )
     ret = Expr(:block, cond_assign, t_in_col_arr, assigns_in..., filter_call, assigns_out...)
     @dprintln(3,"filter returns: ", ret)
     return ret
@@ -257,7 +257,7 @@ function translate_join(lhs, rhs, state)
     @dprintln(3, "new table join output: ",lhs," ", state.tableCols[lhs])
     # pass tables as array of columns since [t1_c1,t1_c2...] flattens to single array instead of array of arrays
     # eg. t1 = Array(Vector,n)
-    # HACK: the table names are extracted from these variable names in DomainPass
+
     _join_t1 = Symbol("_join_$t1")
     _join_t2 = Symbol("_join_$t2")
     t1_num_cols = length(state.tableCols[t1])

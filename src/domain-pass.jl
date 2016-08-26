@@ -217,52 +217,71 @@ doc=""" Translate table_filter to Expr(:filter, cond_arr, t1 ,col_arrs...) and r
              new ast :filter node
 
     example:
-        _sale_items_cond_e = _sale_items_i_category::Array{Int64,1} .== category::Int64::BitArray{1}
-        _filter_sale_items = (top(ccall))(:jl_alloc_array_1d,(top(apply_type))(Base.Array,Array{T,1},1)::Type{Array{Array{T,1},1}},(top(svec))(Base.Any,Base.Int)::SimpleVector,Array{Array{T,1},1},0,4,0)::Array{Array{T,1},1}
-        ##7580 = _sale_items_ss_item_sk::Array{Int64,1}
-        (ParallelAccelerator.API.setindex!)(_filter_sale_items::Array{Array{T,1},1},##7580::Array{Int64,1},1)::Array{Array{T,1},1}
-        ##7581 = _sale_items_ss_customer_sk::Array{Int64,1}
-        (ParallelAccelerator.API.setindex!)(_filter_sale_items::Array{Array{T,1},1},##7581::Array{Int64,1},2)::Array{Array{T,1},1}
-        ##7582 = _sale_items_i_category::Array{Int64,1}
-        (ParallelAccelerator.API.setindex!)(_filter_sale_items::Array{Array{T,1},1},##7582::Array{Int64,1},3)::Array{Array{T,1},1}
-        ##7583 = _sale_items_i_class_id::Array{Int64,1}
-        (ParallelAccelerator.API.setindex!)(_filter_sale_items::Array{Array{T,1},1},##7583::Array{Int64,1},4)::Array{Array{T,1},1}
-        (HPAT.API.table_filter!)(_sale_items_cond_e::BitArray{1},_filter_sale_items::Array{Array{T,1},1})::Void
-        _sale_items_ss_item_sk = (top(convert))(Array{Int64,1},(ParallelAccelerator.API.getindex)(_filter_sale_items::Array{Array{T,1},1},1)::Array{T,1})::Array{Int64,1}
-        _sale_items_ss_customer_sk = (top(convert))(Array{Int64,1},(ParallelAccelerator.API.getindex)(_filter_sale_items::Array{Array{T,1},1},2)::Array{T,1})::Array{Int64,1}
-        _sale_items_i_category = (top(convert))(Array{Int64,1},(ParallelAccelerator.API.getindex)(_filter_sale_items::Array{Array{T,1},1},3)::Array{T,1})::Array{Int64,1}
-        _sale_items_i_class_id = (top(convert))(Array{Int64,1},(ParallelAccelerator.API.getindex)(_filter_sale_items::Array{Array{T,1},1},4)::Array{T,1})::Array{Int64,1} # /Users/etotoni/.julia/v0.4/HPAT/examples/queries_devel/tests/test_q26.jl, line 15:
+    _6 = (_4 .> 2)::BitArray{1}
+    _7 = (Core.ccall)(:jl_alloc_array_1d,(Core.apply_type)(Core.Array,Array{T,1},1)::Type{Array{Array{T,1},1}},(Core.svec)(Core.Any,Core.Int)::SimpleVector,(Core.apply_type)(Core.Array,Array{T,1},1)::Type{Array{Array{T,1},1}},0,2,0)::Array{Array{T,1},1}
+    _8 = _4
+    (ParallelAccelerator.API.setindex!)(_7,_8,1)::Array{Array{T,1},1}
+    _8
+    _9 = _5
+    (ParallelAccelerator.API.setindex!)(_7,_9,2)::Array{Array{T,1},1}
+    _9
+    _10 = (HPAT.API.table_filter!)(1,3,_6,_7)
+    SSAValue(0) = (ParallelAccelerator.API.getindex)(_10,1)
+    _11 = (Base.convert)(Array{Int64,1},SSAValue(0))::Array{Int64,1}
+    SSAValue(1) = (ParallelAccelerator.API.getindex)(_10,2)
+    _12 = (Core.typeassert)((Base.convert)(Array{Float64,1},SSAValue(1)),Array{Float64,1})::Array{Float64,1}
 """
-function translate_filter(nodes::Array{Any,1},pos,filter_node::Expr,state)
+function translate_filter(nodes::Array{Any,1},curr_pos,filter_node::Expr,state)
     @dprintln(3,"translating filter: ",filter_node)
+
     new_filter_node = Any[]
     state.table_oprs_counter += 1
     opr_num = state.table_oprs_counter
     opr_id_var = addTempVariable(Int64, state.linfo)
     push!(new_filter_node, TypedExpr(Int64, :(=), opr_id_var, opr_num))
 
-    cond_arr = toLHSVar(filter_node.args[2].args[2])
-    in_arr_of_arrs = toLHSVar(filter_node.args[2].args[3])
+    cond_arr = toLHSVar(filter_node.args[2].args[4])
+    in_arr_of_arrs = toLHSVar(filter_node.args[2].args[5])
     out_arr_of_arrs = toLHSVar(filter_node.args[1])
     # TODO: remove arr_of_arrs from Lambda
     # convert _filter_t1 to t1
-    in_table_name = Symbol(string(in_arr_of_arrs)[12:end])
-    out_table_name = Symbol(string(out_arr_of_arrs)[13:end])
+    in_table_name = state.tableIds[filter_node.args[2].args[2]]
+    out_table_name = state.tableIds[filter_node.args[2].args[3]]
 
     in_cols = state.tableCols[in_table_name]
-    in_col_arrs = map(x->getColName(in_table_name, x), in_cols)
+    in_col_arrs = []  #map(x->getColName(in_table_name, x), in_cols)
     in_num_cols = length(in_cols)
 
+    i = curr_pos-1
+    while !isAllocAssignment(nodes[i])
+        if isArraySet(nodes[i])
+            set_in = nodes[i].args[3]
+            # previous node is array_col = set_in
+            @assert nodes[i-1].head==:(=) && nodes[i-1].args[1]==set_in
+            array_col = nodes[i-1].args[2]
+            # remove variable?
+            #CompilerTools.LambdaHandling.
+            push!(in_col_arrs, array_col)
+        end
+        i -= 1
+    end
+    remove_before = curr_pos-i
+
     out_cols = state.tableCols[out_table_name]
-    out_col_arrs = map(x->getColName(out_table_name, x), out_cols)
+    out_col_arrs = []  #map(x->getColName(out_table_name, x), out_cols)
     out_num_cols = length(out_cols)
+    for k in curr_pos+2:2:curr_pos+2*out_num_cols
+        #@assert nodes[i].head==:(=) && nodes[i].args[2].args[1]==GlobalRef(Core,:typeassert)
+        #println(nodes[k])
+        push!(out_col_arrs, nodes[k].args[1])
+    end
 
     # remove temp array assignment and setindex!() for each column, remove array of array allocation
-    remove_before = 2*in_num_cols+1;
+
     # remove type convert calls after filter()
-    remove_after = out_num_cols
+    remove_after = 2*out_num_cols
     push!(new_filter_node, Expr(:filter, cond_arr, out_table_name, in_table_name,
-                                in_cols, out_col_arrs, in_col_arrs, nodes[pos-remove_before-1].args[2], opr_id_var))
+                                in_cols, out_col_arrs, in_col_arrs, nodes[curr_pos-remove_before-1].args[2], opr_id_var))
     @dprintln(3,"filter remove_before: ",remove_before," remove_after: ",remove_after," filter_node: ",filter_node)
     return remove_before, remove_after, new_filter_node
 end
@@ -305,9 +324,9 @@ function translate_join(join_node, nodes, curr_pos, state)
     push!(new_join_node, TypedExpr(Int64, :(=), opr_id_var, opr_num))
 
     out_arr = toLHSVar(join_node.args[1])
-    local t3_id::Int = toLHSVar(join_node.args[2].args[2])
-    local t1_id::Int = toLHSVar(join_node.args[2].args[3])
-    local t2_id::Int = toLHSVar(join_node.args[2].args[4])
+    local t3_id::Int = join_node.args[2].args[2]
+    local t1_id::Int = join_node.args[2].args[3]
+    local t2_id::Int = join_node.args[2].args[4]
     in1_arr = toLHSVar(join_node.args[2].args[5])
     in2_arr = toLHSVar(join_node.args[2].args[6])
 
