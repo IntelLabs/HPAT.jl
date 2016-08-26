@@ -195,12 +195,10 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
     s *= "int rsize_t1_$id = 0;\n"
     s *= "int rsize_t2_$id = 0;\n"
 
-    rcount_t1 = "rcount_t1_"*join_rand
-    rcount_t2 = "rcount_t2_"*join_rand
-    s *= "int * $rcount_t1;\n"
-    s *= "int * $rcount_t2;\n"
-    s *= "$rcount_t1 = (int*)malloc(sizeof(int)* join_num_pes_$id);\n"
-    s *= "$rcount_t2 = (int*)malloc(sizeof(int)* join_num_pes_$id);\n"
+    s *= "int * rcount_t1_$id;\n"
+    s *= "int * rcount_t2_$id;\n"
+    s *= "rcount_t1_$id = (int*)malloc(sizeof(int)* join_num_pes_$id);\n"
+    s *= "rcount_t2_$id = (int*)malloc(sizeof(int)* join_num_pes_$id);\n"
 
     # Displacement arrays for both tables
     sdis_t1 = "sdis_t1_"*join_rand
@@ -266,7 +264,7 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
     s *= "$sdis_t2[i]=scount_t2_$id[i-1] + $sdis_t2[i-1];\n"
     s *= "}\n"
 
-    s *= "MPI_Alltoall(scount_t2_$id,1,MPI_INT,$rcount_t2,1,MPI_INT,MPI_COMM_WORLD);\n"
+    s *= "MPI_Alltoall(scount_t2_$id,1,MPI_INT, rcount_t2_$id,1,MPI_INT,MPI_COMM_WORLD);\n"
 
     # Declaring temporary buffers
     for (index, col_name) in enumerate(table2_cols)
@@ -290,16 +288,16 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
               $rdis_t1[0]=0;
               $rdis_t2[0]=0;
               for(int i=1;i < join_num_pes_$id ;i++){
-                  $rdis_t1[i]=$rcount_t1[i-1] + $rdis_t1[i-1];
-                  $rdis_t2[i]=$rcount_t2[i-1] + $rdis_t2[i-1];
+                  $rdis_t1[i] = rcount_t1_$id[i-1] + $rdis_t1[i-1];
+                  $rdis_t2[i] = rcount_t2_$id[i-1] + $rdis_t2[i-1];
               }
         """
 
     # Summing up receiving counts
     s *= """
             for(int i=0;i< join_num_pes_$id ;i++){
-                rsize_t1_$id = rsize_t1_$id + $rcount_t1[i];
-                rsize_t2_$id = rsize_t2_$id + $rcount_t2[i];
+                rsize_t1_$id = rsize_t1_$id + rcount_t1_$id[i];
+                rsize_t2_$id = rsize_t2_$id + rcount_t2_$id[i];
               }
         """
     for (index, col_name) in enumerate(table1_cols)
@@ -307,7 +305,7 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
         table1_col_name_tmp = table1_col_name *"_tmp_join_" * join_rand
         s *= " j2c_array< int64_t > rbuf_$table1_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, rsize_t1_$id);\n"
         s *= """ MPI_Alltoallv($table1_col_name_tmp.getData(), scount_t1_$id, $sdis_t1, MPI_INT64_T,
-                                     rbuf_$table1_col_name.getData(), $rcount_t1, $rdis_t1, MPI_INT64_T, join_comm_$id);
+                                     rbuf_$table1_col_name.getData(), rcount_t1_$id, $rdis_t1, MPI_INT64_T, join_comm_$id);
                      """
         s *= " $table1_col_name = rbuf_$table1_col_name; \n"
     end
@@ -318,7 +316,7 @@ function pattern_match_call_join(linfo, f::GlobalRef, id, table_new_cols_len, ta
         table2_col_name_tmp = table2_col_name * "_tmp_join_" * join_rand
         s *= " j2c_array< int64_t > rbuf_$table2_col_name = j2c_array<int64_t>::new_j2c_array_1d(NULL, rsize_t2_$id);\n"
         s *= """ MPI_Alltoallv($table2_col_name_tmp.getData(), scount_t2_$id, $sdis_t2, MPI_INT64_T,
-                                     rbuf_$table2_col_name.getData(), $rcount_t2, $rdis_t2, MPI_INT64_T, join_comm_$id);
+                                     rbuf_$table2_col_name.getData(), rcount_t2_$id, $rdis_t2, MPI_INT64_T, join_comm_$id);
                      """
         s *= " $table2_col_name = rbuf_$table2_col_name; \n"
     end
