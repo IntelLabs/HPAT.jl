@@ -151,6 +151,9 @@ function translate_filter(t_out::Symbol, t_in::Symbol, cond::Expr, state)
     # Adding new output table to state.tableCols
     state.tableCols[t_out] = state.tableCols[t_in]
     state.tableTypes[t_out] = state.tableTypes[t_in]
+    t_in_id = getTableId(t_in,state)
+    t_out_id = get_unique_id(state)
+    state.tableIds[t_out_id] = t_out
 
     # convert math operations to element-wise versions to work with arrays
     cond = AstWalk(cond, convert_oprs_to_elementwise,  (t_in, state.tableCols[t_in]))
@@ -184,6 +187,17 @@ function translate_filter(t_out::Symbol, t_in::Symbol, cond::Expr, state)
     return ret
 end
 
+"""
+    get table id from table name
+"""
+function getTableId(t_in::Symbol, state)
+    for (id,t) in state.tableIds
+        if t==t_in
+            return id
+        end
+    end
+    return -1
+end
 
 """
     Basic join will match first column of each column array
@@ -233,6 +247,11 @@ function translate_join(lhs, rhs, state)
     rest_cols3_arrs = map(x->getColName(lhs,x),[rest_cols1;rest_cols2])
     # save new table
     state.tableCols[lhs] = [new_key;rest_cols1;rest_cols2]
+    t_out_id = get_unique_id(state)
+    state.tableIds[t_out_id] = lhs
+    t1_id = getTableId(t1,state)
+    t2_id = getTableId(t2,state)
+
     #@assert key1==t1_col_arrs_sorted[1] "Join key $key1 of table $t1 is not column 1"
     #@assert key2==t2_col_arrs_sorted[1] "Join key $key2 of table $t2 is not column 1"
     @dprintln(3, "new table join output: ",lhs," ", state.tableCols[lhs])
@@ -256,7 +275,7 @@ function translate_join(lhs, rhs, state)
     # GlobalRef since Julia doesn't resolve the module! why does GlobalRef work in surface AST??
     g_call = GlobalRef(HPAT.API,:join)
     _j_out = Symbol("_join_out_$lhs")
-    join_call = :( $_j_out = $(g_call)($_join_t1, $_join_t2) )
+    join_call = :( $_j_out = $(g_call)($t_out_id,$t1_id,$t2_id,$_join_t1, $_join_t2) )
 
     col_types = [ get_column_type(state, t1, key1) ]
     col_types1 = [ get_column_type(state, t1, i) for i in rest_cols1]
@@ -340,6 +359,9 @@ function translate_aggregate(lhs, rhs, state)
     append!(out_e,out_dummies)
 
     out_var = Symbol("_agg_out_$(lhs)_#_$(t1)")
+    t_in_id = getTableId(t1,state)
+    t_out_id = get_unique_id(state)
+    state.tableIds[t_out_id] = lhs
 
     # assign types of output columns
     # we know the type of key column already
@@ -500,6 +522,8 @@ function translate_data_table(lhs, state, arr_var_expr, source_typ, other_args)
     # save table info in state
     state.tableCols[lhs] = col_names
     state.tableTypes[lhs] = col_types
+    t_out_id = get_unique_id(state)
+    state.tableIds[t_out_id] = lhs
     ret = quote $(out...) end
     @dprintln(3, "data table returns: ",ret)
     return ret

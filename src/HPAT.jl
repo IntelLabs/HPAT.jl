@@ -161,6 +161,9 @@ type MacroState
     tableCols::Dict{Symbol,Vector{Symbol}}
     # Types of each table column
     tableTypes::Dict{Symbol,Vector{Symbol}}
+    # mapping table number to table name
+    # domain-pass uses this to find tables of relational calls
+    tableIds::Dict{Int,Symbol}
     # partitioning of arrays
     array_partitioning::Dict{Symbol,Partitioning}
     # unique id used in renaming
@@ -171,7 +174,7 @@ type MacroState
 
     function MacroState()
         new(Dict{Symbol,Vector{Symbol}}(), Dict{Symbol,Vector{Symbol}}(),
-         Dict{Symbol,Symbol}(), 0, Dict{Symbol,Symbol}())
+         Dict{Int,Symbol}(), Dict{Symbol,Partitioning}(), 0, Dict{Symbol,Symbol}())
     end
 end
 
@@ -181,7 +184,7 @@ end
 function captureHPAT(func, ast, sig)
     macro_state = MacroState()
     AstWalk(ast, CaptureAPI.process_node, macro_state)
-    Base.pushmeta!(ast,:hpat_tables, macro_state.tableCols, macro_state.tableTypes)
+    Base.pushmeta!(ast,:hpat_tables, macro_state.tableCols, macro_state.tableTypes, macro_state.tableIds)
     Base.pushmeta!(ast,:hpat_partitioning, macro_state.array_partitioning)
     return ast
 end

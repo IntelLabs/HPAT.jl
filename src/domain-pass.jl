@@ -75,9 +75,9 @@ function from_root(function_name, ast)
     linfo, body = CompilerTools.LambdaHandling.lambdaToLambdaVarInfo(ast)
     @dprintln(1,"Starting main DomainPass.from_root.  function = ", function_name, " ast = ", linfo, body)
 
-    tableCols, tableTypes = get_table_meta(body)
+    tableCols, tableTypes, tableIds = get_table_meta(body)
     @dprintln(3,"HPAT tables: ", tableCols,tableTypes)
-    state::DomainState = DomainState(linfo, 0, 0, tableCols, tableTypes)
+    state::DomainState = DomainState(linfo, 0, 0, tableCols, tableTypes, tableIds)
 
     # transform body
     body.args = from_toplevel_body(body.args, state)
@@ -93,6 +93,7 @@ type DomainState
     table_oprs_counter::Int64 # a unique for table operation join,filter,etc
     tableCols::Dict{Symbol,Vector{Symbol}}
     tableTypes::Dict{Symbol,Vector{Symbol}}
+    tableIds::Dict{Int,Symbol}
 end
 
 function get_table_meta(body)
@@ -101,7 +102,7 @@ function get_table_meta(body)
         for meta in first_arg.args
             if meta.head==:hpat_tables
                 @dprintln(3, "hpat tables found: ", meta)
-                return meta.args[1],meta.args[2]
+                return meta.args[1], meta.args[2], meta.args[3]
             end
         end
     end
@@ -307,14 +308,17 @@ function translate_join(join_node, nodes, curr_pos, state)
     push!(new_join_node, TypedExpr(Int64, :(=), opr_id_var, opr_num))
 
     out_arr = toLHSVar(join_node.args[1])
-    in1_arr = toLHSVar(join_node.args[2].args[2])
-    in2_arr = toLHSVar(join_node.args[2].args[3])
+    local t3_id::Int = toLHSVar(join_node.args[2].args[2])
+    local t1_id::Int = toLHSVar(join_node.args[2].args[3])
+    local t2_id::Int = toLHSVar(join_node.args[2].args[4])
+    in1_arr = toLHSVar(join_node.args[2].args[5])
+    in2_arr = toLHSVar(join_node.args[2].args[6])
 
     # convert _join_out_t3 to t3
-    t3 = Symbol(string(out_arr)[11:end])
+    t3 = state.tableIds[t3_id]
     # convert _join_t1 to t1
-    t1 = Symbol(string(in1_arr)[7:end])
-    t2 = Symbol(string(in2_arr)[7:end])
+    t1 = state.tableIds[t1_id]
+    t2 = state.tableIds[t2_id]
 
     t3_cols = state.tableCols[t3]
     t1_cols = state.tableCols[t1]
