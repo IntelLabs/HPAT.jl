@@ -554,30 +554,25 @@ function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs
     s *= "int $agg_key_col_input_len = $agg_key_col_input.ARRAYLEN();\n"
 
     # Sending counts
-    scount = "scount_$id"
-    s *= "int *$scount;\n"
-    s *= "$scount = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
-    s *= "memset($scount, 0, sizeof(int)*__hpat_num_pes);\n"
+    s *= "int *scount_$id;\n"
+    s *= "scount_$id = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
+    s *= "memset(scount_$id, 0, sizeof(int)*__hpat_num_pes);\n"
 
-    scount_tmp = "scount_tmp_$id"
-    s *= "int * $scount_tmp;\n"
-    s *= "$scount_tmp = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
-    s *= "memset($scount_tmp, 0, sizeof(int)*__hpat_num_pes);\n"
+    s *= "int * scount_tmp_$id;\n"
+    s *= "scount_tmp_$id = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
+    s *= "memset(scount_tmp_$id, 0, sizeof(int)*__hpat_num_pes);\n"
 
     # Receiving counts
-    rsize = "rsize_$id"
-    s *= "int  $rsize = 0;\n"
+    s *= "int rsize_$id = 0;\n"
     rcount = "rcount_$id"
-    s *= "int * $rcount;\n"
-    s *= "$rcount = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
+    s *= "int * rcount_$id;\n"
+    s *= "rcount_$id = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
 
     # Displacement arrays for both tables
-    sdis = "sdis_$id"
-    rdis = "rdis_$id"
-    s *= "int *$sdis;\n"
-    s *= "int *$rdis;\n"
-    s *= "$sdis = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
-    s *= "$rdis = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
+    s *= "int *sdis_$id;\n"
+    s *= "int *rdis_$id;\n"
+    s *= "sdis_$id = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
+    s *= "rdis_$id = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
 
     agg_key_map_temp = "temp_map_$agg_key_col_output"
     s *= "std::unordered_map<int,int> $agg_key_map_temp ;\n"
@@ -588,31 +583,31 @@ function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs
     s *= "if ($agg_key_map_temp.find($agg_key_col_input.ARRAYELEM(i)) == $agg_key_map_temp.end()){\n"
     s *= "$agg_key_map_temp[$agg_key_col_input.ARRAYELEM(i)] = 1;\n"
     s *= "int node_id = $agg_key_col_input.ARRAYELEM(i) % __hpat_num_pes ;\n"
-    s *= "$scount[node_id]++;\n"
+    s *= "scount_$id[node_id]++;\n"
     s *= "$agg_temp_counter++;\n"
     s *= "}\n"
     s *= "}\n"
 
-    s *= "$sdis[0]=0;\n"
+    s *= "sdis_$id[0]=0;\n"
     s *= "for(int i=1;i < __hpat_num_pes;i++){\n"
-    s *= "$sdis[i] = $scount[i-1] + $sdis[i-1];\n"
+    s *= "sdis_$id[i] = scount_$id[i-1] + sdis_$id[i-1];\n"
     s *= "}\n"
 
-    s *= "MPI_Alltoall($scount,1,MPI_INT,$rcount,1,MPI_INT,MPI_COMM_WORLD);\n"
+    s *= "MPI_Alltoall(scount_$id,1,MPI_INT,rcount_$id,1,MPI_INT,MPI_COMM_WORLD);\n"
 
     s *= "$agg_key_map_temp.clear();\n"
     # Caculating displacements
     s *= """
-                  $rdis[0]=0;
+                  rdis_$id[0]=0;
                   for(int i=1;i < __hpat_num_pes;i++){
-                      $rdis[i]=$rcount[i-1] + $rdis[i-1];
+                      rdis_$id[i] = rcount_$id[i-1] + rdis_$id[i-1];
                   }
             """
 
     # Summing receiving counts
     s *= """
               for(int i=0;i<__hpat_num_pes;i++){
-                  $rsize = $rsize + $rcount[i];
+                  rsize_$id = rsize_$id + rcount_$id[i];
               }
             """
 
@@ -631,7 +626,7 @@ function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs
     s *= "int node_id = $agg_key_col_input.ARRAYELEM(i) % __hpat_num_pes ;\n"
     s *= "if ($agg_key_map_temp.find($agg_key_col_input.ARRAYELEM(i)) == $agg_key_map_temp.end()){\n"
     agg_write_index = "agg_write_index_$id"
-    s *= "int $agg_write_index = $sdis[node_id]+$scount_tmp[node_id]+1 ;\n"
+    s *= "int $agg_write_index = sdis_$id[node_id]+scount_tmp_$id[node_id]+1 ;\n"
     s *= "$agg_key_map_temp[$agg_key_col_input.ARRAYELEM(i)] = $agg_write_index;\n"
     s *= "$agg_key_col_input_tmp.ARRAYELEM($agg_write_index) = $agg_key_col_input.ARRAYELEM(i);\n"
     for (index, func) in enumerate(funcs_list)
@@ -639,7 +634,7 @@ function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs
         expr_name_tmp = expr_name * "_tmp_agg_$id"
         s *= return_combiner_string_with_closure_first_elem(expr_name_tmp, expr_name, func, agg_write_index)
     end
-    s *= "$scount_tmp[node_id]++;\n"
+    s *= "scount_tmp_$id[node_id]++;\n"
     s *= "}\n"
     s *= "else{\n"
     current_write_index = "current_write_index$id"
@@ -658,8 +653,8 @@ function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs
     mpi_type = get_mpi_type_from_array(groupby_key,linfo)
     j2c_type = get_j2c_type_from_array(groupby_key,linfo)
     s *= " j2c_array< $j2c_type > rbuf_$agg_key_col_input = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, $rsize);\n"
-    s *= """ MPI_Alltoallv($agg_key_col_input_tmp.getData(), $scount, $sdis, $mpi_type,
-                                         rbuf_$agg_key_col_input.getData(), $rcount, $rdis, $mpi_type, MPI_COMM_WORLD);
+    s *= """ MPI_Alltoallv($agg_key_col_input_tmp.getData(), scount_$id, sdis_$id, $mpi_type,
+                                         rbuf_$agg_key_col_input.getData(), rcount_$id, rdis_$id, $mpi_type, MPI_COMM_WORLD);
                          """
     s *= " $agg_key_col_input = rbuf_$agg_key_col_input; \n"
 
@@ -668,9 +663,9 @@ function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs
         j2c_type = get_j2c_type_from_array(output_cols_list[index + 1], linfo)
         expr_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
         expr_name_tmp = expr_name * "_tmp_agg_$id"
-        s *= " j2c_array< $j2c_type > rbuf_$expr_name = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, $rsize);\n"
-        s *= """ MPI_Alltoallv($expr_name_tmp.getData(), $scount, $sdis, $mpi_type,
-                                         rbuf_$expr_name.getData(), $rcount, $rdis, $mpi_type, MPI_COMM_WORLD);
+        s *= " j2c_array< $j2c_type > rbuf_$expr_name = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, rsize_$id);\n"
+        s *= """ MPI_Alltoallv($expr_name_tmp.getData(), scount_$id, sdis_$id, $mpi_type,
+                                         rbuf_$expr_name.getData(), rcount_$id, rdis_$id, $mpi_type, MPI_COMM_WORLD);
                          """
     end
     # delete [] expr_name_tmp
