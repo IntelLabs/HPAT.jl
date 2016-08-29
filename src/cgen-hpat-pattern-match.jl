@@ -1552,18 +1552,9 @@ function from_assignment_match_dist(lhs::Any, rhs::Any, linfo)
     return ""
 end
 
-# TODO Add support for more types in future floats etc
 function get_mpi_type_from_array(input_array,linfo)
     input_type = eltype(ParallelAccelerator.CGen.getSymType(input_array,linfo))
-    mpi_type = ""
-    if input_type==Int64
-        mpi_type = "MPI_INT64_T"
-    elseif input_type==Bool
-        mpi_type = "MPI_C_BOOL"
-    else
-        throw("CGen unsupported MPI type")
-    end
-    return mpi_type
+    return get_mpi_type_from_var_type(input_type)
 end
 
 function get_j2c_type_from_array(input_array,linfo)
@@ -1580,7 +1571,9 @@ function get_mpi_type_from_var_type(var_typ)
     elseif var_typ==Int32
         mpi_type = "MPI_INT"
     elseif var_typ==Int64
-        mpi_type = "MPI_LONG_LONG_INT"
+        mpi_type = "MPI_INT64_T"
+    elseif var_typ==Bool
+        mpi_type = "MPI_C_BOOL"
     else
         throw("CGen unsupported MPI reduction type")
     end
