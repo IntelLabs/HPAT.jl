@@ -180,7 +180,7 @@ end
 function translate_hpat_aggregate(node,linfo)
     # args: id, key, number of expressions, expression list
     open_call = mk_call(GlobalRef(HPAT.API,:__hpat_aggregate),
-                        [node.args[8]; node.args[3]; length(node.args[4]); node.args[4]; node.args[6]; node.args[7]])
+                        [node.args[7]; node.args[3]; length(node.args[4]); node.args[4]; node.args[5]; node.args[6]])
     dprintln(3, "Datatable pass: aggregate translated: ", open_call)
     return [open_call]
 end

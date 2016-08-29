@@ -342,7 +342,7 @@ function translate_aggregate(lhs, rhs, state)
         # replace column name with actual array in expression
         e = AstWalk(e, replace_col_with_array,  (t1, state.tableCols[t1]))
         out_e_arr = Symbol("@$(lhs)@$(out_col)@e")
-        push!(out_aggs, :(($out_e_arr,$e, $func)))
+        push!(out_aggs, :(($out_e_arr, $func)))
         push!(out_e,:($out_e_arr=$e))
         # to add types to aggregate output
         # make a dummy call to get the type with user's function
@@ -358,7 +358,7 @@ function translate_aggregate(lhs, rhs, state)
     end
     append!(out_e,out_dummies)
 
-    out_var = Symbol("_agg_out_$(lhs)_#_$(t1)")
+    out_var = Symbol("_agg_out_$(lhs)_@_$(t1)")
     t_in_id = getTableId(t1,state)
     t_out_id = get_unique_id(state)
     state.tableIds[t_out_id] = lhs
@@ -375,7 +375,7 @@ function translate_aggregate(lhs, rhs, state)
     # GlobalRef since Julia doesn't resolve the module! why does GlobalRef work in surface AST??
     agg_call = GlobalRef(HPAT.API,:aggregate)
 
-    out_call = Expr(:(=), out_var, :($(agg_call)($c1_arr,[$(out_aggs...)])) )
+    out_call = Expr(:(=), out_var, :($(agg_call)($t_in_id,$t_out_id,$c1_arr,[$(out_aggs...)])) )
     push!(out_e, out_call)
     push!(out_e, out_type_assigns...)
     state.tableCols[lhs] = out_cols

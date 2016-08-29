@@ -171,7 +171,7 @@ function translate_table_oprs(nodes::Array{Any,1}, state::DomainState)
                 splice!(new_nodes, s_start:s_end, ast)
                 continue
             elseif func_call==GlobalRef(HPAT.API, :aggregate)
-                remove_before,remove_after,ast = translate_aggregate(nodes[i],state)
+                remove_before,remove_after,ast = translate_aggregate(nodes, i, nodes[i],state)
                 skip += remove_after
                 s_start = (length(new_nodes)-remove_before)+1
                 s_end = length(new_nodes)
@@ -426,19 +426,31 @@ function get_col_tablecol(col_slot, state)
 end
 
 """   Example:
-        _T_ss_item_count = (Main.typeof)((Base.arraylen)(_customer_i_class_ss_item_count_e::Array{Int64,1})::Int64)::Type{Int64}
-        _T_id1 = (Main.typeof)((ParallelAccelerator.API.sum)(1 .* _customer_i_class_id1_e::BitArray{1}::Array{Int64,1})::Int64)::Type{Int64}
-        ...
-        _T_id15 = (Main.typeof)((ParallelAccelerator.API.sum)(1 .* _customer_i_class_id15_e::BitArray{1}::Array{Int64,1})::Int64)::Type{Int64}
-        _agg_out_customer_i_class = (HPAT.API.aggregate)(_sale_items_ss_customer_sk::Array{Int64,1},(top(vect))((top(tuple))(_customer_i_class_ss_item_count_e::Array{Int64,1},Main.length)::Tuple{Array{Int64,1},Function},(top(tuple))(_customer_i_class_id1_e::BitArray{1},Main.sum)::Tuple{BitArray{1},Function},(top(tuple))(_customer_i_class_id2_e::BitArray{1},Main.sum)::Tuple{BitArray{1},Function},(top(tuple))(_customer_i_class_id3_e::BitArray{1},Main.sum)::Tuple{BitArray{1},Function},(top(tuple))(_customer_i_class_id4_e::BitArray{1},Main.sum)::Tuple{BitArray{1},Function},(top(tuple))(_customer_i_class_id5_e::BitArray{1},Main.sum)::Tuple{BitArray{1},Function},(top(tuple))(_customer_i_class_id6_e::BitArray{1},Main.sum)::Tuple{BitArray{1},Function},(top(tuple))(_customer_i_class_id7_e::BitArray{1},Main.sum)::Tuple{BitArray{1},Function},(top(tuple))(_customer_i_class_id8_e::BitArray{1},Main.sum)::Tuple{BitArray{1},Function},(top(tuple))(_customer_i_class_id9_e::BitArray{1},Main.sum)::Tuple{BitArray{1},Function},(top(tuple))(_customer_i_class_id10_e::BitArray{1},Main.sum)::Tuple{BitArray{1},Function},(top(tuple))(_customer_i_class_id11_e::BitArray{1},Main.sum)::Tuple{BitArray{1},Function},(top(tuple))(_customer_i_class_id12_e::BitArray{1},Main.sum)::Tuple{BitArray{1},Function},(top(tuple))(_customer_i_class_id13_e::BitArray{1},Main.sum)::Tuple{BitArray{1},Function},(top(tuple))(_customer_i_class_id14_e::BitArray{1},Main.sum)::Tuple{BitArray{1},Function},(top(tuple))(_customer_i_class_id15_e::BitArray{1},Main.sum)::Tuple{BitArray{1},Function}))::Array{Array{T,1},1}
-        _customer_i_class_ss_customer_sk = (top(convert))(Array{Int64,1},(ParallelAccelerator.API.getindex)(_agg_out_customer_i_class::Array{Array{T,1},1},1)::Array{T,1})::Array{Int64,1}
-        _customer_i_class_ss_item_count = (top(convert))(Array{Int64,1},(ParallelAccelerator.API.getindex)(_agg_out_customer_i_class::Array{Array{T,1},1},2)::Array{T,1})::Array{Int64,1}
-        _customer_i_class_id1 = (top(convert))(Array{Int64,1},(ParallelAccelerator.API.getindex)(_agg_out_customer_i_class::Array{Array{T,1},1},3)::Array{T,1})::Array{Int64,1}
-        ...
-        _customer_i_class_id15 = (top(convert))(Array{Int64,1},(ParallelAccelerator.API.getindex)(_agg_out_customer_i_class::Array{Array{T,1},1},17)::Array{T,1})::Array{Int64,1} # /home/etotoni/.julia/v0.4/HPAT/examples/queries_devel/tests/test_q26.jl, line 33:
+        _5 = _4
+        _6 = \$(Expr(:invoke, LambdaInfo for .>(::Array{Float64,1}, ::Float64), :(ParallelAccelerator.API..>), :(_4), 2.0))
+        _7 = \$(Expr(:invoke, LambdaInfo for .==(::Array{Float64,1}, ::Float64), :(ParallelAccelerator.API..==), :(_4), 1.0))
+        \$(Expr(:invoke, LambdaInfo for sum(::Array{Float64,1}), :(ParallelAccelerator.API.sum), :(_5)))
+        _8 = Float64
+        _9 = Int64
+        _10 = Int64
+        SSAValue(4) = (Core.tuple)((Core.tuple)(_5,Main.sum)::Tuple{Array{Float64,1},Base.#sum},(Core.tuple)(_6,Main.length)::Tuple{BitArray{1},Base.#length},(Core.tuple)(_7,Main.length)::Tuple{BitArray{1},Base.#length})::Tuple{Tuple{Array{Float64,1},Base.#sum},Tuple{BitArray{1},Base.#length},Tuple{BitArray{1},Base.#length}}
+        # meta: location abstractarray.jl vect 24
+        _16 = \$(QuoteNode(Tuple{DenseArray{T,1},Function})) # line 27:
+        SSAValue(5) = (Base.nfields)(SSAValue(4))::Int64
+        # meta: pop location
+        _11 = (HPAT.API.aggregate)(1,2,_3,\$(Expr(:invoke, LambdaInfo for copy!(::Array{Tuple{DenseArray{T,1},Function},1}, ::Tuple{Tuple{Array{Float64,1},Base.#sum},Tuple{BitArray{1},Base.#length},Tuple{BitArray{1},Base.#length}}), :(Base.copy!), :((Core.ccall)(:jl_alloc_array_1d,(Core.apply_type)(Core.Array,Tuple{DenseArray{T,1},Function},1)::Type{Array{Tuple{DenseArray{T,1},Function},1}},(Core.svec)(Core.Any,Core.Int)::SimpleVector,(Core.apply_type)(Core.Array,Tuple{DenseArray{T,1},Function},1)::Type{Array{Tuple{DenseArray{T,1},Function},1}},0,SSAValue(5),0)::Array{Tuple{DenseArray{T,1},Function},1}), SSAValue(4))))
+        SSAValue(0) = (ParallelAccelerator.API.getindex)(_11,1)
+        _12 = (Base.convert)(Array{Int64,1},SSAValue(0))::Array{Int64,1}
+        SSAValue(1) = (ParallelAccelerator.API.getindex)(_11,2)
+        _13 = (Core.typeassert)((Base.convert)(Array{Float64,1},SSAValue(1)),Array{Float64,1})::Array{Float64,1}
+        SSAValue(2) = (ParallelAccelerator.API.getindex)(_11,3)
+        _14 = (Base.convert)(Array{Int64,1},SSAValue(2))::Array{Int64,1}
+        SSAValue(3) = (ParallelAccelerator.API.getindex)(_11,4)
+        _15 = (Base.convert)(Array{Int64,1},SSAValue(3))::Array{Int64,1} # line 15:
 """
-function translate_aggregate(aggregate_node,state)
+function translate_aggregate(nodes, curr_pos, aggregate_node, state)
     @dprintln(3,"translating aggregate: ",aggregate_node)
+
     new_aggregate_node = Any[]
     state.table_oprs_counter += 1
     opr_num = state.table_oprs_counter
@@ -446,11 +458,9 @@ function translate_aggregate(aggregate_node,state)
     push!(new_aggregate_node, TypedExpr(Int64, :(=), opr_id_var, opr_num))
 
     out_arr = toLHSVar(aggregate_node.args[1])
-    # convert _agg_out_t2_in_t1 to t2, t1
-    out_names = string(out_arr)[10:end]
-    in_c = search(out_names,"@").start
-    t1 = Symbol(out_names[in_c+2:end])
-    t2 = Symbol(out_names[1:in_c-2])
+
+    t1 = state.tableIds[aggregate_node.args[2].args[2]]
+    t2 = state.tableIds[aggregate_node.args[2].args[3]]
 
     t1_cols = state.tableCols[t1]
     t2_cols = state.tableCols[t2]
@@ -460,22 +470,43 @@ function translate_aggregate(aggregate_node,state)
     # one typeof() call for each output column except key
     remove_before = t2_num_cols-1
     # extra assignments
-    remove_after =  t2_num_cols
+    remove_after =  2*t2_num_cols
 
     # t1's key to aggregate on
-    key_arr = toLHSVar(aggregate_node.args[2].args[2])
+    key_arr = toLHSVar(aggregate_node.args[2].args[4])
 
-    # list of (func,arr) tuples
-    @assert aggregate_node.args[2].args[3].args[1]==TopNode(:vect) "expect top(vect) in aggregate"
-    agg_list = aggregate_node.args[2].args[3].args[2:end] # args[1] is top(vect)
-    # example element args: Any[:(top(tuple)),:(_customer_i_class_id15_e::BitArray{1}),:(Main.sum)]
+    agg_list = []
+    i = curr_pos-1
+    while !isTupleAssignment(nodes[i])
+        i -= 1
+    end
+    remove_before += curr_pos-i
+    @assert nodes[i].args[2].args[1]==GlobalRef(Core,:tuple) "expected aggregate tuple assignment"
+    # example: :((Core.tuple)((Core.tuple)(_5,Main.sum)::Tuple{Array{Float64,1},Base.#sum},
+    #    (Core.tuple)(_6,Main.length)...
+    agg_list = nodes[i].args[2].args[2:end]
     in_e_arr_list = map(x->toLHSVar(x.args[2]), agg_list)
-    in_e_arr_list_rhs = map(x->toLHSVar(x.args[3]), agg_list)
-    in_func_list = map(x->x.args[4], agg_list)
-    out_col_arrs = map(x->getColName(t2, x), t2_cols)
-    push!(new_aggregate_node, Expr(:aggregate, t2, t1, key_arr, in_e_arr_list, in_e_arr_list_rhs, in_func_list, out_col_arrs,opr_id_var))
+    in_func_list = map(x->x.args[3], agg_list)
+
+    out_col_arrs = []
+    for k in curr_pos+2:2:curr_pos+2*t2_num_cols
+        #@assert nodes[i].head==:(=) && nodes[i].args[2].args[1]==GlobalRef(Core,:typeassert)
+        #println(nodes[k])
+        push!(out_col_arrs, nodes[k].args[1])
+    end
+    push!(new_aggregate_node, Expr(:aggregate, t2, t1, key_arr, in_e_arr_list, in_func_list, out_col_arrs, opr_id_var))
     return remove_before, remove_after, new_aggregate_node
 end
+
+function isTupleAssignment(node::Expr)
+    if node.head==:(=) && isa(node.args[2],Expr) &&
+         node.args[2].args[1]==GlobalRef(Core,:tuple)
+        return true
+    end
+    return false
+end
+
+isTupleAssignment(node::ANY) = false
 
 # :(=) assignment (:(=), lhs, rhs)
 function from_assignment(node::Expr, state)
@@ -767,15 +798,11 @@ function AstWalkCallback(node::Expr,dw)
         in_t = node.args[2]
         key_arr = node.args[3]
         out_e_arrs = node.args[4]
-        in_e_arrs = node.args[5]
-        func_arrs = node.args[6]
-        out_col_arrs = node.args[7]
+        func_arrs = node.args[5]
+        out_col_arrs = node.args[6]
 
         node.args[2] = AstWalker.AstWalk(in_t, ParallelAccelerator.DomainIR.AstWalkCallback, dw)
         node.args[3] = AstWalker.AstWalk(key_arr, ParallelAccelerator.DomainIR.AstWalkCallback, dw)
-        for i in 1:length(in_e_arrs)
-            in_e_arrs[i] = AstWalker.AstWalk(in_e_arrs[i], ParallelAccelerator.DomainIR.AstWalkCallback, dw)
-        end
         for i in 1:length(out_col_arrs)
             old_arr = out_col_arrs[i]
             out_col_arrs[i] = AstWalker.AstWalk(out_col_arrs[i], ParallelAccelerator.DomainIR.AstWalkCallback, dw)
@@ -814,7 +841,7 @@ function live_cb(node::Expr)
         @dprintln(3,"DomainPass aggregate live CB on: ",node)
         key_arr = node.args[3]
         in_e_arrs = node.args[4]
-        out_col_arrs = node.args[6]
+        out_col_arrs = node.args[5]
         assign_exprs = map(x->Expr(:(=),x,1), out_col_arrs)
         exprs_to_process = [key_arr;in_e_arrs;assign_exprs]
         @dprintln(3,"DomainPass aggregate live CB returns: ", exprs_to_process)
