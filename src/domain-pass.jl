@@ -476,15 +476,21 @@ function translate_aggregate(nodes, curr_pos, aggregate_node, state)
     key_arr = toLHSVar(aggregate_node.args[2].args[4])
 
     agg_list = []
-    i = curr_pos-1
-    while !isTupleAssignment(nodes[i])
-        i -= 1
+    # if there is only one aggregate expression,
+    #   Julia inlines it in the aggregate call
+    if t2_num_cols==2
+        agg_list = [aggregate_node.args[2].args[5].args[3]]
+    else
+        i = curr_pos-1
+        while !isTupleAssignment(nodes[i])
+            i -= 1
+        end
+        remove_before += curr_pos-i
+        @assert nodes[i].args[2].args[1]==GlobalRef(Core,:tuple) "expected aggregate tuple assignment"
+        # example: :((Core.tuple)((Core.tuple)(_5,Main.sum)::Tuple{Array{Float64,1},Base.#sum},
+        #    (Core.tuple)(_6,Main.length)...
+        agg_list = nodes[i].args[2].args[2:end]
     end
-    remove_before += curr_pos-i
-    @assert nodes[i].args[2].args[1]==GlobalRef(Core,:tuple) "expected aggregate tuple assignment"
-    # example: :((Core.tuple)((Core.tuple)(_5,Main.sum)::Tuple{Array{Float64,1},Base.#sum},
-    #    (Core.tuple)(_6,Main.length)...
-    agg_list = nodes[i].args[2].args[2:end]
     in_e_arr_list = map(x->toLHSVar(x.args[2]), agg_list)
     in_func_list = map(x->x.args[3], agg_list)
 
