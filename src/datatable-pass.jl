@@ -47,24 +47,16 @@ import ParallelAccelerator.ParallelIR.computeLiveness
 mk_call(fun,args) = Expr(:call, fun, args...)
 
 # ENTRY to datatable-pass
-type QueryTreeNode{T}
-    data::T
-    parent::QueryTreeNode{T}
-    child::QueryTreeNode{T}
+type QueryTreeNode
+    data::Expr
+    parent::QueryTreeNode
+    child::Vector{QueryTreeNode}
     # positions in original AST
     start_pos::Int
     end_pos::Int
-    # Constructor for root
-    function QueryTreeNode(data::T)
-        n = new(data)
-        n.parent = n
-        n.child = n
-        n.start_pos = 0
-        n.end_pos = 0
-        n
-    end
+
     # Constructor
-    function QueryTreeNode(data::T, parent::QueryTreeNode, sp, ep)
+    function QueryTreeNode(data::Expr, parent::QueryTreeNode, sp, ep)
         n = new(data, parent)
         n.child = n
         n.start_pos = sp
@@ -73,8 +65,8 @@ type QueryTreeNode{T}
     end
 end
 # Helper function to adding node Query Tree
-function add_child{T}(data::T,parent::QueryTreeNode{T},sp,ep)
-    newc = QueryTreeNode(data,parent,sp,ep)
+function add_child(data::Expr, parent::QueryTreeNode, sp, ep)
+    newc = QueryTreeNode(data,parent, sp, ep)
     parent.child = newc
     newc
 end
@@ -90,31 +82,30 @@ function print_tree(root_qtn)
     end
 end
 
-QueryTreeNode{T}(data::T) = QueryTreeNode{T}(data)
-QueryTreeNode{T}(data::T, parent::QueryTreeNode{T},sp,ep) = QueryTreeNode{T}(data,parent,sp,ep)
+QueryTreeNode(data::Expr) = QueryTreeNode(data)
+QueryTreeNode(data::Expr, parent::QueryTreeNode,sp,ep) = QueryTreeNode(data,parent,sp,ep)
 
 function from_root(function_name, ast::Tuple)
     @dprintln(1, "Starting main DataTablePass.from_root.  function = ", function_name, " ast = ", ast)
     (linfo, body) = ast
     lives = computeLiveness(body, linfo)
     tableCols, tableTypes = get_table_meta(body)
-    # transform body
-    # First node is used as a dummy node which is :meta
-    root_qtn = QueryTreeNode(body.args[1])
-    make_query_plan(body.args,root_qtn)
+
+    tree = make_query_tree(body.args)
     print_tree(root_qtn)
-    body.args = from_toplevel_body(body.args, root_qtn,tableCols, linfo)
+    # transform body
+    body.args = from_toplevel_body(body.args, tree, tableCols, linfo)
     @dprintln(1,"DataTablePass.from_root returns function = ", function_name, " ast = ", body)
     return LambdaVarInfoToLambda(linfo, body.args, ParallelAccelerator.DomainIR.AstWalk)
 end
 
 # nodes are :body of AST
-function from_toplevel_body(nodes::Array{Any,1}, root_qtn, tableCols, linfo)
+function from_toplevel_body(nodes::Array{Any,1}, tree, tableCols, linfo)
     res::Array{Any,1} = []
     # TODO Handle optimization; Need to replace all uses of filter output table after pushing up with new filter output table
-    perform_opts(nodes, root_qtn, tableCols, linfo)
+    perform_opts(nodes, tree, tableCols, linfo)
     @dprintln(3,"Datatable pass: Body after query optimizations ", nodes)
-    print_tree(root_qtn)
+
     # After optimizations make actuall call nodes for cgen
     for (index, node) in enumerate(nodes)
         if isa(node, Expr) && node.head==:filter
@@ -130,23 +121,39 @@ function from_toplevel_body(nodes::Array{Any,1}, root_qtn, tableCols, linfo)
     return res
 end
 
-function make_query_plan(nodes::Array{Any,1},root_qtn)
-    last_child = root_qtn
-    for (index, node) in enumerate(nodes)
-        if isa(node, Expr) && node.head==:filter
+"""
+    Build a query tree of relational operations.
+"""
+function make_query_tree(nodes::Array{Any,1})
+    # leaves of trees where new nodes are added
+    leaves = QueryTreeNode[]
+    local root::QueryTreeNode
+    for (index, node) in enumerate(reverse(nodes))
+        # ignore non-expression nodes
+        # TODO: handle having different basic blocks
+        if !isa(node, Expr) continue end
+        if node.head==:filter
             # -2 because id and condition are above it and these are part of filter
-            last_child = add_child(node,last_child,index-2,index)
+            new_qt_node = QueryTreeNode(node, index-2, index)
         elseif isa(node, Expr) && node.head==:join
             # -1 because id is above it which part of join
-            last_child = add_child(node,last_child,index-1,index)
+            new_qt_node = QueryTreeNode(node, index-1, index)
         elseif isa(node, Expr) && node.head==:aggregate
             # node.args[4] gives length of expression nodes list and they are part of aggregate
             # * 2 because each expression nodes occupy two places
             # TODO Fix this. It might not work in future. Aggregate node indexes are variable
-            last_child = add_child(node,last_child,(index-(length(node.args[4]) * 2)),index)
+            new_qt_node = QueryTreeNode(node, (index-(length(node.args[4]) * 2)),index)
         else
         end
+        # the first node is root of the tree
+        # TODO: handle projections as root
+        if length(leaves)==0
+            root = new_node
+        else
+            add_child!(leaves, new_qt_node)
+        end
     end
+    return root
 end
 
 """
@@ -240,11 +247,11 @@ end
         Old output of filter needs to be replaced with whatever table operation output right above filter
 """
 
-function push_filter_up(nodes::Array{Any,1}, curr_qtn, tableCols,linfo)
-    rename_map::Dict{Symbol,Symbol} = Dict{Symbol,Symbol}()
+function push_filter_up(nodes::Array{Any,1}, curr_qtn, tableCols, linfo)
+    rename_map::Dict{LHSVar,LHSVar} = Dict{LHSVar,LHSVar}()
     join_node = curr_qtn.parent.data
     filter_node = curr_qtn.data
-    # args[2] and args[3] are join input table.
+    # args[2] and args[3] are join input tables (symbol names of tables)
     # Search in these input tables on which filter condition can be applied.
     join_input_tables = [join_node.args[2];join_node.args[3]]
     filter_output_table = filter_node.args[2]
@@ -252,7 +259,7 @@ function push_filter_up(nodes::Array{Any,1}, curr_qtn, tableCols,linfo)
     new_cond_node = nodes[curr_qtn.start_pos]
     filter_id_node = nodes[curr_qtn.start_pos+1]
     # args[7] is the conditional
-    cond_rhs = string(filter_node.args[7].args[2].name)
+    cond_rhs = string(filter_node.args[7].args[2])
     # Extract column name from filter condition and check in join input tables on which it was applied
     # It will return table name and join input table index 1 or 2 which should be filtered
     table_name,j_ind = find_table_from_cond(tableCols,join_input_tables,cond_rhs)
@@ -289,13 +296,13 @@ end
 """
     Utility function to perform renaming astwalk starting from the argument pos
 """
-function call_astwalk_down_tree(nodes, pos, rename_map::Dict{Symbol,Symbol})
+function call_astwalk_down_tree(nodes, pos, rename_map::Dict{LHSVar,LHSVar})
     for i in pos:length(nodes)
         AstWalk(nodes[i], rename_symbols, rename_map)
     end
 end
 
-function rename_symbols(node::Symbol, rename_map::Dict{Symbol,Symbol}, top_level_number, is_top_level, read)
+function rename_symbols(node::LHSVar, rename_map::Dict{LHSVar,LHSVar}, top_level_number, is_top_level, read)
     new_sym = node
     while haskey(rename_map, new_sym)
       new_sym = rename_map[new_sym]
@@ -303,7 +310,7 @@ function rename_symbols(node::Symbol, rename_map::Dict{Symbol,Symbol}, top_level
     return new_sym
 end
 
-function rename_symbols(node::TypedVar, rename_map::Dict{Symbol,Symbol}, top_level_number, is_top_level, read)
+function rename_symbols(node::TypedVar, rename_map::Dict{LHSVar,LHSVar}, top_level_number, is_top_level, read)
     typ = node.typ
     new_sym = toLHSVar(node)
     while haskey(rename_map, new_sym)
@@ -312,11 +319,11 @@ function rename_symbols(node::TypedVar, rename_map::Dict{Symbol,Symbol}, top_lev
     return TypedVar(new_sym,typ)
 end
 
-function rename_symbols(node::ANY, rename_map::Dict{Symbol,Symbol}, top_level_number, is_top_level, read)
+function rename_symbols(node::ANY, rename_map::Dict{LHSVar,LHSVar}, top_level_number, is_top_level, read)
     return CompilerTools.AstWalker.ASTWALK_RECURSE
 end
 
-function add_mapping(old_t::Symbol, new_t::Symbol, tableCols::Dict{Symbol,Array{Symbol,1}}, mapping::Dict{Symbol,Symbol})
+function add_mapping(old_t::Symbol, new_t::Symbol, tableCols::Dict{Symbol,Array{Symbol,1}}, mapping::Dict{LHSVar,LHSVar})
     mapping[old_t]=new_t
     old_t_cols = tableCols[old_t]
     new_t_cols = tableCols[new_t]
