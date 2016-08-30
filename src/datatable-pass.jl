@@ -48,37 +48,29 @@ mk_call(fun,args) = Expr(:call, fun, args...)
 
 # ENTRY to datatable-pass
 type QueryTreeNode
-    data::Expr
-    parent::QueryTreeNode
-    child::Vector{QueryTreeNode}
+    expr::Expr
+    children::Vector{QueryTreeNode}
     # positions in original AST
     start_pos::Int
     end_pos::Int
+    parent::Union{QueryTreeNode,Void}
 
-    # Constructor
-    function QueryTreeNode(data::Expr, parent::QueryTreeNode, sp, ep)
-        n = new(data, parent)
-        n.child = n
-        n.start_pos = sp
-        n.end_pos = ep
-        n
+    # empty node constructor
+    function QueryTreeNode()
+        new(Expr(:null), QueryTreeNode[], -1, -1, nothing)
     end
-end
-# Helper function to adding node Query Tree
-function add_child(data::Expr, parent::QueryTreeNode, sp, ep)
-    newc = QueryTreeNode(data,parent, sp, ep)
-    parent.child = newc
-    newc
+    # Constructor
+    function QueryTreeNode(expr::Expr, sp, ep)
+        new(expr, QueryTreeNode[], sp, ep, nothing)
+    end
 end
 
 islast(n::QueryTreeNode) = (n == n.child)
 
 function print_tree(root_qtn)
-    curr_node = root_qtn
-    while true
-        islast(curr_node) && break
-        println(string("     Tree::", string(curr_node.child.data.head)))
-        curr_node = curr_node.child
+    println(string("     Tree::", string(root_qtn.expr.head)))
+    for qn in root_qtn.children
+        print_tree(qn)
     end
 end
 
@@ -92,7 +84,7 @@ function from_root(function_name, ast::Tuple)
     tableCols, tableTypes = get_table_meta(body)
 
     tree = make_query_tree(body.args)
-    print_tree(root_qtn)
+    print_tree(tree)
     # transform body
     body.args = from_toplevel_body(body.args, tree, tableCols, linfo)
     @dprintln(1,"DataTablePass.from_root returns function = ", function_name, " ast = ", body)
@@ -125,36 +117,80 @@ end
     Build a query tree of relational operations.
 """
 function make_query_tree(nodes::Array{Any,1})
-    # leaves of trees where new nodes are added
-    leaves = QueryTreeNode[]
-    local root::QueryTreeNode
+    # node of trees where new nodes are added
+    q_nodes = QueryTreeNode[]
+    root = QueryTreeNode()
+    # TODO: fix index
     for (index, node) in enumerate(reverse(nodes))
+        new_qt_node = QueryTreeNode()
         # ignore non-expression nodes
         # TODO: handle having different basic blocks
         if !isa(node, Expr) continue end
         if node.head==:filter
             # -2 because id and condition are above it and these are part of filter
             new_qt_node = QueryTreeNode(node, index-2, index)
-        elseif isa(node, Expr) && node.head==:join
+        elseif node.head==:join
             # -1 because id is above it which part of join
             new_qt_node = QueryTreeNode(node, index-1, index)
-        elseif isa(node, Expr) && node.head==:aggregate
+        elseif node.head==:aggregate
             # node.args[4] gives length of expression nodes list and they are part of aggregate
             # * 2 because each expression nodes occupy two places
             # TODO Fix this. It might not work in future. Aggregate node indexes are variable
             new_qt_node = QueryTreeNode(node, (index-(length(node.args[4]) * 2)),index)
         else
+            continue
         end
         # the first node is root of the tree
         # TODO: handle projections as root
-        if length(leaves)==0
-            root = new_node
+        if length(q_nodes)==0
+            root = new_qt_node
+            push!(q_nodes, root)
         else
-            add_child!(leaves, new_qt_node)
+            add_child!(q_nodes, new_qt_node)
         end
     end
     return root
 end
+
+"""
+    adds new node to tree and updates q_nodes accordingly
+"""
+function add_child!(q_nodes::Vector{QueryTreeNode}, new_qt_node::QueryTreeNode)
+    for q_node in q_nodes
+        # if any of q_node's inputs are output of new_qt_node
+        if isDependent(q_node, new_qt_node)
+            push!(q_node.children, new_qt_node)
+            new_qt_node.parent = q_node
+        end
+    end
+    push!(q_nodes, new_qt_node)
+end
+
+"""
+    if any of t2's inputs are output of t1
+"""
+function isDependent(t2::QueryTreeNode, t1::QueryTreeNode)
+    local t1_out_table::Symbol
+    if t1.expr.head==:filter
+        t1_out_table = t1.expr.args[2]
+    elseif t1.expr.head==:aggregate || t1.expr.head==:join
+        t1_out_table = t1.expr.args[1]
+    else
+        throw("invalid input query node: $t1")
+    end
+    local t2_in_tables::Vector{Symbol}
+    if t2.expr.head==:filter
+        t2_in_tables = [t2.expr.args[3]]
+    elseif t2.expr.head==:join
+        t2_in_tables = t2.expr.args[2:3]
+    elseif t2.expr.head==:aggregate
+        t2_in_tables = [t2.expr.args[2]]
+    else
+        throw("invalid input query node: $t2")
+    end
+    return t1_out_table in t2_in_tables
+end
+
 
 """
     Translate join node so that backend can translate
