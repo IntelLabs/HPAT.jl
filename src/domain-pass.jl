@@ -77,7 +77,7 @@ function from_root(function_name, ast)
 
     tableCols, tableTypes, tableIds = get_table_meta(body)
     @dprintln(3,"HPAT tables: ", tableCols,tableTypes)
-    state::DomainState = DomainState(linfo, 0, 0, tableCols, tableTypes, tableIds, 0)
+    state::DomainState = DomainState(linfo, tableCols, tableTypes, tableIds, 0)
 
     # transform body
     body.args = from_toplevel_body(body.args, state)
@@ -89,11 +89,10 @@ end
 # information about AST gathered and used in DomainPass
 type DomainState
     linfo  :: LambdaVarInfo
-    data_source_counter::Int64 # a unique counter for data sources in program
-    table_oprs_counter::Int64 # a unique for table operation join,filter,etc
     tableCols::Dict{Symbol,Vector{Symbol}}
     tableTypes::Dict{Symbol,Vector{Symbol}}
     tableIds::Dict{Int,Symbol}
+    # a unique id for domain operations (data sources/sinks, table operations)
     unique_id::Int
 end
 
@@ -287,7 +286,7 @@ function translate_filter(nodes::Array{Any,1},curr_pos,filter_node::Expr,state)
     # remove type convert calls after filter()
     remove_after = 2*out_num_cols
     new_filter_node = Expr(:filter, cond_arr, out_table_name, in_table_name,
-                                in_cols, out_col_arrs, in_col_arrs, nodes[curr_pos-remove_before-1].args[2], opr_num)
+                                in_cols, out_col_arrs, in_col_arrs, opr_num)
     @dprintln(3,"filter remove_before: ",remove_before," remove_after: ",remove_after," filter_node: ",filter_node)
     return remove_before, remove_after, Any[new_filter_node]
 end
@@ -395,8 +394,10 @@ function translate_join(join_node, nodes, curr_pos, state)
     end
     remove_before = curr_pos-i
     remove_after =  2*t3_num_cols
-    new_join_node = Expr(:join, t3, t1, t2, t3_cols, map(x->get_col_tablecol(x,state), t1_cols_sorted), map(x->get_col_tablecol(x,state), t2_cols_sorted),
-                              t3_arrs, t1_cols_sorted, t2_cols_sorted, opr_num)
+    new_join_node = Expr(:join, t3, t1, t2, t3_cols,
+        map(x->get_col_name_from_arr(x,state.linfo), t1_cols_sorted),
+        map(x->get_col_name_from_arr(x,state.linfo), t2_cols_sorted),
+        t3_arrs, t1_cols_sorted, t2_cols_sorted, opr_num)
     return remove_before, remove_after, Any[new_join_node]
 end
 
@@ -419,9 +420,9 @@ end
 
 isArraySet(node::ANY) = false
 
-# Extract from col from #t#col
-function get_col_tablecol(col_slot, state)
-    col = CompilerTools.LambdaHandling.getVarDef(col_slot,state.linfo).name
+# Extract col name from array var (e.g. _16 -> :col)
+function get_col_name_from_arr(arr, linfo)
+    col = CompilerTools.LambdaHandling.lookupVariableName(arr, linfo)
     arr = split(string(col),"@")
     return Symbol(arr[3])
 end
@@ -592,8 +593,7 @@ function translate_data_source_HDF5(lhs::LHSVar, rhs::Expr, state)
     hdf5_var = rhs.args[3]
     hdf5_file = rhs.args[4]
     # update counter and get data source number
-    state.data_source_counter += 1
-    dsrc_num = state.data_source_counter
+    dsrc_num = get_unique_id(state)
     dsrc_id_var = addTempVariable(Int64, state.linfo)
     push!(res, TypedExpr(Int64, :(=), dsrc_id_var, dsrc_num))
     # get array type
@@ -636,8 +636,7 @@ function translate_data_source_TXT(lhs::LHSVar, rhs::Expr, state)
     res = Any[]
     txt_file = rhs.args[3]
     # update counter and get data source number
-    state.data_source_counter += 1
-    dsrc_num = state.data_source_counter
+    dsrc_num = get_unique_id(state)
     dsrc_id_var = addTempVariable(Int64, state.linfo)
     push!(res, TypedExpr(Int64, :(=), dsrc_id_var, dsrc_num))
     # get array type
@@ -705,8 +704,7 @@ function translate_data_sink_HDF5(y, hdf5_var, hdf5_file, state)
     res = Any[]
     dprintln(3,"HPAT data sink found ", y)
     # update counter and get data source number
-    state.data_source_counter += 1
-    dsrc_num = state.data_source_counter
+    dsrc_num = get_unique_id(state)
     dsrc_id_var = addTempVariable(Int64, state.linfo)
     push!(res, TypedExpr(Int64, :(=), dsrc_id_var, dsrc_num))
     # get array type
