@@ -38,6 +38,7 @@ import CompilerTools.LambdaHandling.matchVarDef
 import HPAT
 import HPAT.CaptureAPI.getColName
 using HPAT.DomainPass.get_table_meta
+using HPAT.DomainPass.get_col_name_from_arr
 
 using ParallelAccelerator
 using ParallelAccelerator.DomainIR.AstWalk
@@ -46,26 +47,33 @@ import ParallelAccelerator.ParallelIR.computeLiveness
 
 mk_call(fun,args) = Expr(:call, fun, args...)
 
-# ENTRY to datatable-pass
+"""
+    get a unique id for renaming
+"""
+function get_unique_id(state)
+  state.unique_id += 1
+  return state.unique_id
+end
+
+
 type QueryTreeNode
     expr::Expr
     children::Vector{QueryTreeNode}
-    # positions in original AST
-    start_pos::Int
-    end_pos::Int
+    # position in original AST
+    ast_index::Int
     parent::Union{QueryTreeNode,Void}
 
     # empty node constructor
     function QueryTreeNode()
-        new(Expr(:null), QueryTreeNode[], -1, -1, nothing)
+        new(Expr(:null), QueryTreeNode[], -1, nothing)
     end
     # Constructor
-    function QueryTreeNode(expr::Expr, sp, ep)
-        new(expr, QueryTreeNode[], sp, ep, nothing)
+    function QueryTreeNode(expr::Expr, ind)
+        new(expr, QueryTreeNode[], ind, nothing)
     end
 end
 
-islast(n::QueryTreeNode) = (n == n.child)
+isRoot(n::QueryTreeNode) = (n.parent == nothing)
 
 function print_tree(root_qtn)
     println(string("     Tree::", string(root_qtn.expr.head)))
@@ -74,43 +82,69 @@ function print_tree(root_qtn)
     end
 end
 
-QueryTreeNode(data::Expr) = QueryTreeNode(data)
-QueryTreeNode(data::Expr, parent::QueryTreeNode,sp,ep) = QueryTreeNode(data,parent,sp,ep)
+# information about AST gathered and used in DomainPass
+type DataTableState
+    linfo  :: LambdaVarInfo
+    tableCols::Dict{Symbol,Vector{Symbol}}
+    tableArrs::Dict{Symbol,Vector{LHSVar}}
+    query_tree::QueryTreeNode
+    unique_id::Int
+end
 
+# ENTRY to datatable-pass
 function from_root(function_name, ast::Tuple)
     @dprintln(1, "Starting main DataTablePass.from_root.  function = ", function_name, " ast = ", ast)
     (linfo, body) = ast
     lives = computeLiveness(body, linfo)
-    tableCols, tableTypes = get_table_meta(body)
+    tableCols, tableTypes, tableIds = get_table_meta(body)
+    # find variables for columns of each table
+    tableArrs = get_table_arrs(tableCols, linfo)
 
-    tree = make_query_tree(body.args)
-    print_tree(tree)
+    query_tree = make_query_tree(body.args)
+    print_tree(query_tree)
+    # HACK: initialize unique id to length(body) to avoid conflict with DomainPass
+    state = DataTableState(linfo, tableCols, tableArrs, query_tree, length(body.args))
+
     # transform body
-    body.args = from_toplevel_body(body.args, tree, tableCols, linfo)
+    body.args = from_toplevel_body(body.args, state)
     @dprintln(1,"DataTablePass.from_root returns function = ", function_name, " ast = ", body)
     return LambdaVarInfoToLambda(linfo, body.args, ParallelAccelerator.DomainIR.AstWalk)
 end
 
 # nodes are :body of AST
-function from_toplevel_body(nodes::Array{Any,1}, tree, tableCols, linfo)
+function from_toplevel_body(nodes::Array{Any,1}, state)
     res::Array{Any,1} = []
     # TODO Handle optimization; Need to replace all uses of filter output table after pushing up with new filter output table
-    perform_opts(nodes, tree, tableCols, linfo)
+    optimize_table_oprs(nodes, state.query_tree, state)
     @dprintln(3,"Datatable pass: Body after query optimizations ", nodes)
 
     # After optimizations make actuall call nodes for cgen
     for (index, node) in enumerate(nodes)
         if isa(node, Expr) && node.head==:filter
-            append!(res, translate_hpat_filter(node))
+            append!(res, translate_hpat_filter(node, state))
         elseif isa(node, Expr) && node.head==:join
-            append!(res, translate_hpat_join(node,linfo))
+            append!(res, translate_hpat_join(node, state))
        elseif isa(node, Expr) && node.head==:aggregate
-            append!(res, translate_hpat_aggregate(node,linfo))
+            append!(res, translate_hpat_aggregate(node, state))
         else
             append!(res, [node])
         end
     end
     return res
+end
+
+# find variables for columns of each table
+function get_table_arrs(tableCols, linfo)
+    tableArrs = Dict{Symbol,Vector{LHSVar}}()
+    for (t,cols) in tableCols
+        arrs = LHSVar[]
+        for col in cols
+            var = CompilerTools.LambdaHandling.lookupLHSVarByName(getColName(t,col), linfo)
+            push!(arrs, var)
+        end
+        tableArrs[t] = arrs
+    end
+    return tableArrs
 end
 
 """
@@ -120,23 +154,25 @@ function make_query_tree(nodes::Array{Any,1})
     # node of trees where new nodes are added
     q_nodes = QueryTreeNode[]
     root = QueryTreeNode()
-    # TODO: fix index
+
     for (index, node) in enumerate(reverse(nodes))
+        # convert reverse index to normal index
+        index = length(nodes)-index+1
         new_qt_node = QueryTreeNode()
         # ignore non-expression nodes
         # TODO: handle having different basic blocks
         if !isa(node, Expr) continue end
         if node.head==:filter
             # -2 because id and condition are above it and these are part of filter
-            new_qt_node = QueryTreeNode(node, index-2, index)
+            new_qt_node = QueryTreeNode(node, index)
         elseif node.head==:join
             # -1 because id is above it which part of join
-            new_qt_node = QueryTreeNode(node, index-1, index)
+            new_qt_node = QueryTreeNode(node, index)
         elseif node.head==:aggregate
             # node.args[4] gives length of expression nodes list and they are part of aggregate
             # * 2 because each expression nodes occupy two places
             # TODO Fix this. It might not work in future. Aggregate node indexes are variable
-            new_qt_node = QueryTreeNode(node, (index-(length(node.args[4]) * 2)),index)
+            new_qt_node = QueryTreeNode(node, index)
         else
             continue
         end
@@ -195,7 +231,7 @@ end
 """
     Translate join node so that backend can translate
 """
-function translate_hpat_join(node,linfo)
+function translate_hpat_join(node, state)
     # args: id, length of output table columns, length of 1st input table columns,
     #       length of 2nd input table columns, output columns, input1 columns, input2 columns
     open_call = mk_call(GlobalRef(HPAT.API,:__hpat_join),
@@ -208,11 +244,11 @@ end
     Make filter :call node with the following layout
     condition expression lhs, columns length, columns names(#t1#c1) ...
 """
-function translate_hpat_filter(node)
+function translate_hpat_filter(node, state)
     num_cols = length(node.args[4])
     # args: id, condition, number of columns, output table columns, input table columns
     open_call = mk_call(GlobalRef(HPAT.API,:__hpat_filter),
-                        [node.args[8]; node.args[1]; num_cols; node.args[5]; node.args[6]])
+                        [node.args[7]; node.args[1]; num_cols; node.args[5]; node.args[6]])
     dprintln(3, "Datatable pass: filter translated: ", open_call)
     return [open_call]
 end
@@ -220,7 +256,7 @@ end
 """
     Translate aggragte node so that backend can translate
 """
-function translate_hpat_aggregate(node,linfo)
+function translate_hpat_aggregate(node, state)
     # args: id, key, number of expressions, expression list
     open_call = mk_call(GlobalRef(HPAT.API,:__hpat_aggregate),
                         [node.args[7]; node.args[3]; length(node.args[4]); node.args[4]; node.args[5]; node.args[6]])
@@ -232,11 +268,22 @@ end
     Starting point of all optimization performed on query tree
     Add rules to perform more optimizations
 """
-function perform_opts(nodes, root_qtn, tableCols, linfo)
+function optimize_table_oprs(nodes, tree_node, state)
     # TODO Add more rules of optimizations
-    curr_qtn = root_qtn
+    for child in tree_node.children
+        if tree_node.expr.head==:filter && child.expr.head==:join
+            # try to push filter up join (filter earlier) if possible
+            push_filter_up(nodes, tree_node, child, state)
+        end
+    end
+    # call recursively on children
+    for child in tree_node.children
+        optimize_table_oprs(nodes, child, state)
+    end
+
+#=    curr_qtn = root_qtn
     while true
-        islast(curr_qtn) && break
+        isRoot(curr_qtn) && break
         # save child pointer because swap may happen otherwise concurrent modifiction error would be thrown
         child_qtn = curr_qtn.child
         # RULE 1: PUSH FILTER UP
@@ -248,6 +295,7 @@ function perform_opts(nodes, root_qtn, tableCols, linfo)
         end
         curr_qtn = child_qtn
     end
+    =#
 end
 
 """
@@ -283,17 +331,35 @@ end
         Old output of filter needs to be replaced with whatever table operation output right above filter
 """
 
-function push_filter_up(nodes::Array{Any,1}, curr_qtn, tableCols, linfo)
+function push_filter_up(nodes::Array{Any,1}, parent, child, state)
     rename_map::Dict{LHSVar,LHSVar} = Dict{LHSVar,LHSVar}()
-    join_node = curr_qtn.parent.data
-    filter_node = curr_qtn.data
+    join_node = child.expr
+    filter_node = parent.expr
     # args[2] and args[3] are join input tables (symbol names of tables)
     # Search in these input tables on which filter condition can be applied.
-    join_input_tables = [join_node.args[2];join_node.args[3]]
+    join_input_tables = [join_node.args[2]; join_node.args[3]]
     filter_output_table = filter_node.args[2]
+
+    # conditional expression is an mmap before filter
+    cond_mmap = nodes[parent.ast_index-1].args[2]
+    cond_input_arrs = cond_mmap.args[1]
+    # find out which input table of join neeeds to be filtered
+    cond_column_names = map(x->get_col_name_from_arr(x, state.linfo), cond_input_arrs)
+    # if columns of first join input table are used in filtering
+    if issubset(cond_column_names, state.tableCols[join_input_tables[1]])
+        new_cond_node, new_filter_node = create_new_filter_node(join_input_tables[1], cond_mmap, state)
+    elseif issubset(cond_column_names, state.tableCols[join_input_tables[2]])
+        new_cond_node, new_filter_node = create_new_filter_node(join_input_tables[1], cond_mmap, state)
+    else
+        return
+    end
+
+
+
+    #=
     # start_pos is the cond pos
-    new_cond_node = nodes[curr_qtn.start_pos]
-    filter_id_node = nodes[curr_qtn.start_pos+1]
+    new_cond_node = nodes[parent.start_pos]
+    filter_id_node = nodes[parent.start_pos+1]
     # args[7] is the conditional
     cond_rhs = string(filter_node.args[7].args[2])
     # Extract column name from filter condition and check in join input tables on which it was applied
@@ -327,6 +393,46 @@ function push_filter_up(nodes::Array{Any,1}, curr_qtn, tableCols, linfo)
     splice!(nodes, curr_qtn.parent.start_pos:1, [new_cond_node, filter_id_node, filter_node])
 
     return rename_map
+    =#
+end
+
+function create_new_filter_node(t1::Symbol, cond_mmap::Expr, state)
+    cond_arrs = cond_mmap.args[1]
+    new_cond_arrs = map(x->find_corresponding_column(x, t1, state), cond_arrs)
+    new_mmap = deepcopy(cond_mmap)
+    new_mmap.args[1] = new_cond_arrs
+    new_cond_out = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+        Symbol("@$(t1)@cond_e"), Vector{Bool}, ISASSIGNEDONCE | ISASSIGNED, state.linfo))
+    cond_assign = Expr(:(=), new_cond_out, new_mmap)
+    tid = get_unique_id(state)
+    new_table_name = Symbol("$(t1)_$(tid)")
+    state.tableCols[new_table_name] = state.tableCols[t1]
+    new_arrs = Any[]
+    for (ind,col) in enumerate(state.tableCols[new_table_name])
+        col_name = getColName(new_table_name, col)
+        old_col_name = getColName(t1, col)
+        old_var = state.tableArrs[t1][ind]
+        typ = CompilerTools.LambdaHandling.getType(old_var, state.linfo)
+        new_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+            col_name, typ, ISASSIGNEDONCE | ISASSIGNED, state.linfo))
+        push!(new_arrs, new_var)
+    end
+    state.tableArrs[new_table_name] = new_arrs
+    id = get_unique_id(state)
+    new_filter_node = Expr(:filter, new_cond_out, new_table_name, t1, state.tableCols[t1], new_arrs, state.tableArrs[t1], id)
+    return cond_assign, new_filter_node
+end
+
+"""
+    find variable of column in t1 that corresponds to col_var
+"""
+function find_corresponding_column(col_var::LHSVar, t1::Symbol, state)
+    # e.g. _16 to :val2
+    col_name = get_col_name_from_arr(col_var, state.linfo)
+    # e.g. :val2 to :t1@val2
+    full_col_name = getColName(t1, col_name)
+    var = lookupLHSVarByName(full_col_name, state.linfo)
+    return var
 end
 
 """
@@ -402,7 +508,7 @@ end
 """
 function find_table_from_cond(tableCols,join_input_tables,cond)
     # I am assuming that second element has column name
-    arr = split(cond,'#')
+    arr = split(cond,'@')
     col_name = arr[3]
     for (j_ind,k) in enumerate(join_input_tables)
         arr = tableCols[k]
@@ -422,7 +528,7 @@ end
      table1#cond_e = table1#col1 > 1 => table1#cond_e = table2#col1 > 1
 """
 function replace_table_in_cond(node,table_name)
-    arr2 = split(string(node.args[2].args[1][1].name),'#')
+    arr2 = split(string(node.args[2].args[1][1].name),'@')
     node.args[2].args[1][1] = Symbol(string("@",table_name,"@",arr2[3]))
 end
 
