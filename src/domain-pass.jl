@@ -77,7 +77,7 @@ function from_root(function_name, ast)
 
     tableCols, tableTypes, tableIds = get_table_meta(body)
     @dprintln(3,"HPAT tables: ", tableCols,tableTypes)
-    state::DomainState = DomainState(linfo, 0, 0, tableCols, tableTypes, tableIds)
+    state::DomainState = DomainState(linfo, 0, 0, tableCols, tableTypes, tableIds, 0)
 
     # transform body
     body.args = from_toplevel_body(body.args, state)
@@ -94,6 +94,15 @@ type DomainState
     tableCols::Dict{Symbol,Vector{Symbol}}
     tableTypes::Dict{Symbol,Vector{Symbol}}
     tableIds::Dict{Int,Symbol}
+    unique_id::Int
+end
+
+"""
+    get a unique id for renaming
+"""
+function get_unique_id(state)
+  state.unique_id += 1
+  return state.unique_id
 end
 
 function get_table_meta(body)
@@ -210,7 +219,7 @@ function translate_table_oprs(nodes::Array{Any,1}, state::DomainState)
     return new_nodes
 end
 
-doc=""" Translate table_filter to Expr(:filter, cond_arr, t1 ,col_arrs...) and remove array of array garbage
+""" Translate table_filter to Expr(:filter, cond_arr, t1 ,col_arrs...) and remove array of array garbage
 
     returns: number of junk nodes to remove before the filter call
              number of junk nodes to remove after the filter call
@@ -234,11 +243,7 @@ doc=""" Translate table_filter to Expr(:filter, cond_arr, t1 ,col_arrs...) and r
 function translate_filter(nodes::Array{Any,1},curr_pos,filter_node::Expr,state)
     @dprintln(3,"translating filter: ",filter_node)
 
-    new_filter_node = Any[]
-    state.table_oprs_counter += 1
-    opr_num = state.table_oprs_counter
-    opr_id_var = addTempVariable(Int64, state.linfo)
-    push!(new_filter_node, TypedExpr(Int64, :(=), opr_id_var, opr_num))
+    opr_num = get_unique_id(state)
 
     cond_arr = toLHSVar(filter_node.args[2].args[4])
     in_arr_of_arrs = toLHSVar(filter_node.args[2].args[5])
@@ -281,10 +286,10 @@ function translate_filter(nodes::Array{Any,1},curr_pos,filter_node::Expr,state)
 
     # remove type convert calls after filter()
     remove_after = 2*out_num_cols
-    push!(new_filter_node, Expr(:filter, cond_arr, out_table_name, in_table_name,
-                                in_cols, out_col_arrs, in_col_arrs, nodes[curr_pos-remove_before-1].args[2], opr_id_var))
+    new_filter_node = Expr(:filter, cond_arr, out_table_name, in_table_name,
+                                in_cols, out_col_arrs, in_col_arrs, nodes[curr_pos-remove_before-1].args[2], opr_num)
     @dprintln(3,"filter remove_before: ",remove_before," remove_after: ",remove_after," filter_node: ",filter_node)
-    return remove_before, remove_after, new_filter_node
+    return remove_before, remove_after, Any[new_filter_node]
 end
 
 """ Translate join to Expr(:join, t3,t1,t2,out_cols, in1_cols, in2_cols) and remove array of array garbage
@@ -318,11 +323,7 @@ end
 function translate_join(join_node, nodes, curr_pos, state)
     @dprintln(3, "translating join: ", join_node)
 
-    new_join_node = Any[]
-    state.table_oprs_counter += 1
-    opr_num = state.table_oprs_counter
-    opr_id_var = addTempVariable(Int64, state.linfo)
-    push!(new_join_node, TypedExpr(Int64, :(=), opr_id_var, opr_num))
+    opr_num = get_unique_id(state)
 
     out_arr = toLHSVar(join_node.args[1])
     local t3_id::Int = join_node.args[2].args[2]
@@ -394,9 +395,9 @@ function translate_join(join_node, nodes, curr_pos, state)
     end
     remove_before = curr_pos-i
     remove_after =  2*t3_num_cols
-    push!(new_join_node, Expr(:join, t3, t1, t2, t3_cols, map(x->get_col_tablecol(x,state), t1_cols_sorted), map(x->get_col_tablecol(x,state), t2_cols_sorted ),
-                              t3_arrs, t1_cols_sorted, t2_cols_sorted, opr_id_var))
-    return remove_before, remove_after, new_join_node
+    new_join_node = Expr(:join, t3, t1, t2, t3_cols, map(x->get_col_tablecol(x,state), t1_cols_sorted), map(x->get_col_tablecol(x,state), t2_cols_sorted),
+                              t3_arrs, t1_cols_sorted, t2_cols_sorted, opr_num)
+    return remove_before, remove_after, Any[new_join_node]
 end
 
 function isAllocAssignment(node::Expr)
@@ -451,11 +452,7 @@ end
 function translate_aggregate(nodes, curr_pos, aggregate_node, state)
     @dprintln(3,"translating aggregate: ",aggregate_node)
 
-    new_aggregate_node = Any[]
-    state.table_oprs_counter += 1
-    opr_num = state.table_oprs_counter
-    opr_id_var = addTempVariable(Int64, state.linfo)
-    push!(new_aggregate_node, TypedExpr(Int64, :(=), opr_id_var, opr_num))
+    opr_num = get_unique_id(state)
 
     out_arr = toLHSVar(aggregate_node.args[1])
 
@@ -500,8 +497,8 @@ function translate_aggregate(nodes, curr_pos, aggregate_node, state)
         #println(nodes[k])
         push!(out_col_arrs, nodes[k].args[1])
     end
-    push!(new_aggregate_node, Expr(:aggregate, t2, t1, key_arr, in_e_arr_list, in_func_list, out_col_arrs, opr_id_var))
-    return remove_before, remove_after, new_aggregate_node
+    new_aggregate_node = Expr(:aggregate, t2, t1, key_arr, in_e_arr_list, in_func_list, out_col_arrs, opr_num)
+    return remove_before, remove_after, Any[new_aggregate_node]
 end
 
 function isTupleAssignment(node::Expr)
