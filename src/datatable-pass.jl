@@ -362,7 +362,7 @@ function push_filter_up(nodes::Array{Any,1}, filter_qnode, join_qnode, state)
         new_cond_node, new_filter_node = create_new_filter_node(join_input_tables[1], cond_mmap, state)
     elseif issubset(cond_column_names, state.tableCols[join_input_tables[2]])
         @dprintln(3, "second input table of join to replace")
-        new_cond_node, new_filter_node = create_new_filter_node(join_input_tables[1], cond_mmap, state)
+        new_cond_node, new_filter_node = create_new_filter_node(join_input_tables[2], cond_mmap, state)
         sec_ind = 1
     else
         # return without changing
@@ -391,9 +391,10 @@ function push_filter_up(nodes::Array{Any,1}, filter_qnode, join_qnode, state)
     dep_vars = cond_mmap.args[2].linfo.escaping_vars
     num_deps = length(dep_vars)
     @assert num_deps<=1 "too many escaping variables in filter mmap"
-    if num_deps==1
-        dep_assign = nodes[old_filter_index-2]
+    if num_deps==1 && !in(dep_vars[1], state.linfo.input_params)
         dep_var = lookupLHSVarByName(dep_vars[1], state.linfo)
+        @dprintln(3, "mmap escaping variable: ", dep_vars[1]," ",dep_var, " ", typeof(dep_var))
+        dep_assign = nodes[old_filter_index-2]
         @assert dep_assign.head==:(=) && dep_assign.args[1]==dep_var "assignment to mmap escaping variable expected"
         deleteat!(nodes, old_filter_index-2)
         insert!(nodes, join_index, dep_assign)
@@ -411,6 +412,20 @@ function push_filter_up(nodes::Array{Any,1}, filter_qnode, join_qnode, state)
     join_qnode.ast_index = join_index+2
     # filter->join->t1..t2 becomes join->(filter->t1)..t2
 
+    old_filter_parent = filter_qnode.parent
+    # if filter was root, update root in state
+    if old_filter_parent==nothing
+        state.query_tree = join_qnode
+    else
+        # update top parent's children
+        for (i,c) in enumerate(old_filter_parent.children)
+            if c==filter_qnode
+                deleteat!(old_filter_parent.children, i)
+                push!(old_filter_parent.children, join_qnode)
+                break
+            end
+        end
+    end
     join_qnode.parent = filter_qnode.parent
     filter_qnode.parent = join_qnode
     # join has two children, the one corresponding to transformed table is replaced
@@ -430,10 +445,7 @@ function push_filter_up(nodes::Array{Any,1}, filter_qnode, join_qnode, state)
         filter_qnode.children = []
         join_qnode.children = [filter_qnode]
     end
-    # if filter was root, update root in state
-    if join_qnode.parent==nothing
-        state.query_tree = join_qnode
-    end
+
     # replace output of filter with output of join in rest of AST
     rename_map::Dict{LHSVar,LHSVar} = Dict{LHSVar,LHSVar}()
     old_filter_output = filter_node.args[5]
@@ -445,6 +457,10 @@ function push_filter_up(nodes::Array{Any,1}, filter_qnode, join_qnode, state)
     end
     # rename in all nodes after join
     AstWalk(Expr(:body, nodes[(join_qnode.ast_index+1):end]...), rename_symbols, rename_map)
+    # filter output table symbol -> join output table symbol
+    table_rename_tuple = (filter_output_table, join_node.args[1])
+    AstWalk(Expr(:body, nodes[(join_qnode.ast_index+1):end]...), rename_input_table, table_rename_tuple)
+
     #=
     # start_pos is the cond pos
     new_cond_node = nodes[parent.start_pos]
@@ -543,6 +559,33 @@ function call_astwalk_down_tree(nodes, pos, rename_map::Dict{LHSVar,LHSVar})
     for i in pos:length(nodes)
         AstWalk(nodes[i], rename_symbols, rename_map)
     end
+end
+
+"""
+    rename input table of relational operations according to table_rename_tuple
+"""
+function rename_input_table(node::Expr, table_rename_tuple::Tuple{Symbol,Symbol}, top_level_number, is_top_level, read)
+    if node.head==:filter
+        if node.args[3]==table_rename_tuple[1]
+            node.args[3] = table_rename_tuple[2]
+        end
+    elseif node.head==:join
+        if node.args[2]==table_rename_tuple[1]
+            node.args[2] = table_rename_tuple[2]
+        end
+        if node.args[3]==table_rename_tuple[1]
+            node.args[3] = table_rename_tuple[2]
+        end
+    elseif node.head==:aggregate
+        if node.args[2]==table_rename_tuple[1]
+            node.args[2] = table_rename_tuple[2]
+        end
+    end
+    return CompilerTools.AstWalker.ASTWALK_RECURSE
+end
+
+function rename_input_table(node::ANY, table_rename_tuple::Tuple{Symbol,Symbol}, top_level_number, is_top_level, read)
+    return CompilerTools.AstWalker.ASTWALK_RECURSE
 end
 
 function rename_symbols(node::LHSVar, rename_map::Dict{LHSVar,LHSVar}, top_level_number, is_top_level, read)
