@@ -34,6 +34,7 @@ using CompilerTools.Helper
 using CompilerTools.LambdaHandling
 import CompilerTools.ReadWriteSet
 import CompilerTools.LambdaHandling.matchVarDef
+import CompilerTools.LambdaHandling.lookupLHSVarByName
 
 import HPAT
 import HPAT.CaptureAPI.getColName
@@ -76,7 +77,7 @@ end
 isRoot(n::QueryTreeNode) = (n.parent == nothing)
 
 function print_tree(root_qtn)
-    println(string("     Tree::", string(root_qtn.expr.head)))
+    println(string("     Tree::", string(root_qtn.expr.head)), " ", root_qtn.ast_index)
     for qn in root_qtn.children
         print_tree(qn)
     end
@@ -116,7 +117,8 @@ function from_toplevel_body(nodes::Array{Any,1}, state)
     res::Array{Any,1} = []
     # TODO Handle optimization; Need to replace all uses of filter output table after pushing up with new filter output table
     optimize_table_oprs(nodes, state.query_tree, state)
-    @dprintln(3,"Datatable pass: Body after query optimizations ", nodes)
+    print_tree(state.query_tree)
+    @dprintln(3,"Datatable pass: Body after query optimizations ", Expr(:body,nodes...))
 
     # After optimizations make actuall call nodes for cgen
     for (index, node) in enumerate(nodes)
@@ -331,10 +333,10 @@ end
         Old output of filter needs to be replaced with whatever table operation output right above filter
 """
 
-function push_filter_up(nodes::Array{Any,1}, parent, child, state)
-    rename_map::Dict{LHSVar,LHSVar} = Dict{LHSVar,LHSVar}()
-    join_node = child.expr
-    filter_node = parent.expr
+function push_filter_up(nodes::Array{Any,1}, filter_qnode, join_qnode, state)
+
+    join_node = join_qnode.expr
+    filter_node = filter_qnode.expr
     @dprintln(3, "push filter up filter: ", filter_node, "\n       join: ", join_node)
     # args[2] and args[3] are join input tables (symbol names of tables)
     # Search in these input tables on which filter condition can be applied.
@@ -342,29 +344,107 @@ function push_filter_up(nodes::Array{Any,1}, parent, child, state)
     filter_output_table = filter_node.args[2]
 
     # conditional expression is an mmap before filter
-    cond_mmap = nodes[parent.ast_index-1].args[2]
+    cond_mmap = nodes[filter_qnode.ast_index-1].args[2]
     @dprintln(3, "filter conditional mmap: ", cond_mmap)
     cond_input_arrs = cond_mmap.args[1]
     # find out which input table of join neeeds to be filtered
     cond_column_names = map(x->get_col_name_from_arr(x, state.linfo), cond_input_arrs)
     @dprintln(3, "filtered columns: ", cond_column_names)
+
+    new_cond_node = Expr(:null)
+    new_filter_node = Expr(:null)
+    # extra index if second input table is replaced
+    # assuming elements of second input table in join are right after first one
+    sec_ind = 0
     # if columns of first join input table are used in filtering
     if issubset(cond_column_names, state.tableCols[join_input_tables[1]])
         @dprintln(3, "first input table of join to replace")
         new_cond_node, new_filter_node = create_new_filter_node(join_input_tables[1], cond_mmap, state)
-        @dprintln(3, "new cond node: ", new_cond_node,"\n     new filter node: ", new_filter_node)
-        @dprintln(3, "updated lambda info: ", state.linfo)
     elseif issubset(cond_column_names, state.tableCols[join_input_tables[2]])
         @dprintln(3, "second input table of join to replace")
         new_cond_node, new_filter_node = create_new_filter_node(join_input_tables[1], cond_mmap, state)
-        @dprintln(3, "new cond node: ", new_cond_node,"\n     new filter node: ", new_filter_node)
-        @dprintln(3, "updated lambda info: ", state.linfo)
+        sec_ind = 1
     else
+        # return without changing
+        # optimization not valid if columns of both tables involved
         return
     end
 
+    # TODO: check for validity of optimization, e.g. make sure output of join
+    #       is not used for other things using LivenessAnalysis
 
+    @dprintln(3, "new cond node: ", new_cond_node,"\n    ** new filter node: ", new_filter_node)
+    @dprintln(3, "updated lambda info: ", state.linfo)
+    # update join node
+    new_table_name = new_filter_node.args[2]
+    join_node.args[2+sec_ind] = new_table_name
+    # ordering of input arrs should be the same (key first)
+    in_col_names = map(x->getColName(new_table_name, x), join_node.args[5+sec_ind])
+    new_input_arrs = map(x->lookupLHSVarByName(x, state.linfo), in_col_names)
+    join_node.args[8+sec_ind] = new_input_arrs
+    @dprintln(3, "updated join node: ", join_node)
 
+    old_filter_index = filter_qnode.ast_index
+    join_index = join_qnode.ast_index
+
+    # TODO: assuming there is at most one escaping variable in mmap that is assigned right before it
+    dep_vars = cond_mmap.args[2].linfo.escaping_vars
+    num_deps = length(dep_vars)
+    @assert num_deps<=1 "too many escaping variables in filter mmap"
+    if num_deps==1
+        dep_assign = nodes[old_filter_index-2]
+        dep_var = lookupLHSVarByName(dep_vars[1], state.linfo)
+        @assert dep_assign.head==:(=) && dep_assign.args[1]==dep_var "assignment to mmap escaping variable expected"
+        deleteat!(nodes, old_filter_index-2)
+        insert!(nodes, join_index, dep_assign)
+        join_index += 1
+    end
+    # delete old filter node and its mmap
+    deleteat!(nodes, (old_filter_index-1, old_filter_index))
+    # insert new condition and filter nodes
+    insert!(nodes, join_index, new_cond_node)
+    insert!(nodes, join_index+1, new_filter_node)
+    # update query tree
+    # update tree node data before swapping
+    filter_qnode.expr = new_filter_node
+    filter_qnode.ast_index = join_index+1
+    join_qnode.ast_index = join_index+2
+    # filter->join->t1..t2 becomes join->(filter->t1)..t2
+
+    join_qnode.parent = filter_qnode.parent
+    filter_qnode.parent = join_qnode
+    # join has two children, the one corresponding to transformed table is replaced
+    jchild_found = false
+    for (i,c) in enumerate(join_qnode.children)
+        filter_in_table = new_filter_node.args[3]
+        if getOutputTable(c.expr)==filter_in_table
+            filter_qnode.children = [c]
+            deleteat!(join_qnode.children, i)
+            push!(join_qnode.children, filter_qnode)
+            jchild_found = true
+            break
+        end
+    end
+    # if join input doesn't come from other relational operations, i.e. directly from I/O
+    if jchild_found==false
+        filter_qnode.children = []
+        join_qnode.children = [filter_qnode]
+    end
+    # if filter was root, update root in state
+    if join_qnode.parent==nothing
+        state.query_tree = join_qnode
+    end
+    # replace output of filter with output of join in rest of AST
+    rename_map::Dict{LHSVar,LHSVar} = Dict{LHSVar,LHSVar}()
+    old_filter_output = filter_node.args[5]
+    old_filter_output_names = filter_node.args[4]
+    corresponding_join_output_names = map(x->getColName(join_node.args[1],x), old_filter_output_names)
+    corresponding_join_output = map(x->lookupLHSVarByName(x,state.linfo), corresponding_join_output_names)
+    for i in 1:length(old_filter_output)
+        rename_map[old_filter_output[i]] = corresponding_join_output[i]
+    end
+    # rename in all nodes after join
+    AstWalk(Expr(:body, nodes[(join_qnode.ast_index+1):end]...), rename_symbols, rename_map)
     #=
     # start_pos is the cond pos
     new_cond_node = nodes[parent.start_pos]
@@ -403,6 +483,18 @@ function push_filter_up(nodes::Array{Any,1}, parent, child, state)
 
     return rename_map
     =#
+end
+
+function getOutputTable(expr::Expr)
+    if expr.head==:filter
+        return expr.args[2]
+    elseif expr.head==:join
+        return expr.args[1]
+    elseif expr.head==:aggregate
+        return expr.args[1]
+    else
+        throw("invalid relational operation: $expr")
+    end
 end
 
 function create_new_filter_node(t1::Symbol, cond_mmap::Expr, state)
