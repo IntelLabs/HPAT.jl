@@ -335,6 +335,7 @@ function push_filter_up(nodes::Array{Any,1}, parent, child, state)
     rename_map::Dict{LHSVar,LHSVar} = Dict{LHSVar,LHSVar}()
     join_node = child.expr
     filter_node = parent.expr
+    @dprintln(3, "push filter up filter: ", filter_node, "\n       join: ", join_node)
     # args[2] and args[3] are join input tables (symbol names of tables)
     # Search in these input tables on which filter condition can be applied.
     join_input_tables = [join_node.args[2]; join_node.args[3]]
@@ -342,14 +343,22 @@ function push_filter_up(nodes::Array{Any,1}, parent, child, state)
 
     # conditional expression is an mmap before filter
     cond_mmap = nodes[parent.ast_index-1].args[2]
+    @dprintln(3, "filter conditional mmap: ", cond_mmap)
     cond_input_arrs = cond_mmap.args[1]
     # find out which input table of join neeeds to be filtered
     cond_column_names = map(x->get_col_name_from_arr(x, state.linfo), cond_input_arrs)
+    @dprintln(3, "filtered columns: ", cond_column_names)
     # if columns of first join input table are used in filtering
     if issubset(cond_column_names, state.tableCols[join_input_tables[1]])
+        @dprintln(3, "first input table of join to replace")
         new_cond_node, new_filter_node = create_new_filter_node(join_input_tables[1], cond_mmap, state)
+        @dprintln(3, "new cond node: ", new_cond_node,"\n     new filter node: ", new_filter_node)
+        @dprintln(3, "updated lambda info: ", state.linfo)
     elseif issubset(cond_column_names, state.tableCols[join_input_tables[2]])
+        @dprintln(3, "second input table of join to replace")
         new_cond_node, new_filter_node = create_new_filter_node(join_input_tables[1], cond_mmap, state)
+        @dprintln(3, "new cond node: ", new_cond_node,"\n     new filter node: ", new_filter_node)
+        @dprintln(3, "updated lambda info: ", state.linfo)
     else
         return
     end
@@ -397,10 +406,10 @@ function push_filter_up(nodes::Array{Any,1}, parent, child, state)
 end
 
 function create_new_filter_node(t1::Symbol, cond_mmap::Expr, state)
-    cond_arrs = cond_mmap.args[1]
-    new_cond_arrs = map(x->find_corresponding_column(x, t1, state), cond_arrs)
+    cond_in_arrs = cond_mmap.args[1]
+    new_cond_in_arrs = map(x->find_corresponding_column(x, t1, state), cond_in_arrs)
     new_mmap = deepcopy(cond_mmap)
-    new_mmap.args[1] = new_cond_arrs
+    new_mmap.args[1] = new_cond_in_arrs
     new_cond_out = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
         Symbol("@$(t1)@cond_e"), Vector{Bool}, ISASSIGNEDONCE | ISASSIGNED, state.linfo))
     cond_assign = Expr(:(=), new_cond_out, new_mmap)
