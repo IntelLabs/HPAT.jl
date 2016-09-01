@@ -284,12 +284,12 @@ end
 
 function pattern_match_call_dist_bcast(f::GlobalRef, var::RHSVar, size::ANY,linfo)
     @dprintln(3, "pattern_match_call_dist_bcast f = ", f)
-    c_size = ParallelAccelerator.CGen.from_expr(size, linfo)
     if f.name==:__hpat_dist_broadcast
         mpi_type = ""
         var = toLHSVar(var)
         c_var = ParallelAccelerator.CGen.from_expr(var, linfo)
         var_typ = ParallelAccelerator.CGen.getSymType(var, linfo)
+        c_size = ParallelAccelerator.CGen.from_expr(size, linfo)
         is_array =  var_typ<:Array
         if is_array
             var_typ = eltype(var_typ)
