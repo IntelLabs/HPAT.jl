@@ -270,6 +270,11 @@ function isAccessIndexDependent(index::LHSVar, indexVariable::LHSVar, body_lives
     return false
 end
 
+# TODO: is this general?
+function isAccessIndexDependent(index::Int, indexVariable::LHSVar, body_lives::BlockLiveness, state)
+    return false
+end
+
 function get_arr_dist_info(ast::Any, state::DistPassState, top_level_number, is_top_level, read)
     return CompilerTools.AstWalker.ASTWALK_RECURSE
 end
