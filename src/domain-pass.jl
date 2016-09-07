@@ -530,7 +530,7 @@ function translate_hpat_dist_calls(lhs::LHSVar, rhs::Expr, hpat_call::Symbol, st
         return translate_data_source_TXT(lhs, rhs, state)
     elseif hpat_call in [:Kmeans,:LinearRegression,:NaiveBayes]
         # enable OpenMP for DAAL calls
-        HPAT.enableOMP()
+        #HPAT.enableOMP()
         # set type for output since type inference is broken!
         in_typ = CompilerTools.LambdaHandling.getType(rhs.args[2], state.linfo)
         CompilerTools.LambdaHandling.setType(lhs, in_typ, state.linfo)
