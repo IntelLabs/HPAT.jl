@@ -1041,8 +1041,6 @@ function gen_rebalance_array(arr::LHSVar, state)
   darr_start_var_name = Symbol("__hpat_dist_arr_start_"*string(arr_id))
   darr_div_var_name = Symbol("__hpat_dist_arr_div_"*string(arr_id))
   darr_count_var_name = Symbol("__hpat_dist_arr_count_"*string(arr_id))
-  state.arrs_dist_info[arr].starts[end] = darr_start_var
-  state.arrs_dist_info[arr].counts[end] = darr_count_var
 
   darr_start_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
       darr_start_var_name, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
@@ -1050,6 +1048,8 @@ function gen_rebalance_array(arr::LHSVar, state)
       darr_div_var_name, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
   darr_count_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
       darr_count_var_name, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
+  state.arrs_dist_info[arr].starts[end] = darr_start_var
+  state.arrs_dist_info[arr].counts[end] = darr_count_var
 
   darr_div_expr = Expr(:(=),darr_div_var, mk_div_int_expr(darr_size_var, state.dist_vars[:num_pes]))
   # zero-based index to match C interface of HDF5
