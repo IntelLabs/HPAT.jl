@@ -370,6 +370,7 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
             return get_arr_dist_info_gemv(node, state, top_level_number, lhs, rhs)
             # TODO: Check why toLHSVar(rhs.args[2])].dim_sizes[1] is zero for all arrays
         elseif func.name == :hcat
+            @dprintln(3,"DistPass arr info handling hcat: ", rhs)
             state.arrs_dist_info[lhs].dim_sizes[1] = state.arrs_dist_info[toLHSVar(rhs.args[2])].dim_sizes[1]
             state.arrs_dist_info[lhs].dim_sizes[2] = length(rhs.args) - 1
             min_partitioning = state.arrs_dist_info[lhs].partitioning
@@ -377,6 +378,19 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
                 min_partitioning = min(min_partitioning, state.arrs_dist_info[toLHSVar(rhs.args[curr_array_index])].partitioning)
             end
             for curr_array_index in 2:length(rhs.args)
+                state.arrs_dist_info[toLHSVar(rhs.args[curr_array_index])].partitioning = min_partitioning
+            end
+            state.arrs_dist_info[lhs].partitioning = min_partitioning
+        elseif func.name == :typed_hcat
+            # lhs = Base.typed_hcat(Int64, arr1,...)
+            @dprintln(3,"DistPass arr info handling typed_hcat: ", rhs)
+            state.arrs_dist_info[lhs].dim_sizes[1] = state.arrs_dist_info[toLHSVar(rhs.args[3])].dim_sizes[1]
+            state.arrs_dist_info[lhs].dim_sizes[2] = length(rhs.args) - 2
+            min_partitioning = state.arrs_dist_info[lhs].partitioning
+            for curr_array_index in 3:length(rhs.args)
+                min_partitioning = min(min_partitioning, state.arrs_dist_info[toLHSVar(rhs.args[curr_array_index])].partitioning)
+            end
+            for curr_array_index in 3:length(rhs.args)
                 state.arrs_dist_info[toLHSVar(rhs.args[curr_array_index])].partitioning = min_partitioning
             end
             state.arrs_dist_info[lhs].partitioning = min_partitioning
