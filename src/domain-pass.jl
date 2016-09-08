@@ -157,7 +157,6 @@ function translate_table_oprs(nodes::Array{Any,1}, state::DomainState)
     # translating operations requires skipping some nodes after current node
     skip = 0
     for i in 1:length(nodes)
-        out = []
         if skip!=0
             skip-=1
             continue
@@ -171,22 +170,27 @@ function translate_table_oprs(nodes::Array{Any,1}, state::DomainState)
                 nodes[i].args[2].args = [func_call; args]
             end
             if func_call==GlobalRef(HPAT.API, :join)
+                @dprintln(3,"new nodes before join: ", Expr(:body,new_nodes...))
                 remove_before,remove_after,ast = translate_join(nodes[i], nodes, i,state)
                 skip += remove_after
                 s_start = (length(new_nodes)-remove_before)+1
                 s_end = length(new_nodes)
                 # replace ast nodes with new node
                 splice!(new_nodes, s_start:s_end, ast)
+                @dprintln(3,"new nodes after join: ", Expr(:body,new_nodes...))
                 continue
             elseif func_call==GlobalRef(HPAT.API, :aggregate)
+                @dprintln(3,"new nodes before aggregate: ", Expr(:body,new_nodes...))
                 remove_before,remove_after,ast = translate_aggregate(nodes, i, nodes[i],state)
                 skip += remove_after
                 s_start = (length(new_nodes)-remove_before)+1
                 s_end = length(new_nodes)
                 # replace ast nodes with new node
                 splice!(new_nodes, s_start:s_end, ast)
+                @dprintln(3,"new nodes after aggregate: ", Expr(:body,new_nodes...))
                 continue
             elseif func_call==GlobalRef(HPAT.API, :table_filter!)
+                @dprintln(3,"new nodes before filter: ", Expr(:body,new_nodes...))
                 # returns: new ast :filter node
                 # number of junk nodes to remove AFTER the filter call
                 # number of junk nodes to remove BEFORE the filter call
@@ -196,6 +200,7 @@ function translate_table_oprs(nodes::Array{Any,1}, state::DomainState)
                 s_end = length(new_nodes)
                 # replace ast nodes with new node
                 splice!(new_nodes, s_start:s_end, ast)
+                @dprintln(3,"new nodes after filter: ", Expr(:body,new_nodes...))
                 continue
             end
         # TODO: any recursive case?
@@ -209,11 +214,7 @@ function translate_table_oprs(nodes::Array{Any,1}, state::DomainState)
                 nodes[i].args = [func_call; args]
             end
         end
-        if length(out)==0
-            push!(new_nodes, nodes[i])
-        else
-            append!(new_nodes,out)
-        end
+        push!(new_nodes, nodes[i])
     end
     return new_nodes
 end
