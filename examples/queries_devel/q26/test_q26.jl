@@ -1,14 +1,11 @@
 using HPAT
-using HPAT.API.Kmeans
+#using HPAT.API.Kmeans
 #HPAT.CaptureAPI.set_debug_level(3)
 #HPAT.DomainPass.set_debug_level(3)
 #HPAT.DataTablePass.set_debug_level(3)
-using CompilerTools
-#CompilerTools.OptFramework.set_debug_level(3)
-
-using ParallelAccelerator
-ParallelAccelerator.CGen.setCreateMain(true)
-ParallelAccelerator.DomainIR.set_debug_level(3)
+#HPAT.DistributedPass.set_debug_level(3)
+#ParallelAccelerator.DomainIR.set_debug_level(3)
+#ParallelAccelerator.CGen.set_debug_level(3)
 
 
 @acc hpat function q26(category, item_count, num_centroids, iterations, file_name)
@@ -38,13 +35,13 @@ ParallelAccelerator.DomainIR.set_debug_level(3)
 
     customer_i_class = customer_i_class[:ss_item_count>item_count]
 
-    points = transpose(hcat(customer_i_class[:ss_customer_sk], customer_i_class[:id1], customer_i_class[:id2],
+    points = transpose(Base.typed_hcat(Int64,customer_i_class[:ss_customer_sk], customer_i_class[:id1], customer_i_class[:id2],
     customer_i_class[:id3], customer_i_class[:id4], customer_i_class[:id5], customer_i_class[:id6],
     customer_i_class[:id7], customer_i_class[:id8], customer_i_class[:id9], customer_i_class[:id10],
     customer_i_class[:id11], customer_i_class[:id12], customer_i_class[:id13], customer_i_class[:id14], customer_i_class[:id15]))
     pointsF = convert(Matrix{Float64},points)
     model = Kmeans(pointsF, num_centroids, iterations)
-    return customer_i_class[:ss_customer_sk],customer_i_class[:id15], model
+    return model
 end
 
 
