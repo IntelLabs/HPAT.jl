@@ -77,7 +77,7 @@ end
 isRoot(n::QueryTreeNode) = (n.parent == nothing)
 
 function print_tree(root_qtn)
-    println(string("     Tree::", string(root_qtn.expr.head)), " ", root_qtn.ast_index)
+    @dprintln(3, string("     Tree::", string(root_qtn.expr.head)), " ", root_qtn.ast_index)
     for qn in root_qtn.children
         print_tree(qn)
     end

@@ -121,7 +121,7 @@ end
 function from_toplevel_body(nodes::Array{Any,1}, state::DomainState)
     res::Array{Any,1} = []
     nodes = translate_table_oprs(nodes,state)
-    @dprintln(3,"body after table translation: ", nodes)
+    @dprintln(3,"body after table translation: ", Expr(:body,nodes...))
 
     for node in nodes
         new_exprs = from_expr(node, state)
@@ -475,11 +475,14 @@ function translate_aggregate(nodes, curr_pos, aggregate_node, state)
     key_arr = toLHSVar(aggregate_node.args[2].args[4])
 
     agg_list = []
-    # if there is only one aggregate expression,
-    #   Julia inlines it in the aggregate call
-    if t2_num_cols==2
-        agg_list = [aggregate_node.args[2].args[5].args[3]]
+
+    #   Julia sometimes inlines the aggregate expresson
+    aggregate_expr = aggregate_node.args[2].args[5]
+    @assert aggregate_expr.head==:invoke "invalid aggregate AST format"
+    if aggregate_expr.args[2].name==:vect
+        agg_list = aggregate_node.args[2].args[5].args[3:end]
     else
+        @assert aggregate_expr.args[2].name==:copy! "invalid aggregate AST format"
         i = curr_pos-1
         while !isTupleAssignment(nodes[i])
             i -= 1
