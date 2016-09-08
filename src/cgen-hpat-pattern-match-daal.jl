@@ -38,9 +38,10 @@ function pattern_match_call_kmeans(f::GlobalRef, cluster_out::RHSVar, arr::RHSVa
         c_cluster_out = ParallelAccelerator.CGen.from_expr(cluster_out, linfo)
         c_start = ParallelAccelerator.CGen.from_expr(start, linfo)
         c_count = ParallelAccelerator.CGen.from_expr(count, linfo)
+        c_threads = ParallelAccelerator.CGen.USE_OMP==1 ? "omp_get_max_threads()" : "1"
 
         s *= """
-        services::Environment::getInstance()->setNumberOfThreads(omp_get_max_threads());
+        services::Environment::getInstance()->setNumberOfThreads($c_threads);
         byte   *nodeCentroids;
         size_t CentroidsArchLength;
         services::SharedPtr<NumericTable> centroids;
@@ -238,12 +239,13 @@ function pattern_match_call_linear_regression(f::GlobalRef, coeff_out::RHSVar, p
         c_count_points = ParallelAccelerator.CGen.from_expr(count_points, linfo)
         c_start_responses = ParallelAccelerator.CGen.from_expr(start_responses, linfo)
         c_count_responses = ParallelAccelerator.CGen.from_expr(count_responses, linfo)
+        c_threads = ParallelAccelerator.CGen.USE_OMP==1 ? "omp_get_max_threads()" : "1"
 
         s = """
             assert($c_tot_row_size_points==$c_tot_row_size_responses);
             int mpi_root = 0;
             int rankId = __hpat_node_id;
-            services::Environment::getInstance()->setNumberOfThreads(omp_get_max_threads());
+            services::Environment::getInstance()->setNumberOfThreads($c_threads);
 
             HomogenNumericTable<double>* dataTable = new HomogenNumericTable<double>((double*)$c_points.getData(), $c_col_size_points, $c_count_points);
             HomogenNumericTable<double>* responseTable = new HomogenNumericTable<double>((double*)$c_responses.getData(), $c_col_size_responses, $c_count_responses);
@@ -361,12 +363,13 @@ function pattern_match_call_naive_bayes(f::GlobalRef, coeff_out::RHSVar, points:
         c_count_points = ParallelAccelerator.CGen.from_expr(count_points, linfo)
         c_start_labels = ParallelAccelerator.CGen.from_expr(start_labels, linfo)
         c_count_labels = ParallelAccelerator.CGen.from_expr(count_labels, linfo)
+        c_threads = ParallelAccelerator.CGen.USE_OMP==1 ? "omp_get_max_threads()" : "1"
 
         s = """
             assert($c_tot_row_size_points==$c_tot_row_size_labels);
             int mpi_root = 0;
             int rankId = __hpat_node_id;
-            services::Environment::getInstance()->setNumberOfThreads(omp_get_max_threads());
+            services::Environment::getInstance()->setNumberOfThreads($c_threads);
 
             HomogenNumericTable<double>* dataTable = new HomogenNumericTable<double>((double*)$c_points.getData(), $c_col_size_points, $c_count_points);
             HomogenNumericTable<double>* responseTable = new HomogenNumericTable<double>((double*)$c_labels.getData(), $c_col_size_labels, $c_count_labels);
