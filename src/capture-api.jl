@@ -72,6 +72,7 @@ end
 
 function process_assignment(node, state, lhs::Symbol, rhs::Expr)
     @dprintln(3,"assignment: ", lhs)
+
     if rhs.head ==:call && rhs.args[1]==:DataSource
         @dprintln(3,"datasource: ", lhs)
         arr_var_expr = rhs.args[2]
@@ -91,6 +92,10 @@ function process_assignment(node, state, lhs::Symbol, rhs::Expr)
         if haskey(state.tableCols, t1)
             return translate_filter(lhs, t1, rhs.args[2], state)
         end
+        # set type of output of DAAL calls
+    elseif rhs.head==:call && (rhs.args[1]==:Kmeans || rhs.args[1]==:LinearRegression || rhs.args[1]==:NaiveBayes)
+        in_matrix = rhs.args[2]
+        node.args[1] = :($lhs::typeof($in_matrix))
     end
     CompilerTools.AstWalker.ASTWALK_RECURSE
 end

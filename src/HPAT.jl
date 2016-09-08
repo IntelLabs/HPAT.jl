@@ -43,6 +43,8 @@ import MPI
 
 export hpat, hpat_checkpoint, hpat_debug, @acc, @noacc
 
+ParallelAccelerator.CGen.setCreateMain(true)
+
 # disable OMP if not set by user since it is slower than pure MPI
 if !haskey(ENV, "CGEN_NO_OMP")
     ParallelAccelerator.CGen.disableOMP()
