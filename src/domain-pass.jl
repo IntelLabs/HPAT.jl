@@ -478,11 +478,14 @@ function translate_aggregate(nodes, curr_pos, aggregate_node, state)
 
     #   Julia sometimes inlines the aggregate expresson
     aggregate_expr = aggregate_node.args[2].args[5]
-    @assert aggregate_expr.head==:invoke "invalid aggregate AST format"
-    if aggregate_expr.args[2].name==:vect
-        agg_list = aggregate_node.args[2].args[5].args[3:end]
+    @assert aggregate_expr.head==:invoke || aggregate_expr.head==:call "invalid aggregate AST format"
+    local aggregate_expr_call = getCallFunction(aggregate_expr)
+    local aggregate_expr_args = getCallArguments(aggregate_expr)
+
+    if aggregate_expr_call.name==:vect
+        agg_list = aggregate_expr_args
     else
-        @assert aggregate_expr.args[2].name==:copy! "invalid aggregate AST format"
+        @assert aggregate_expr_call.name==:copy! "invalid aggregate AST format"
         i = curr_pos-1
         while !isTupleAssignment(nodes[i])
             i -= 1
