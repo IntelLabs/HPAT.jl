@@ -190,7 +190,7 @@ function get_arr_dist_info_parfor(node, state, top_level_number, parfor)
     body_lives = CompilerTools.LivenessAnalysis.from_lambda(state.LambdaVarInfo,
                                                             parfor.body, ParallelIR.pir_live_cb, state.LambdaVarInfo)
     # @dprintln(3, "body_lives = ", body_lives)
-
+    @dprintln(2,"DistPass arr info walk parfor indexVariable: ", indexVariable, " accesses: ", allArrAccesses)
     # If an array is accessed with a Parfor's index variable, the parfor and array should have same partitioning
     for arr in keys(allArrAccesses)
         # an array can be accessed multiple times in Pafor

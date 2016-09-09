@@ -1575,7 +1575,7 @@ function get_mpi_type_from_var_type(var_typ)
     elseif var_typ==Bool
         mpi_type = "MPI_C_BOOL"
     else
-        throw("CGen unsupported MPI reduction type")
+        throw("CGen unsupported MPI reduction type $var_typ")
     end
     return mpi_type
 end
