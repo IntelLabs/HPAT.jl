@@ -320,15 +320,14 @@ end
 function translate_aggregate(lhs, rhs, state)
     @dprintln(3,"aggregate: ", lhs)
     t1 = rhs.args[2]
-    c1 = getQuoteValue(rhs.args[3])
+    c1, c1_out = get_aggregate_key_names(rhs.args[3])
     c1_arr = getColName(t1, c1)
-    c1_out_arr = getColName(lhs, c1)
+    c1_out_arr = getColName(lhs, c1_out)
     out_e = []
     out_dummies = []
     out_aggs = []
     out_arrs = [c1_out_arr]
-    out_cols = [c1]
-    out_type_assigns = [ :($c1_out_arr::Vector{$(state.tableTypes[t1][1])} = $c1_out_arr) ]
+    out_cols = [c1_out]
 
     for col_expr in rhs.args[4:end]
         @assert col_expr.head==:kw "expected assignment for new aggregate column"
@@ -390,6 +389,20 @@ function translate_aggregate(lhs, rhs, state)
     ret = Expr(:block, out_e...)
     @dprintln(3,"aggregate returns: ",ret)
     return ret
+end
+
+function get_aggregate_key_names(key_expr)
+    c1 = :null
+    c1_out = :null
+    if isQuote(key_expr)
+        c1 = getQuoteValue(key_expr)
+        c1_out = c1
+    else
+        @assert key_expr.head==:kw "expected assignment for aggregate key"
+        c1_out = getQuoteValue(key_expr.args[1])
+        c1 = getQuoteValue(key_expr.args[2])
+    end
+    return c1, c1_out
 end
 
 agg_oprs_map = Dict{Symbol, Symbol}(
