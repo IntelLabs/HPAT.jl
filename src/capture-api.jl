@@ -86,6 +86,8 @@ function process_assignment(node, state, lhs::Symbol, rhs::Expr)
         return translate_join(lhs, rhs, state)
     elseif rhs.head==:call && rhs.args[1]==:aggregate
         return translate_aggregate(lhs,rhs,state)
+    elseif rhs.head==:vcat
+        return translate_table_vcat(lhs, rhs, state)
     elseif rhs.head==:ref
         t1 = rhs.args[1]
         # table filter like t1 = t1[:c1>=2]
@@ -102,6 +104,46 @@ end
 
 function process_assignment(node, state, lhs::ANY, rhs::ANY)
     CompilerTools.AstWalker.ASTWALK_RECURSE
+end
+
+function translate_table_vcat(t_out, rhs::Expr, state)
+    @assert rhs.head==:vcat "invalid vcat node"
+    t1 = rhs.args[1]
+    t2 = rhs.args[2]
+    # ignore if not a table vcat
+    if !haskey(state.tableCols, t1) && !haskey(state.tableCols, t2)
+        return CompilerTools.AstWalker.ASTWALK_RECURSE
+    end
+    # if one arg is table, both should be table
+    @assert haskey(state.tableCols, t1) && haskey(state.tableCols, t2) "both vcat inputs should be tables"
+    @assert Set(state.tableCols[t1])==Set(state.tableCols[t2]) "vcat inputs should have same schema"
+
+    if t_out==t1 || t_out==t2
+      id = get_unique_id(state)
+      new_t_out = Symbol("$(t_out)_v_$(id)")
+      @dprintln(3, "renaming vcat output table: ", t_out, " -> ", new_t_out)
+      # symbol will be renamed for future AST nodes
+      add_symbol_rename(t_out, new_t_out, state)
+      t_out = new_t_out
+    end
+
+    # Adding new output table to state.tableCols
+    state.tableCols[t_out] = state.tableCols[t1]
+    state.tableTypes[t_out] = state.tableTypes[t1]
+    #t_in_id = getTableId(t_in,state)
+    t_out_id = get_unique_id(state)
+    state.tableIds[t_out_id] = t_out
+    res = []
+    for c in state.tableCols[t1]
+        t1_c_arr = getColName(t1,c)
+        t2_c_arr = getColName(t2,c)
+        t_out_c_arr = getColName(t_out,c)
+        #push!(res, :($t_out_c_arr = [$t1_c_arr; $t2_c_arr]))
+        push!(res, :($t_out_c_arr = vcat($t1_c_arr, $t2_c_arr)))
+    end
+    ret = Expr(:block, res...)
+    @dprintln(3,"vcat returns: ", ret)
+    return ret
 end
 
 function process_macros(node, state, func)
