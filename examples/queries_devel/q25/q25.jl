@@ -7,14 +7,14 @@ using HPAT
     store_sales = store_sales[:ss_sold_date_sk > d_date]
     web_sales   = web_sales[:ws_sold_date_sk > d_date]
 
-    store_agg = aggregate(store_sales, :ss_customer_sk, 
+    store_agg = aggregate(store_sales, :cid = :ss_customer_sk, 
                                            :frequency = count(union(:ss_ticket_number)),
                                            :most_recent_date = max(:ss_sold_date_sk),
-                                           :amount = sum(:ss_net_paid))[:cid = :ss_customer_sk]
-    web_agg = aggregate(web_sales,  :ws_bill_customer_sk,
+                                           :amount = sum(:ss_net_paid))
+    web_agg = aggregate(web_sales,  :cid = :ws_bill_customer_sk,
                                            :frequency = count(union(:ws_order_number)),
                                            :most_recent_date = max(:ws_sold_date_sk),
-                                           :amount = sum(:ws_net_paid))[:cid = :ws_bill_customer_sk]
+                                           :amount = sum(:ws_net_paid))
     web_store_agg = [store_agg; web_agg]
 
     result = aggregate(web_store_agg, :cid,
