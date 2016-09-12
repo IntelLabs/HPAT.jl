@@ -28,7 +28,7 @@ println(b)
 
 using Base.Test
 @test a==[1,2,3,1,2,3]
-@test_approx_eq b [4.3, 4.0, 3.1, 3.2, 2.1, 3.1]
+@test_approx_eq b [4.3, 4.0, 3.1, 1.0, 1.0, 1.0]
 
 if MPI.Comm_rank(MPI.COMM_WORLD)==0 
     rm("test1_1.hdf5")
