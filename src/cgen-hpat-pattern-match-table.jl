@@ -574,8 +574,8 @@ function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs
     s *= "sdis_$id = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
     s *= "rdis_$id = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
 
-    agg_key_map_temp = "temp_map_$agg_key_col_output"
-    s *= "std::unordered_map<int,int> $agg_key_map_temp ;\n"
+    agg_key_map_temp = "temp_map_$(id)_$agg_key_col_output"
+    s *= "std::unordered_map<int,int> $agg_key_map_temp;\n"
     agg_temp_counter = "agg_temp_counter_$id"
     s *= "int $agg_temp_counter = 0;\n"
     # Counting displacements for table
@@ -652,20 +652,20 @@ function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs
     # After mpi_alltoallv the length of agg_key_col_input is changed. Don't use agg_key_col_input_len
     mpi_type = get_mpi_type_from_array(groupby_key,linfo)
     j2c_type = get_j2c_type_from_array(groupby_key,linfo)
-    s *= " j2c_array< $j2c_type > rbuf_$agg_key_col_input = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, rsize_$id);\n"
+    s *= " j2c_array< $j2c_type > rbuf_$(id)_$agg_key_col_input = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, rsize_$id);\n"
     s *= """ MPI_Alltoallv($agg_key_col_input_tmp.getData(), scount_$id, sdis_$id, $mpi_type,
-                                         rbuf_$agg_key_col_input.getData(), rcount_$id, rdis_$id, $mpi_type, MPI_COMM_WORLD);
+                                         rbuf_$(id)_$agg_key_col_input.getData(), rcount_$id, rdis_$id, $mpi_type, MPI_COMM_WORLD);
                          """
-    s *= " $agg_key_col_input = rbuf_$agg_key_col_input; \n"
+    s *= " $agg_key_col_input = rbuf_$(id)_$agg_key_col_input; \n"
 
     for (index, col_name) in enumerate(exprs_list)
         mpi_type = get_mpi_type_from_array(output_cols_list[index + 1], linfo)
         j2c_type = get_j2c_type_from_array(output_cols_list[index + 1], linfo)
         expr_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
         expr_name_tmp = expr_name * "_tmp_agg_$id"
-        s *= " j2c_array< $j2c_type > rbuf_$expr_name = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, rsize_$id);\n"
+        s *= " j2c_array< $j2c_type > rbuf_$(id)_$expr_name = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, rsize_$id);\n"
         s *= """ MPI_Alltoallv($expr_name_tmp.getData(), scount_$id, sdis_$id, $mpi_type,
-                                         rbuf_$expr_name.getData(), rcount_$id, rdis_$id, $mpi_type, MPI_COMM_WORLD);
+                                         rbuf_$(id)_$expr_name.getData(), rcount_$id, rdis_$id, $mpi_type, MPI_COMM_WORLD);
                          """
     end
     # delete [] expr_name_tmp
@@ -685,7 +685,7 @@ function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs
     s *= "$col_name.ARRAYELEM($agg_write_index) = $agg_key_col_input.ARRAYELEM(i);\n"
     for (index, func) in enumerate(funcs_list)
         expr_name = ParallelAccelerator.CGen.from_expr(exprs_list[index],linfo)
-        rbuf_expr_name = "rbuf_" * expr_name
+        rbuf_expr_name = "rbuf_$(id)_" * expr_name
         new_col_name = ParallelAccelerator.CGen.from_expr(output_cols_list[index + 1], linfo)
         s *= return_reduction_string_with_closure_first_elem(new_col_name, rbuf_expr_name, func, agg_write_index)
     end
@@ -696,13 +696,13 @@ function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs
     s *= "int $current_write_index = $agg_key_map_temp[$agg_key_col_input.ARRAYELEM(i)];\n"
     for (index, func) in enumerate(funcs_list)
         expr_name = ParallelAccelerator.CGen.from_expr(exprs_list[index],linfo)
-        rbuf_expr_name = "rbuf_" * expr_name
+        rbuf_expr_name = "rbuf_$(id)_" * expr_name
         new_col_name = ParallelAccelerator.CGen.from_expr(output_cols_list[index + 1], linfo)
         s *= return_reduction_string_with_closure_second_elem(new_col_name, rbuf_expr_name, func, current_write_index)
     end
     s *= "}\n"
     s *= "}\n"
-    counter_agg = "counter_agg$id"
+    counter_agg = "counter_agg_$id"
     s *= "int $counter_agg = $agg_key_map_temp.size();\n"
     for col_name in output_cols_list
         j2c_type = get_j2c_type_from_array(col_name,linfo)
