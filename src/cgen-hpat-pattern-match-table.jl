@@ -550,8 +550,6 @@ function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs
     output_cols_list = expr_func_output_list[(2*num_exprs)+1 : end]
     agg_key_col_input = ParallelAccelerator.CGen.from_expr(groupby_key, linfo)
     agg_key_col_output = ParallelAccelerator.CGen.from_expr(output_cols_list[1], linfo)
-    agg_key_col_input_len = "agg_key_col_input_len_$id"
-    s *= "int $agg_key_col_input_len = $agg_key_col_input.ARRAYLEN();\n"
 
     # Sending counts
     s *= "int *scount_$id;\n"
@@ -576,15 +574,16 @@ function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs
 
     agg_key_map_temp = "temp_map_$(id)_$agg_key_col_output"
     s *= "std::unordered_map<int,int> $agg_key_map_temp;\n"
-    agg_temp_counter = "agg_temp_counter_$id"
-    s *= "int $agg_temp_counter = 0;\n"
-    # Counting displacements for table
-    s *= "for (int i=1; i < $agg_key_col_input_len + 1; i++){\n"
+
+    s *= "int agg_total_unique_keys_$id = 0;\n"
+    ### Counting displacements for table
+    # count unique keys of each node and total unique keys
+    s *= "for (int i=1; i <= $agg_key_col_input.ARRAYLEN(); i++){\n"
     s *= "if ($agg_key_map_temp.find($agg_key_col_input.ARRAYELEM(i)) == $agg_key_map_temp.end()){\n"
     s *= "$agg_key_map_temp[$agg_key_col_input.ARRAYELEM(i)] = 1;\n"
     s *= "int node_id = $agg_key_col_input.ARRAYELEM(i) % __hpat_num_pes ;\n"
     s *= "scount_$id[node_id]++;\n"
-    s *= "$agg_temp_counter++;\n"
+    s *= "agg_total_unique_keys_$id++;\n"
     s *= "}\n"
     s *= "}\n"
 
@@ -614,12 +613,12 @@ function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs
     # First column is groupbykey which is handled separately
     agg_key_col_input_tmp = agg_key_col_input * "_tmp_agg_$id"
     j2c_type = get_j2c_type_from_array(groupby_key, linfo)
-    s *= "j2c_array< $j2c_type > $agg_key_col_input_tmp = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, $agg_temp_counter);\n"
+    s *= "j2c_array< $j2c_type > $agg_key_col_input_tmp = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, agg_total_unique_keys_$id);\n"
     for (index, col_name) in enumerate(exprs_list)
         expr_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
         expr_name_tmp = expr_name * "_tmp_agg_$id"
         j2c_type = get_j2c_type_from_array(output_cols_list[index + 1 ],linfo)
-        s *= "j2c_array< $j2c_type > $expr_name_tmp = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, $agg_temp_counter);\n"
+        s *= "j2c_array< $j2c_type > $expr_name_tmp = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, agg_total_unique_keys_$id);\n"
     end
 
     s *= "for(int i = 1 ; i < $agg_key_col_input.ARRAYLEN() + 1 ; i++){\n"
