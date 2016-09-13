@@ -104,7 +104,7 @@ dist_ir_funcs = Set([   :unsafe_arrayref,
                         :Kmeans,
                         :LinearRegression,
                         :NaiveBayes,
-                        :arraylen, :arraysize, :reshape, :tuple, :hcat, :typed_hcat,
+                        :arraylen, :arraysize, :reshape, :tuple, :hcat, :typed_hcat, :vcat,
                         :transpose!, :transpose, :gemm_wrapper!,
                         :gemv!])
 
@@ -206,7 +206,7 @@ include("distributed-pass-ast-walk.jl")
 function show(io::IO, pnode::HPAT.DistributedPass.DistPassState)
     println(io,"DistPassState arrs_dist_info:")
     for (k,v) in pnode.arrs_dist_info
-        println(io,"  ", k," - ",CompilerTools.LambdaHandling.lookupVariableName(k,pnode.LambdaVarInfo)," => ",v)
+        println(io,"  ", k,"  ",CompilerTools.LambdaHandling.lookupVariableName(k,pnode.LambdaVarInfo)," => ",v)
     end
     println(io,"DistPassState parfor_partitioning: ",pnode.parfor_partitioning)
     #= println(io,"DistPassState parfor_info:")
