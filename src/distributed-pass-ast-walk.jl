@@ -176,7 +176,7 @@ function get_arr_dist_info_serial_code(node, state, top_level_number)
 
     for var in all_vars
         if haskey(state.arrs_dist_info, toLHSVar(var))
-            @dprintln(2,"DistPass arr info walk array sequential since in serial code: ", var, " ", node)
+            @dprintln(2,"DistPass arr info walk array sequential since in serial code: ", var, "  ",lookupVariableName(var, state.LambdaVarInfo), " ", node)
             setSEQ(toLHSVar(var),state)
         end
     end

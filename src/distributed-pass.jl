@@ -152,7 +152,14 @@ type ArrDistInfo
 end
 
 function show(io::IO, pnode::HPAT.DistributedPass.ArrDistInfo)
-    print(io,"partitioning: ",pnode.partitioning," sizes: ", pnode.dim_sizes)
+    print(io,"partitioning: ",pnode.partitioning," sizes: [")
+    for i in 1:length(pnode.dim_sizes)
+        print(io,pnode.dim_sizes[i])
+        if i!=length(pnode.dim_sizes)
+            print(io,",")
+        end
+    end
+    print(io,"]")
 end
 
 # information about AST gathered and used in DistributedPass
@@ -198,8 +205,8 @@ include("distributed-pass-ast-walk.jl")
 
 function show(io::IO, pnode::HPAT.DistributedPass.DistPassState)
     println(io,"DistPassState arrs_dist_info:")
-    for i in pnode.arrs_dist_info
-        println(io,"  ", i)
+    for (k,v) in pnode.arrs_dist_info
+        println(io,"  ", k," - ",CompilerTools.LambdaHandling.lookupVariableName(k,pnode.LambdaVarInfo)," => ",v)
     end
     println(io,"DistPassState parfor_partitioning: ",pnode.parfor_partitioning)
     #= println(io,"DistPassState parfor_info:")
