@@ -33,6 +33,8 @@ DebugMsg.init()
 
 using CompilerTools
 using CompilerTools.AstWalker
+using CompilerTools.LambdaHandling
+using CompilerTools.Helper
 using CompilerTools.OptFramework
 using CompilerTools.OptFramework.OptPass
 using ParallelAccelerator
@@ -58,6 +60,20 @@ end
 
 OptFramework.setSaveOriginalFunction(false)
 
+# smaller value means higher precedence
+@enum Partitioning SEQ=1 ONE_D_VAR=2 TWO_D=3 ONE_D=4
+
+# save distributed arrays of last compiled function for debugging
+saved_array_partitionings = Dict{LHSVar,Partitioning}()
+
+function set_saved_array_partitionings(d)
+    global saved_array_partitionings = d
+end
+
+function get_saved_array_partitionings()
+    return saved_array_partitionings
+end
+
 force_parallel = true
 
 function setForceParallel(v::Bool)
@@ -71,8 +87,6 @@ function setBlockSize(v::Int)
     global BLOCK_SIZE=v
 end
 
-# smaller value means higher precedence
-@enum Partitioning SEQ=1 ONE_D_VAR=2 TWO_D=3 ONE_D=4
 
 include("api.jl")
 using HPAT.API

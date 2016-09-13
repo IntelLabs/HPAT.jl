@@ -49,12 +49,22 @@ function getArrayDistributionInfo(ast, state)
           all([state.arrs_dist_info[arr].partitioning==SEQ for arr in keys(state.arrs_dist_info)])
         error("HPAT failed to parallelize! Fix the parallelism problem or use \"HPAT.setForceParallel(false)\" to run sequentially.")
     end
+    # for debugging purposes
+    save_array_partitionings(state)
 end
 
 function set_user_partitionings(state)
     for (arr,part) in state.user_partitionings
       state.arrs_dist_info[arr].partitioning = part
     end
+end
+
+function save_array_partitionings(state)
+    d = Dict{LHSVar,Partitioning}()
+    for (k,v) in state.arrs_dist_info
+        d[k] = state.arrs_dist_info[k].partitioning
+    end
+    HPAT.set_saved_array_partitionings(d)
 end
 
 """
