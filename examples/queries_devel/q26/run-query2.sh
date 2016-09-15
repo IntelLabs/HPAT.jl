@@ -14,7 +14,7 @@
 
 # Set DIRs according to your environment
 ROOT_DIR=${HOME}
-SPARK_DIR=${ROOT_DIR}/spark/
+SPARK_DIR=${ROOT_DIR}/spark-2.0.0/
 SPARK_QUERY_DIR=${ROOT_DIR}/pse-hpc/spark-sql-query-tests/
 RESULT_DIR=${ROOT_DIR}/tmp/results/
 RESULT_FILE=${RESULT_DIR}/q26-`date +"%Y_%m_%d_%H_%M"`.csv
@@ -24,7 +24,7 @@ HPAT_DATAGEN_DIR=${ROOT_DIR}/.julia/v0.5/HPAT/examples/queries_devel/q26/
 
 if [[ ! -d $SPARK_QUERY_DIR ]]; then
     cd $ROOT_DIR
-    git clone https://github.com/Wajihulhassan/spark-sql-query-tests.git
+    git clone https://github.com/ehsantn/spark-sql-query-tests.git
 fi
 
 cd $SPARK_QUERY_DIR
