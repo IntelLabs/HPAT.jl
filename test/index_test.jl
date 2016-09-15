@@ -5,7 +5,7 @@ HPAT.DistributedPass.set_debug_level(3)
 @acc hpat function index_test(numCenter, file_name)
     points = DataSource(Matrix{Float64},HDF5,"/points", file_name)
     D,N = size(points) # number of features, instances
-    centroids = rand(D, numCenter)
+    centroids :: Array{Float64,2} = rand(D, numCenter)
 
     dist::Array{Array{Float64,1},1} = [ Float64[sqrt(sum((points[:,i+j]-centroids[:,j]).^2)) for j in 1:numCenter] for i in 1:(N-numCenter)]
     labels::Array{Int,1} = [indmin(dist[i]) for i in 1:(N-numCenter)]
