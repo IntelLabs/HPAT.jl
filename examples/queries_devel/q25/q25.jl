@@ -21,8 +21,8 @@ using HPAT
                                       :recency = (37621 - max(:most_recent_date) < 60 ? 1.0 : 0.0),
                                       :frequency = sum(:frequency),
                                       :totalspend = sum(:amount))
+    return result[:cid], result[:recency], result[:frequency], result[:totalspend]
 
-    sort!(result, by=:cid)
 end
 
-println(q25("1-1-2015", "data.hdf5"))
+println(q25("33000", "test_q25.hdf5"))

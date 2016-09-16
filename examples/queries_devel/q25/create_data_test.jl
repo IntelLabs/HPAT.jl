@@ -8,40 +8,53 @@ using DataFrames
 
 function example_dataset(ss_customer_sk, ss_ticket_number, ss_sold_date_sk, ss_net_paid,
        ws_bill_customer_sk, ws_order_number, ws_sold_date_sk, ws_net_paid)
-    append!(wcs_user_sk, [1,1,2,1,2,3])
-    append!(wcs_item_sk, [1,1,2,1,2,3])
-    append!(i_item_sk, [1,1,2,1,2,3])
-    append!(i_category_id, [1,1,2,1,2,3])
-    append!(i_category, [1,1,2,1,2,3])
-    append!(c_customer_sk, [1,1,2,1,2,3])
-    append!(c_current_cdemo_sk, [1,1,2,1,2,3])
-    append!(cd_demo_sk, [1,1,2,1,2,3])
-    append!(cd_gender, [1,1,2,1,2,3])
-    append!(cd_education_status, [1,1,2,1,2,3])
+    # ss_customer_sk   ss_ticket_number  ss_sold_date_sk  ss_net_paid
+    # 1                0                 37580            101.0
+    # 1                0                 37600            3.2
+    # 1                3                 34000            24.0
+    # 2                5                 35000            3.5
+    # 2                6                 36000            50.0
+    append!(ss_customer_sk, [1,1,1,2,2])
+    append!(ss_ticket_number, [0,0,3,5,6])
+    append!(ss_sold_date_sk, [37580,37600,34000,35000,36000])
+    append!(ss_net_paid, [101.0,3.2,24.0,3.5,50.0])
+
+    # ws_bill_customer_sk ws_order_number ws_sold_date_sk ss_net_paid
+    # 1                1                 37581            100.0
+    # 1                1                 32610            30.2
+    # 1                3                 34000            240.0
+    # 2                5                 35000            35.0
+    # 2                5                 36000            50.3
+    # 3                4                 37620            30.1
+
+    append!(ws_bill_customer_sk, [1,1,1,2,2,3])
+    append!(ws_order_number, [0,0,3,5,5,4])
+    append!(ws_sold_date_sk, [37581,37610,34000,35000,36000,37620])
+    append!(ws_net_paid, [100.0,30.2,240.0,35.0,50.3,30.1])
+
+    # cid   recency   frequency  totalspend
+    # 1     1.0       4          468.2
+    # 2     0.0       3          138.8
+    # 3     1.0       1          30.1
 end
 
 function generate_dataset(ss_customer_sk, ss_ticket_number, ss_sold_date_sk, ss_net_paid, 
         ws_bill_customer_sk, ws_order_number, ws_sold_date_sk, ws_net_paid, 
         table_ss_path, table_ws_path)
 
-    wcs_df = readtable(open(table_wcs_path))
-    i_df = readtable(open(table_i_path))
-    append!(wcs_item_sk, convert(Array, wcs_df[1], typemax(Int32)))
+    ss_df = readtable(open(table_ss_path))
+    ws_df = readtable(open(table_ws_path))
+    # order of columns in generate-dataset.sh
     #replace NA values in Dataframes with 2147483648
-    append!(wcs_user_sk, convert(Array, wcs_df[2], typemax(Int32)))
+    append!(ss_customer_sk, convert(Array, ss_df[2], typemax(Int32)))
+    append!(ss_ticket_number, convert(Array, ss_df[3], typemax(Int32)))
+    append!(ss_sold_date_sk, convert(Array, ss_df[1], typemax(Int32)))
+    append!(ss_net_paid, convert(Array, ss_df[4], typemax(Float32)))
 
-    append!(i_item_sk, i_df[1])
-    append!(i_category_id, i_df[2])
-    append!(i_category, i_df[3])
-
-    append!(c_customer_sk, c_df[1])
-    #replace NA values in Dataframes with 2147483648
-    append!(c_current_cdemo_sk, convert(Array, c_df[2], typemax(Int32)))
-
-    append!(cd_demo_sk, cd_df[1])
-    #replace NA values in Dataframes with 2147483648
-    append!(cd_gender, convert(Array, cd_df[2],  typemax(Int32)))
-    append!(cd_education_status, convert(Array, cd_df[3], typemax(Int32)))
+    append!(ws_bill_customer_sk, ws_df[2])
+    append!(ws_order_number, ws_df[3])
+    append!(ws_sold_date_sk, ws_df[1])
+    append!(ws_net_paid, ws_df[4])
 end
 
 function main()

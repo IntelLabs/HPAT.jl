@@ -9,7 +9,7 @@ using DataFrames
 
 function example_dataset(customer,sale,item,class,category)
     #=
-    customer    iterm
+    customer    item
     1       1
     1       2
     2       1
