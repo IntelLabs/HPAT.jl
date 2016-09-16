@@ -171,6 +171,13 @@ function pattern_match_call_get_sec_since_epoch(f::Any,linfo)
     return ""
 end
 
+function pattern_match_reduce_maximum(reductionFunc::DelayedFunc,linfo)
+    #if reductionFunc.args[1][1].args[2].args[1].name==:add_float || reductionFunc.args[1][1].args[2].args[1].name==:add_int
+    #    return true
+    #end
+    return true
+end
+
 function pattern_match_reduce_sum(reductionFunc::DelayedFunc,linfo)
     if reductionFunc.args[1][1].args[2].args[1].name==:add_float || reductionFunc.args[1][1].args[2].args[1].name==:add_int
         return true
@@ -265,8 +272,10 @@ function pattern_match_call_dist_allreduce(f::GlobalRef, var::RHSVar, reductionF
         mpi_func = ""
         if pattern_match_reduce_sum(reductionFunc, linfo)
             mpi_func = "MPI_SUM"
+        elseif pattern_match_reduce_maximum(reductionFunc, linfo)
+            mpi_func = "MPI_MAX"
         else
-            throw("CGen unsupported MPI reduction function")
+            throw("CGen unsupported MPI reduction function $reductionFunc")
         end
 
         s="MPI_Allreduce($c_var, $c_output, $c_size, $mpi_type, $mpi_func, MPI_COMM_WORLD);"

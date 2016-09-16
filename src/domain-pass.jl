@@ -498,6 +498,8 @@ function translate_aggregate(nodes, curr_pos, aggregate_node, state)
     end
     in_e_arr_list = map(x->toLHSVar(x.args[2]), agg_list)
     in_func_list = map(x->x.args[3], agg_list)
+    replace_length_unique(in_func_list)
+
 
     out_col_arrs = []
     for k in curr_pos+2:2:curr_pos+2*t2_num_cols
@@ -507,6 +509,20 @@ function translate_aggregate(nodes, curr_pos, aggregate_node, state)
     end
     new_aggregate_node = Expr(:aggregate, t2, t1, key_arr, in_e_arr_list, in_func_list, out_col_arrs, opr_num)
     return remove_before, remove_after, Any[new_aggregate_node]
+end
+
+# dummy function so liveness in parallel-ir can know the output type (typeOfOpr)
+function length_unique(a::Array)
+    r::Int = length(a)
+    return r
+end
+
+function replace_length_unique(func_list)
+    for (i,f) in enumerate(func_list)
+        if f==GlobalRef(Main,:length_unique)
+            func_list[i] = GlobalRef(HPAT.DomainPass, :length_unique)
+        end
+    end
 end
 
 function isTupleAssignment(node::Expr)
