@@ -378,18 +378,12 @@ function translate_aggregate(lhs, rhs, state)
         out_col_arr = getColName(lhs, out_col)
         push!(out_cols, out_col)
         push!(out_arrs, out_col_arr)
+        out_e_arr = Symbol("@$(lhs)@$(out_col)@e")
         @assert col_expr.args[2].head==:call "expected aggregation function"
         # aggregation function
         func = col_expr.args[2].args[1]
         # aggregation expression
         e = col_expr.args[2].args[2]
-        # convert math operations to element-wise versions to work with arrays
-        e = AstWalk(e, convert_oprs_to_elementwise,  (t1, state.tableCols[t1]))
-        # replace column name with actual array in expression
-        e = AstWalk(e, replace_col_with_array,  (t1, state.tableCols[t1]))
-        out_e_arr = Symbol("@$(lhs)@$(out_col)@e")
-        push!(out_aggs, :(($out_e_arr, $func)))
-        push!(out_e,:($out_e_arr=$e))
         # to add types to aggregate output
         # make a dummy call to get the type with user's function
         # then use it in type assertion. Julia type inference can infer the type and use it for common functions
@@ -399,6 +393,20 @@ function translate_aggregate(lhs, rhs, state)
         typ_name = Symbol("_T_$(out_col)")
         dummy_reduce = :( $typ_name = typeof($(func)($out_e_arr)) )
         push!(out_dummies, dummy_reduce)
+
+        # handle length(unique(e))
+        if func==:length && e.head==:call && e.args[1]==:unique
+            func = :length_unique
+            e = e.args[2]
+        end
+        # convert math operations to element-wise versions to work with arrays
+        e = AstWalk(e, convert_oprs_to_elementwise,  (t1, state.tableCols[t1]))
+        # replace column name with actual array in expression
+        e = AstWalk(e, replace_col_with_array,  (t1, state.tableCols[t1]))
+
+        push!(out_aggs, :(($out_e_arr, $func)))
+        push!(out_e,:($out_e_arr=$e))
+
         # typ_assigns = [ :($new_key_arr::Vector{$(col_types[1])} = _j_out[1]) ]
 
     end
