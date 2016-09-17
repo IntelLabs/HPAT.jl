@@ -172,10 +172,13 @@ function pattern_match_call_get_sec_since_epoch(f::Any,linfo)
 end
 
 function pattern_match_reduce_maximum(reductionFunc::DelayedFunc,linfo)
-    #if reductionFunc.args[1][1].args[2].args[1].name==:add_float || reductionFunc.args[1][1].args[2].args[1].name==:add_int
-    #    return true
-    #end
-    return true
+    @dprintln(3, "pattern_match_reduce_maximum ", reductionFunc)
+    args = reductionFunc.args[1]
+    if length(args)==3 && args[1].args[2].args[1].name==:slt_int &&
+        args[2].args[2].args[1].name==:select_value
+        return true
+    end
+    return false
 end
 
 function pattern_match_reduce_sum(reductionFunc::DelayedFunc,linfo)
