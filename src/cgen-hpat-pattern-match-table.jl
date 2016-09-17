@@ -614,6 +614,8 @@ function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs
         expr_arr_tmp = expr_arr * "_tmp_agg_$id"
         j2c_type = get_j2c_type_from_array(output_cols_list[index + 1],linfo)
         s *= "j2c_array< $j2c_type > $expr_arr_tmp = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, agg_total_unique_keys_$id);\n"
+        # initialize aggregate functions if necessary (e.g. length_unique needs a map)
+        s *= init_aggregate_function(funcs_list[index], expr_arr, "agg_total_unique_keys_$id")
     end
 
     # aggregate locally and write to send buffer (proper index for each node)
@@ -628,7 +630,7 @@ function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs
     for (index, func) in enumerate(funcs_list)
         expr_arr = ParallelAccelerator.CGen.from_expr(exprs_list[index],linfo)
         expr_arr_tmp = expr_arr * "_tmp_agg_$id"
-        s *= return_combiner_string_with_closure_first_elem(expr_arr_tmp, expr_arr, func, agg_write_index)
+        s *= return_combiner_string_with_closure_first_elem(expr_arr_tmp, expr_arr, func, agg_write_index, "key")
     end
     s *= "    s_ind_tmp_$id[node_id]++;\n"
     s *= "}\n"
@@ -638,7 +640,7 @@ function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs
     for (index, func) in enumerate(funcs_list)
         expr_arr = ParallelAccelerator.CGen.from_expr(exprs_list[index],linfo)
         expr_arr_tmp = expr_arr * "_tmp_agg_$id"
-        s *= return_combiner_string_with_closure_second_elem(expr_arr_tmp, expr_arr, func, current_write_index)
+        s *= return_combiner_string_with_closure_second_elem(expr_arr_tmp, expr_arr, func, current_write_index, "key")
     end
     s *= "}\n"
     s *= "}\n"
@@ -679,10 +681,10 @@ function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs
     col_name = ParallelAccelerator.CGen.from_expr(output_cols_list[1], linfo)
     s *= "    $col_name.ARRAYELEM($agg_write_index) = key;\n"
     for (index, func) in enumerate(funcs_list)
-        expr_name = ParallelAccelerator.CGen.from_expr(exprs_list[index],linfo)
-        rbuf_expr_name = "rbuf_$(id)_" * expr_name
+        expr_arr = ParallelAccelerator.CGen.from_expr(exprs_list[index],linfo)
+        rbuf_expr_arr = "rbuf_$(id)_" * expr_arr
         new_col_name = ParallelAccelerator.CGen.from_expr(output_cols_list[index + 1], linfo)
-        s *= return_reduction_string_with_closure_first_elem(new_col_name, rbuf_expr_name, func, agg_write_index)
+        s *= return_reduction_string_with_closure_first_elem(new_col_name, rbuf_expr_arr, func, agg_write_index, "key", expr_arr)
     end
     s *= "    $agg_write_index++;\n"
     s *= "}\n"
@@ -690,10 +692,10 @@ function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs
     current_write_index = "current_write_index$id"
     s *= "int $current_write_index = $agg_key_map_temp[key];\n"
     for (index, func) in enumerate(funcs_list)
-        expr_name = ParallelAccelerator.CGen.from_expr(exprs_list[index],linfo)
-        rbuf_expr_name = "rbuf_$(id)_" * expr_name
+        expr_arr = ParallelAccelerator.CGen.from_expr(exprs_list[index],linfo)
+        rbuf_expr_arr = "rbuf_$(id)_" * expr_arr
         new_col_name = ParallelAccelerator.CGen.from_expr(output_cols_list[index + 1], linfo)
-        s *= return_reduction_string_with_closure_second_elem(new_col_name, rbuf_expr_name, func, current_write_index)
+        s *= return_reduction_string_with_closure_second_elem(new_col_name, rbuf_expr_arr, func, current_write_index, "key", expr_arr)
     end
     s *= "}\n"
     s *= "}\n"
@@ -709,6 +711,15 @@ end
 
 function pattern_match_call_agg(linfo, f::Any, groupby_key, num_exprs, exprs_func_list...)
     return ""
+end
+
+function init_aggregate_function(func, expr_arr, total_keys)
+    s = ""
+    if func==GlobalRef(HPAT.DomainPass,:length_unique)
+        # a map for each key
+        s = "std::unordered_map<int,bool> unique_map_$expr_arr[$total_keys];\n"
+    end
+    return s
 end
 
 # TODO Combine all below five functions into one.
@@ -736,56 +747,78 @@ function return_reduction_string_with_closure(agg_key_col_input,expr_arr,agg_map
     return s
 end
 
-function return_combiner_string_with_closure_first_elem(new_column_name,expr_arr,func,write_index)
+function return_combiner_string_with_closure_first_elem(new_column_name, expr_arr, func, write_index, key)
     s = ""
     if func==GlobalRef(Main,:length)
-        s *= "$new_column_name.ARRAYELEM($write_index) = 1 ;\n"
+        s *= "$new_column_name.ARRAYELEM($write_index) = 1;\n"
     elseif func==GlobalRef(Main,:sum)
-        s *= "$new_column_name.ARRAYELEM($write_index) = $expr_arr.ARRAYELEM(i) ;\n"
-    elseif func==GlobalRef(Main,:maximum)
-        s *= "$new_column_name.ARRAYELEM($write_index) = $expr_arr.ARRAYELEM(i) ;}\n"
-    else
-        throw("aggregate function not found $func")
-    end
-    return s
-end
-
-function return_combiner_string_with_closure_second_elem(new_column_name,expr_arr,func, current_index)
-    s = ""
-    if func==GlobalRef(Main,:length)
-        s *= "$new_column_name.ARRAYELEM($current_index) += 1 ; \n"
-    elseif func==GlobalRef(Main,:sum)
-        s *= "$new_column_name.ARRAYELEM($current_index) +=  $expr_arr.ARRAYELEM(i)  ;\n\n"
-    elseif func==GlobalRef(Main,:maximum)
-        s *= "if ($new_column_name.ARRAYELEM($current_index) < $expr_arr.ARRAYELEM(i)) \n"
-        s *= "$new_column_name.ARRAYELEM($current_index) = $expr_arr.ARRAYELEM(i) ;}\n\n"
-    else
-        throw("aggregate function not found $func")
-    end
-    return s
-end
-
-function return_reduction_string_with_closure_first_elem(new_column_name,expr_arr,func,write_index)
-    s = ""
-    if string(func) == "Main.length"
         s *= "$new_column_name.ARRAYELEM($write_index) = $expr_arr.ARRAYELEM(i);\n"
-    elseif string(func) == "Main.sum"
-        s *= "$new_column_name.ARRAYELEM($write_index) = $expr_arr.ARRAYELEM(i) ;\n"
-    elseif string(func) == "Main.max"
-        s *= "$new_column_name.ARRAYELEM($write_index) = $expr_arr.ARRAYELEM(i) ;}\n"
+    elseif func==GlobalRef(Main,:maximum)
+        s *= "$new_column_name.ARRAYELEM($write_index) = $expr_arr.ARRAYELEM(i);\n"
+    elseif func==GlobalRef(HPAT.DomainPass,:length_unique)
+        s *= "$new_column_name.ARRAYELEM($write_index) = 1;\n"
+        s *= "unique_map_$expr_arr[$key][$expr_arr.ARRAYELEM(i)] = true;\n"
+    else
+        throw("aggregate function not found $func")
     end
     return s
 end
 
-function return_reduction_string_with_closure_second_elem(new_column_name,expr_arr,func, current_index)
+function return_combiner_string_with_closure_second_elem(new_column_name, expr_arr, func, current_index, key)
     s = ""
-    if string(func) == "Main.length"
-        s *= "$new_column_name.ARRAYELEM($current_index) += $expr_arr.ARRAYELEM(i); \n"
-    elseif string(func) == "Main.sum"
-        s *= "$new_column_name.ARRAYELEM($current_index) +=  $expr_arr.ARRAYELEM(i);\n"
-    elseif string(func) == "Main.max"
+    if func==GlobalRef(Main,:length)
+        s *= "$new_column_name.ARRAYELEM($current_index) += 1;\n"
+    elseif func==GlobalRef(Main,:sum)
+        s *= "$new_column_name.ARRAYELEM($current_index) += $expr_arr.ARRAYELEM(i);\n"
+    elseif func==GlobalRef(Main,:maximum)
         s *= "if ($new_column_name.ARRAYELEM($current_index) < $expr_arr.ARRAYELEM(i))\n"
-        s *= "$new_column_name.ARRAYELEM($current_index) = $expr_arr.ARRAYELEM(i);}\n"
+        s *= "$new_column_name.ARRAYELEM($current_index) = $expr_arr.ARRAYELEM(i);\n"
+    elseif func==GlobalRef(HPAT.DomainPass,:length_unique)
+        s *= "if(unique_map_$expr_arr[$key].find($expr_arr.ARRAYELEM(i)) != unique_map_$expr_arr[$key].end()){\n"
+        s *= "unique_map_$expr_arr[$key][$expr_arr.ARRAYELEM(i)] = true;\n"
+        s *= "$new_column_name.ARRAYELEM($current_index) += 1;\n"
+        s *= "}\n"
+    else
+        throw("aggregate function not found $func")
+    end
+    return s
+end
+
+# reduction is after alltoallv so data is already partially aggregated
+function return_reduction_string_with_closure_first_elem(new_column_name,expr_arr,func,write_index, key, old_expr_arr)
+    s = ""
+    if func==GlobalRef(Main,:length)
+        s *= "$new_column_name.ARRAYELEM($write_index) = $expr_arr.ARRAYELEM(i);\n"
+    elseif func==GlobalRef(Main,:sum)
+        s *= "$new_column_name.ARRAYELEM($write_index) = $expr_arr.ARRAYELEM(i);\n"
+    elseif func==GlobalRef(Main,:maximum)
+        s *= "$new_column_name.ARRAYELEM($write_index) = $expr_arr.ARRAYELEM(i);\n"
+    elseif func==GlobalRef(HPAT.DomainPass,:length_unique)
+        s *= "$new_column_name.ARRAYELEM($write_index) = $expr_arr.ARRAYELEM(i);\n"
+        s *= "unique_map_$old_expr_arr[$key].clear();\n"
+        s *= "unique_map_$old_expr_arr[$key][$expr_arr.ARRAYELEM(i)] = true;\n"
+    else
+        throw("aggregate reduction function not found $func")
+    end
+    return s
+end
+
+function return_reduction_string_with_closure_second_elem(new_column_name,expr_arr,func, current_index, key, old_expr_arr)
+    s = ""
+    if func==GlobalRef(Main,:length)
+        s *= "$new_column_name.ARRAYELEM($current_index) += $expr_arr.ARRAYELEM(i);\n"
+    elseif func==GlobalRef(Main,:sum)
+        s *= "$new_column_name.ARRAYELEM($current_index) +=  $expr_arr.ARRAYELEM(i);\n"
+    elseif func==GlobalRef(Main,:maximum)
+        s *= "if ($new_column_name.ARRAYELEM($current_index) < $expr_arr.ARRAYELEM(i))\n"
+        s *= "$new_column_name.ARRAYELEM($current_index) = $expr_arr.ARRAYELEM(i);\n"
+    elseif func==GlobalRef(HPAT.DomainPass,:length_unique)
+        s *= "if(unique_map_$old_expr_arr[$key].find($expr_arr.ARRAYELEM(i)) != unique_map_$old_expr_arr[$key].end()){\n"
+        s *= "unique_map_$old_expr_arr[$key][$expr_arr.ARRAYELEM(i)] = true;\n"
+        s *= "$new_column_name.ARRAYELEM($current_index) += $expr_arr.ARRAYELEM(i);\n"
+        s *= "}\n"
+    else
+        throw("aggregate reduction function not found $func")
     end
     return s
 end

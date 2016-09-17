@@ -15,4 +15,15 @@ HPAT.DataTablePass.set_debug_level(3)
     return store_agg[:cid], store_agg[:frequency], store_agg[:most_recent_date], store_agg[:amount]
 end
 
-println(q25("33000", "test_q25.hdf5"))
+using HDF5
+using MPI
+if MPI.Comm_rank(MPI.COMM_WORLD)==0 
+    h5write("test_q25.hdf5", "/ss_customer_sk", [1,1,1,2,2])
+    h5write("test_q25.hdf5", "/ss_ticket_number", [0,0,3,5,6])
+    h5write("test_q25.hdf5", "/ss_sold_date_sk", [37580,37600,34000,35000,36000])
+    h5write("test_q25.hdf5", "/ss_net_paid", [101.0,3.2,24.0,3.5,50.0])
+end
+
+c, f, m, a = q25("33000", "test_q25.hdf5")
+println(c,f,m,a)
+
