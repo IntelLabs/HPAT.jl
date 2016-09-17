@@ -610,10 +610,10 @@ function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs
     key_ctype = get_j2c_type_from_array(groupby_key, linfo)
     s *= "j2c_array< $key_ctype > $agg_key_col_input_tmp = j2c_array< $key_ctype >::new_j2c_array_1d(NULL, agg_total_unique_keys_$id);\n"
     for (index, col_name) in enumerate(exprs_list)
-        expr_name = ParallelAccelerator.CGen.from_expr(col_name,linfo)
-        expr_name_tmp = expr_name * "_tmp_agg_$id"
+        expr_arr = ParallelAccelerator.CGen.from_expr(col_name,linfo)
+        expr_arr_tmp = expr_arr * "_tmp_agg_$id"
         j2c_type = get_j2c_type_from_array(output_cols_list[index + 1],linfo)
-        s *= "j2c_array< $j2c_type > $expr_name_tmp = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, agg_total_unique_keys_$id);\n"
+        s *= "j2c_array< $j2c_type > $expr_arr_tmp = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, agg_total_unique_keys_$id);\n"
     end
 
     # aggregate locally and write to send buffer (proper index for each node)
@@ -626,9 +626,9 @@ function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs
     s *= "    $agg_key_map_temp[key] = $agg_write_index;\n"
     s *= "    $agg_key_col_input_tmp.ARRAYELEM($agg_write_index) = key;\n"
     for (index, func) in enumerate(funcs_list)
-        expr_name = ParallelAccelerator.CGen.from_expr(exprs_list[index],linfo)
-        expr_name_tmp = expr_name * "_tmp_agg_$id"
-        s *= return_combiner_string_with_closure_first_elem(expr_name_tmp, expr_name, func, agg_write_index)
+        expr_arr = ParallelAccelerator.CGen.from_expr(exprs_list[index],linfo)
+        expr_arr_tmp = expr_arr * "_tmp_agg_$id"
+        s *= return_combiner_string_with_closure_first_elem(expr_arr_tmp, expr_arr, func, agg_write_index)
     end
     s *= "    s_ind_tmp_$id[node_id]++;\n"
     s *= "}\n"
@@ -636,9 +636,9 @@ function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs
     current_write_index = "current_write_index$id"
     s *= "int $current_write_index = $agg_key_map_temp[key];\n"
     for (index, func) in enumerate(funcs_list)
-        expr_name = ParallelAccelerator.CGen.from_expr(exprs_list[index],linfo)
-        expr_name_tmp = expr_name * "_tmp_agg_$id"
-        s *= return_combiner_string_with_closure_second_elem(expr_name_tmp, expr_name, func, current_write_index)
+        expr_arr = ParallelAccelerator.CGen.from_expr(exprs_list[index],linfo)
+        expr_arr_tmp = expr_arr * "_tmp_agg_$id"
+        s *= return_combiner_string_with_closure_second_elem(expr_arr_tmp, expr_arr, func, current_write_index)
     end
     s *= "}\n"
     s *= "}\n"
