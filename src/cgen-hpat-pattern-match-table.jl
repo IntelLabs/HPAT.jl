@@ -714,47 +714,53 @@ end
 # TODO Combine all below five functions into one.
 function return_reduction_string_with_closure(agg_key_col_input,expr_arr,agg_map,func)
     s = ""
-    if string(func) == "Main.length"
+    if func==GlobalRef(Main,:length)
         s *= "if ($agg_map.find($agg_key_col_input.ARRAYELEM(i)) == $agg_map.end())\n"
         s *= "$agg_map[$agg_key_col_input.ARRAYELEM(i)] = 1;\n"
         s *= "else \n"
         s *= "$agg_map[$agg_key_col_input.ARRAYELEM(i)] += 1;\n\n"
-    elseif string(func) == "Main.sum"
+    elseif func==GlobalRef(Main,:sum)
         s *= "if ($agg_map.find($agg_key_col_input.ARRAYELEM(i)) == $agg_map.end())\n"
         s *= "$agg_map[$agg_key_col_input.ARRAYELEM(i)] = $expr_arr.ARRAYELEM(i) ;\n"
         s *= "else \n"
         s *= "$agg_map[$agg_key_col_input.ARRAYELEM(i)] +=  $expr_arr.ARRAYELEM(i)  ;\n\n"
-    elseif string(func) == "Main.max"
+    elseif func==GlobalRef(Main,:maximum)
         s *= "if ($agg_map.find($agg_key_col_input.ARRAYELEM(i)) == $agg_map.end())){\n"
         s *= "$agg_map[$agg_key_col_input.ARRAYELEM(i)] = $expr_arr.ARRAYELEM(i) ;}\n"
         s *= "else{ \n"
         s *= "if (agg_map_count[$agg_key_col_input.ARRAYELEM(i)] < $expr_arr.ARRAYELEM(i) ) \n"
         s *= "$agg_map[$agg_key_col_input.ARRAYELEM(i)] = $expr_arr.ARRAYELEM(i) ;}\n\n"
+    else
+        throw("aggregate function not supported in CGen $func")
     end
     return s
 end
 
 function return_combiner_string_with_closure_first_elem(new_column_name,expr_arr,func,write_index)
     s = ""
-    if string(func) == "Main.length"
+    if func==GlobalRef(Main,:length)
         s *= "$new_column_name.ARRAYELEM($write_index) = 1 ;\n"
-    elseif string(func) == "Main.sum"
+    elseif func==GlobalRef(Main,:sum)
         s *= "$new_column_name.ARRAYELEM($write_index) = $expr_arr.ARRAYELEM(i) ;\n"
-    elseif string(func) == "Main.max"
+    elseif func==GlobalRef(Main,:maximum)
         s *= "$new_column_name.ARRAYELEM($write_index) = $expr_arr.ARRAYELEM(i) ;}\n"
+    else
+        throw("aggregate function not found $func")
     end
     return s
 end
 
 function return_combiner_string_with_closure_second_elem(new_column_name,expr_arr,func, current_index)
     s = ""
-    if string(func) == "Main.length"
+    if func==GlobalRef(Main,:length)
         s *= "$new_column_name.ARRAYELEM($current_index) += 1 ; \n"
-    elseif string(func) == "Main.sum"
+    elseif func==GlobalRef(Main,:sum)
         s *= "$new_column_name.ARRAYELEM($current_index) +=  $expr_arr.ARRAYELEM(i)  ;\n\n"
-    elseif string(func) == "Main.max"
+    elseif func==GlobalRef(Main,:maximum)
         s *= "if ($new_column_name.ARRAYELEM($current_index) < $expr_arr.ARRAYELEM(i)) \n"
         s *= "$new_column_name.ARRAYELEM($current_index) = $expr_arr.ARRAYELEM(i) ;}\n\n"
+    else
+        throw("aggregate function not found $func")
     end
     return s
 end
