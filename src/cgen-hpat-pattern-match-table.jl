@@ -774,7 +774,7 @@ function return_combiner_string_with_closure_second_elem(new_column_name, expr_a
         s *= "if ($new_column_name.ARRAYELEM($current_index) < $expr_arr.ARRAYELEM(i))\n"
         s *= "$new_column_name.ARRAYELEM($current_index) = $expr_arr.ARRAYELEM(i);\n"
     elseif func==GlobalRef(HPAT.DomainPass,:length_unique)
-        s *= "if(unique_map_$expr_arr[$key].find($expr_arr.ARRAYELEM(i)) != unique_map_$expr_arr[$key].end()){\n"
+        s *= "if(unique_map_$expr_arr[$key].find($expr_arr.ARRAYELEM(i)) == unique_map_$expr_arr[$key].end()){\n"
         s *= "unique_map_$expr_arr[$key][$expr_arr.ARRAYELEM(i)] = true;\n"
         s *= "$new_column_name.ARRAYELEM($current_index) += 1;\n"
         s *= "}\n"
