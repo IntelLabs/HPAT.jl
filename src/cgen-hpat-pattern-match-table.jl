@@ -552,59 +552,11 @@ function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs
     agg_key_col_input = ParallelAccelerator.CGen.from_expr(groupby_key, linfo)
     agg_key_col_output = ParallelAccelerator.CGen.from_expr(output_cols_list[1], linfo)
 
-    # number of elements to send to each node in alltoallv
-    s *= "int *scount_$id = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
-    s *= "memset(scount_$id, 0, sizeof(int)*__hpat_num_pes);\n"
-
-    # running write index for send buffer of each node
-    s *= "int *s_ind_tmp_$id = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
-    s *= "memset(s_ind_tmp_$id, 0, sizeof(int)*__hpat_num_pes);\n"
-
-    # Receiving counts
-    s *= "int rsize_$id = 0;\n"
-    s *= "int *rcount_$id = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
-
-    # send and receive indices for data sent to and received from each node
-    s *= "int *sdis_$id = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
-    s *= "int *rdis_$id = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
-
     agg_key_map_temp = "temp_map_$(id)_$agg_key_col_output"
     s *= "std::unordered_map<int,int> $agg_key_map_temp;\n"
-
-    s *= "int agg_total_unique_keys_$id = 0;\n"
-    ### Counting displacements for table
-    # count unique keys of each node and total unique keys
-    s *= "for (int i=1; i <= $agg_key_col_input.ARRAYLEN(); i++){\n"
-    s *= "  if ($agg_key_map_temp.find($agg_key_col_input.ARRAYELEM(i)) == $agg_key_map_temp.end()){\n"
-    s *= "     $agg_key_map_temp[$agg_key_col_input.ARRAYELEM(i)] = 1;\n"
-    s *= "     int node_id = $agg_key_col_input.ARRAYELEM(i) % __hpat_num_pes;\n"
-    s *= "     scount_$id[node_id]++;\n"
-    s *= "     agg_total_unique_keys_$id++;\n"
-    s *= "  }\n"
-    s *= "}\n"
-
-    s *= "sdis_$id[0]=0;\n"
-    s *= "for(int i=1;i < __hpat_num_pes;i++){\n"
-    s *= "sdis_$id[i] = scount_$id[i-1] + sdis_$id[i-1];\n"
-    s *= "}\n"
-
-    s *= "MPI_Alltoall(scount_$id,1,MPI_INT,rcount_$id,1,MPI_INT,MPI_COMM_WORLD);\n"
-
-    s *= "$agg_key_map_temp.clear();\n"
-    # Caculating displacements
-    s *= """
-                  rdis_$id[0]=0;
-                  for(int i=1;i < __hpat_num_pes;i++){
-                      rdis_$id[i] = rcount_$id[i-1] + rdis_$id[i-1];
-                  }
-            """
-
-    # Summing receiving counts
-    s *= """
-              for(int i=0;i<__hpat_num_pes;i++){
-                  rsize_$id = rsize_$id + rcount_$id[i];
-              }
-            """
+    # generate code to get number of elements to send and receive in alltoallv
+    # scount_id, rcount_id sdis_id, rdis_id, rsize_id are generated
+    s *= gen_alltoall_counts(id, agg_key_col_input, agg_key_map_temp)
 
     # allocate buffer arrays, first column is groupbykey which is handled separately
     agg_key_col_input_tmp = agg_key_col_input * "_tmp_agg_$id"
@@ -612,10 +564,9 @@ function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs
     s *= "j2c_array< $key_ctype > $agg_key_col_input_tmp = j2c_array< $key_ctype >::new_j2c_array_1d(NULL, agg_total_unique_keys_$id);\n"
     for (index, expr_arr) in enumerate(expr_arrs)
         expr_arr_tmp = expr_arr * "_tmp_agg_$id"
-        j2c_type = get_j2c_type_from_array(output_cols_list[index + 1],linfo)
-        s *= "j2c_array< $j2c_type > $expr_arr_tmp = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, agg_total_unique_keys_$id);\n"
-        # initialize aggregate functions if necessary (e.g. length_unique needs a map)
-        s *= init_aggregate_function(funcs_list[index], expr_arr, "agg_total_unique_keys_$id")
+        j2c_type = get_j2c_type_from_array(output_cols_list[index+1],linfo)
+        # allocate aggregate array to accumulate locally
+        s *= alloc_agg_arr(funcs_list[index], expr_arr_tmp, key_ctype, j2c_type, "agg_total_unique_keys_$id")
     end
 
     # aggregate locally and write to send buffer (proper index for each node)
@@ -655,8 +606,8 @@ function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs
                          """
 
     for (index, expr_arr) in enumerate(expr_arrs)
-        mpi_type = get_mpi_type_from_array(output_cols_list[index + 1], linfo)
-        j2c_type = get_j2c_type_from_array(output_cols_list[index + 1], linfo)
+        mpi_type = get_mpi_type_from_array(output_cols_list[index+1], linfo)
+        j2c_type = get_j2c_type_from_array(output_cols_list[index+1], linfo)
         expr_arr_tmp = expr_arr * "_tmp_agg_$id"
         s *= " j2c_array< $j2c_type > rbuf_$(id)_$expr_arr = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, rsize_$id);\n"
         s *= """ MPI_Alltoallv($expr_arr_tmp.getData(), scount_$id, sdis_$id, $mpi_type,
@@ -712,11 +663,19 @@ function pattern_match_call_agg(linfo, f::Any, groupby_key, num_exprs, exprs_fun
     return ""
 end
 
-function init_aggregate_function(func, expr_arr, total_keys)
+function alloc_agg_arr(func, expr_arr_tmp, key_ctype, arr_ctyp, num_total_keys)
     s = ""
     if func==GlobalRef(HPAT.DomainPass,:length_unique)
+        HPAT_includes = """
+                            #include <boost/functional/hash.hpp>
+                            #include <utility>
+                            #include <unordered_set>
+                            """
+        ParallelAccelerator.CGen.addCgenUserOptions(ParallelAccelerator.CGen.CgenUserOptions(HPAT_includes,"",""))
         # a map for each key
-        s = "std::unordered_map<int,bool> unique_map_$expr_arr[$total_keys];\n"
+        s = "std::unordered_set<std::pair<$key_ctype,$arr_ctyp>, boost::hash<std::pair<$key_ctype,$arr_ctyp> > unique_set_$expr_arr_tmp;\n"
+    else
+        s = "j2c_array< $arr_ctyp > $expr_arr_tmp = j2c_array< $arr_ctyp >::new_j2c_array_1d(NULL, $num_total_keys);\n"
     end
     return s
 end
@@ -755,8 +714,8 @@ function return_combiner_string_with_closure_first_elem(new_column_name, expr_ar
     elseif func==GlobalRef(Main,:maximum)
         s *= "$new_column_name.ARRAYELEM($write_index) = $expr_arr.ARRAYELEM(i);\n"
     elseif func==GlobalRef(HPAT.DomainPass,:length_unique)
-        s *= "$new_column_name.ARRAYELEM($write_index) = 1;\n"
-        s *= "unique_map_$expr_arr[$key][$expr_arr.ARRAYELEM(i)] = true;\n"
+        # s *= "$new_column_name.ARRAYELEM($write_index) = 1;\n"
+        s *= "unique_set_$new_column_name.insert(std::make_pair<$key,$expr_arr.ARRAYELEM(i)>);\n"
     else
         throw("aggregate function not found $func")
     end
@@ -773,10 +732,11 @@ function return_combiner_string_with_closure_second_elem(new_column_name, expr_a
         s *= "if ($new_column_name.ARRAYELEM($current_index) < $expr_arr.ARRAYELEM(i))\n"
         s *= "$new_column_name.ARRAYELEM($current_index) = $expr_arr.ARRAYELEM(i);\n"
     elseif func==GlobalRef(HPAT.DomainPass,:length_unique)
-        s *= "if(unique_map_$expr_arr[$key].find($expr_arr.ARRAYELEM(i)) == unique_map_$expr_arr[$key].end()){\n"
-        s *= "unique_map_$expr_arr[$key][$expr_arr.ARRAYELEM(i)] = true;\n"
-        s *= "$new_column_name.ARRAYELEM($current_index) += 1;\n"
-        s *= "}\n"
+        #s *= "if(unique_map_$expr_arr[$key].find($expr_arr.ARRAYELEM(i)) == unique_map_$expr_arr[$key].end()){\n"
+        #s *= "unique_map_$expr_arr[$key][$expr_arr.ARRAYELEM(i)] = true;\n"
+        #s *= "$new_column_name.ARRAYELEM($current_index) += 1;\n"
+        #s *= "}\n"
+        s *= "unique_set_$new_column_name.insert(std::make_pair<$key,$expr_arr.ARRAYELEM(i)>);\n"
     else
         throw("aggregate function not found $func")
     end
@@ -819,6 +779,61 @@ function return_reduction_string_with_closure_second_elem(new_column_name,expr_a
     else
         throw("aggregate reduction function not found $func")
     end
+    return s
+end
+
+function gen_alltoall_counts(id, agg_key_col_input, agg_key_map_temp)
+    s = ""
+    # number of elements to send to each node in alltoallv
+    s *= "int *scount_$id = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
+    s *= "memset(scount_$id, 0, sizeof(int)*__hpat_num_pes);\n"
+
+    # running write index for send buffer of each node
+    s *= "int *s_ind_tmp_$id = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
+    s *= "memset(s_ind_tmp_$id, 0, sizeof(int)*__hpat_num_pes);\n"
+
+    # Receiving counts
+    s *= "int rsize_$id = 0;\n"
+    s *= "int *rcount_$id = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
+
+    # send and receive indices for data sent to and received from each node
+    s *= "int *sdis_$id = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
+    s *= "int *rdis_$id = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
+
+    s *= "int agg_total_unique_keys_$id = 0;\n"
+    ### Counting displacements for table
+    # count unique keys of each node and total unique keys
+    s *= "for (int i=1; i <= $agg_key_col_input.ARRAYLEN(); i++){\n"
+    s *= "  if ($agg_key_map_temp.find($agg_key_col_input.ARRAYELEM(i)) == $agg_key_map_temp.end()){\n"
+    s *= "     $agg_key_map_temp[$agg_key_col_input.ARRAYELEM(i)] = 1;\n"
+    s *= "     int node_id = $agg_key_col_input.ARRAYELEM(i) % __hpat_num_pes;\n"
+    s *= "     scount_$id[node_id]++;\n"
+    s *= "     agg_total_unique_keys_$id++;\n"
+    s *= "  }\n"
+    s *= "}\n"
+
+    s *= "sdis_$id[0]=0;\n"
+    s *= "for(int i=1;i < __hpat_num_pes;i++){\n"
+    s *= "sdis_$id[i] = scount_$id[i-1] + sdis_$id[i-1];\n"
+    s *= "}\n"
+
+    s *= "MPI_Alltoall(scount_$id,1,MPI_INT,rcount_$id,1,MPI_INT,MPI_COMM_WORLD);\n"
+
+    s *= "$agg_key_map_temp.clear();\n"
+    # Caculating displacements
+    s *= """
+           rdis_$id[0]=0;
+           for(int i=1;i < __hpat_num_pes;i++){
+               rdis_$id[i] = rcount_$id[i-1] + rdis_$id[i-1];
+           }
+        """
+
+    # Summing receiving counts
+    s *= """
+            for(int i=0;i<__hpat_num_pes;i++){
+                rsize_$id = rsize_$id + rcount_$id[i];
+            }
+        """
     return s
 end
 
