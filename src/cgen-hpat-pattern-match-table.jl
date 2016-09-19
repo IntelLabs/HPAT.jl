@@ -581,7 +581,8 @@ function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs
     for (index, func) in enumerate(funcs_list)
         expr_arr = expr_arrs[index]
         expr_arr_tmp = expr_arr * "_tmp_agg_$id"
-        s *= return_combiner_string_with_closure_first_elem(expr_arr_tmp, expr_arr, func, agg_write_index, "key")
+        j2c_type = get_j2c_type_from_array(output_cols_list[index+1],linfo)
+        s *= return_combiner_string_with_closure_first_elem(expr_arr_tmp, expr_arr, func, agg_write_index, "key", key_ctype, j2c_type)
     end
     s *= "    s_ind_tmp_$id[node_id]++;\n"
     s *= "}\n"
@@ -591,12 +592,14 @@ function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs
     for (index, func) in enumerate(funcs_list)
         expr_arr = expr_arrs[index]
         expr_arr_tmp = expr_arr * "_tmp_agg_$id"
-        s *= return_combiner_string_with_closure_second_elem(expr_arr_tmp, expr_arr, func, current_write_index, "key")
+        j2c_type = get_j2c_type_from_array(output_cols_list[index+1],linfo)
+        s *= return_combiner_string_with_closure_second_elem(expr_arr_tmp, expr_arr, func, current_write_index, "key", key_ctype, j2c_type)
     end
     s *= "}\n"
     s *= "}\n"
     s *= "$agg_key_map_temp.clear();\n"
 
+    # generate communication for arrays
     # First column is groupbykey which is handled separately
     # After mpi_alltoallv the length of agg_key_col_input is changed. Don't use agg_key_col_input_len
     mpi_type = get_mpi_type_from_array(groupby_key,linfo)
@@ -608,11 +611,7 @@ function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs
     for (index, expr_arr) in enumerate(expr_arrs)
         mpi_type = get_mpi_type_from_array(output_cols_list[index+1], linfo)
         j2c_type = get_j2c_type_from_array(output_cols_list[index+1], linfo)
-        expr_arr_tmp = expr_arr * "_tmp_agg_$id"
-        s *= " j2c_array< $j2c_type > rbuf_$(id)_$expr_arr = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, rsize_$id);\n"
-        s *= """ MPI_Alltoallv($expr_arr_tmp.getData(), scount_$id, sdis_$id, $mpi_type,
-                                         rbuf_$(id)_$expr_arr.getData(), rcount_$id, rdis_$id, $mpi_type, MPI_COMM_WORLD);
-                         """
+        s *= gen_expr_arr_comm(id, funcs_list[index], expr_arr, j2c_type, mpi_type, key_ctype)
     end
     # delete [] expr_name_tmp
 
@@ -634,7 +633,7 @@ function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs
         expr_arr = expr_arrs[index]
         rbuf_expr_arr = "rbuf_$(id)_" * expr_arr
         new_col_name = ParallelAccelerator.CGen.from_expr(output_cols_list[index + 1], linfo)
-        s *= return_reduction_string_with_closure_first_elem(new_col_name, rbuf_expr_arr, func, agg_write_index, "key", expr_arr)
+        s *= return_reduction_string_with_closure_first_elem(new_col_name, rbuf_expr_arr, func, agg_write_index, "key", expr_arr * "_tmp_agg_$id")
     end
     s *= "    $agg_write_index++;\n"
     s *= "}\n"
@@ -645,7 +644,7 @@ function pattern_match_call_agg(linfo, f::GlobalRef,  id, groupby_key, num_exprs
         expr_arr = expr_arrs[index]
         rbuf_expr_arr = "rbuf_$(id)_" * expr_arr
         new_col_name = ParallelAccelerator.CGen.from_expr(output_cols_list[index + 1], linfo)
-        s *= return_reduction_string_with_closure_second_elem(new_col_name, rbuf_expr_arr, func, current_write_index, "key", expr_arr)
+        s *= return_reduction_string_with_closure_second_elem(new_col_name, rbuf_expr_arr, func, current_write_index, "key", expr_arr * "_tmp_agg_$id")
     end
     s *= "}\n"
     s *= "}\n"
@@ -673,7 +672,11 @@ function alloc_agg_arr(func, expr_arr_tmp, key_ctype, arr_ctyp, num_total_keys)
                             """
         ParallelAccelerator.CGen.addCgenUserOptions(ParallelAccelerator.CGen.CgenUserOptions(HPAT_includes,"",""))
         # a map for each key
-        s = "std::unordered_set<std::pair<$key_ctype,$arr_ctyp>, boost::hash<std::pair<$key_ctype,$arr_ctyp> > unique_set_$expr_arr_tmp;\n"
+        s = """std::unordered_set<std::pair<$key_ctype,$arr_ctyp>, boost::hash<std::pair<$key_ctype,$arr_ctyp> > > *unique_set_$expr_arr_tmp =
+                 new std::unordered_set<std::pair<$key_ctype,$arr_ctyp>, boost::hash<std::pair<$key_ctype,$arr_ctyp> > >[__hpat_num_pes];
+               std::unordered_set<std::pair<$key_ctype,$arr_ctyp>, boost::hash<std::pair<$key_ctype,$arr_ctyp> > > recv_unique_set_$expr_arr_tmp;
+               std::unordered_map<$key_ctype,$arr_ctyp> unique_map_$expr_arr_tmp;
+        """
     else
         s = "j2c_array< $arr_ctyp > $expr_arr_tmp = j2c_array< $arr_ctyp >::new_j2c_array_1d(NULL, $num_total_keys);\n"
     end
@@ -705,7 +708,7 @@ function return_reduction_string_with_closure(agg_key_col_input,expr_arr,agg_map
     return s
 end
 
-function return_combiner_string_with_closure_first_elem(new_column_name, expr_arr, func, write_index, key)
+function return_combiner_string_with_closure_first_elem(new_column_name, expr_arr, func, write_index, key,key_ctype, j2c_type)
     s = ""
     if func==GlobalRef(Main,:length)
         s *= "$new_column_name.ARRAYELEM($write_index) = 1;\n"
@@ -715,14 +718,14 @@ function return_combiner_string_with_closure_first_elem(new_column_name, expr_ar
         s *= "$new_column_name.ARRAYELEM($write_index) = $expr_arr.ARRAYELEM(i);\n"
     elseif func==GlobalRef(HPAT.DomainPass,:length_unique)
         # s *= "$new_column_name.ARRAYELEM($write_index) = 1;\n"
-        s *= "unique_set_$new_column_name.insert(std::make_pair<$key,$expr_arr.ARRAYELEM(i)>);\n"
+        s *= "unique_set_$new_column_name[node_id].insert(std::make_pair($key,$expr_arr.ARRAYELEM(i)));\n"
     else
         throw("aggregate function not found $func")
     end
     return s
 end
 
-function return_combiner_string_with_closure_second_elem(new_column_name, expr_arr, func, current_index, key)
+function return_combiner_string_with_closure_second_elem(new_column_name, expr_arr, func, current_index, key,key_ctype, j2c_type)
     s = ""
     if func==GlobalRef(Main,:length)
         s *= "$new_column_name.ARRAYELEM($current_index) += 1;\n"
@@ -736,7 +739,7 @@ function return_combiner_string_with_closure_second_elem(new_column_name, expr_a
         #s *= "unique_map_$expr_arr[$key][$expr_arr.ARRAYELEM(i)] = true;\n"
         #s *= "$new_column_name.ARRAYELEM($current_index) += 1;\n"
         #s *= "}\n"
-        s *= "unique_set_$new_column_name.insert(std::make_pair<$key,$expr_arr.ARRAYELEM(i)>);\n"
+        s *= "unique_set_$new_column_name[node_id].insert(std::make_pair($key,$expr_arr.ARRAYELEM(i)));\n"
     else
         throw("aggregate function not found $func")
     end
@@ -753,9 +756,10 @@ function return_reduction_string_with_closure_first_elem(new_column_name,expr_ar
     elseif func==GlobalRef(Main,:maximum)
         s *= "$new_column_name.ARRAYELEM($write_index) = $expr_arr.ARRAYELEM(i);\n"
     elseif func==GlobalRef(HPAT.DomainPass,:length_unique)
-        s *= "$new_column_name.ARRAYELEM($write_index) = $expr_arr.ARRAYELEM(i);\n"
-        s *= "unique_map_$old_expr_arr[$key].clear();\n"
-        s *= "unique_map_$old_expr_arr[$key][$expr_arr.ARRAYELEM(i)] = true;\n"
+        #s *= "$new_column_name.ARRAYELEM($write_index) = $expr_arr.ARRAYELEM(i);\n"
+        #s *= "unique_map_$old_expr_arr[$key].clear();\n"
+        #s *= "unique_map_$old_expr_arr[$key][$expr_arr.ARRAYELEM(i)] = true;\n"
+        s *= "$new_column_name.ARRAYELEM($write_index) = unique_map_$old_expr_arr[$key];\n"
     else
         throw("aggregate reduction function not found $func")
     end
@@ -772,10 +776,10 @@ function return_reduction_string_with_closure_second_elem(new_column_name,expr_a
         s *= "if ($new_column_name.ARRAYELEM($current_index) < $expr_arr.ARRAYELEM(i))\n"
         s *= "$new_column_name.ARRAYELEM($current_index) = $expr_arr.ARRAYELEM(i);\n"
     elseif func==GlobalRef(HPAT.DomainPass,:length_unique)
-        s *= "if(unique_map_$old_expr_arr[$key].find($expr_arr.ARRAYELEM(i)) != unique_map_$old_expr_arr[$key].end()){\n"
-        s *= "unique_map_$old_expr_arr[$key][$expr_arr.ARRAYELEM(i)] = true;\n"
-        s *= "$new_column_name.ARRAYELEM($current_index) += $expr_arr.ARRAYELEM(i);\n"
-        s *= "}\n"
+        #s *= "if(unique_map_$old_expr_arr[$key].find($expr_arr.ARRAYELEM(i)) != unique_map_$old_expr_arr[$key].end()){\n"
+        #s *= "unique_map_$old_expr_arr[$key][$expr_arr.ARRAYELEM(i)] = true;\n"
+        #s *= "$new_column_name.ARRAYELEM($current_index) += $expr_arr.ARRAYELEM(i);\n"
+        #s *= "}\n"
     else
         throw("aggregate reduction function not found $func")
     end
@@ -835,6 +839,84 @@ function gen_alltoall_counts(id, agg_key_col_input, agg_key_map_temp)
             }
         """
     return s
+end
+
+function gen_expr_arr_comm(id, func, expr_arr, j2c_type, mpi_type, key_ctype)
+    s = ""
+    if func==GlobalRef(HPAT.DomainPass,:length_unique)
+        # sending elements as pairs of (key,value)
+        arr_id = "$(id)_$expr_arr"
+        sets = "unique_set_$(expr_arr)_tmp_agg_$id"
+        # send and recv sizes, in bytes
+        s *= "int el_size_$arr_id = sizeof($key_ctype)+sizeof($j2c_type);"
+        s *= "int total_send_count_$arr_id = 0;\n"
+        s *= "int total_recv_count_$arr_id = 0;\n"
+        s *= "int *send_sizes_$arr_id = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
+        s *= "memset(send_sizes_$arr_id, 0, sizeof(int)*__hpat_num_pes);\n"
+        s *= "int *recv_sizes_$arr_id = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
+        s *= "memset(recv_sizes_$arr_id, 0, sizeof(int)*__hpat_num_pes);\n"
+        s *= "int *send_dis_$arr_id = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
+        s *= "int *recv_dis_$arr_id = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
+        s *= """
+              for(int i=0; i<__hpat_num_pes; i++) {
+                send_sizes_$arr_id[i] = $sets[i].size() * el_size_$arr_id;
+                total_send_count_$arr_id = $sets[i].size();
+              }
+        """
+        s *= "MPI_Alltoall(send_sizes_$arr_id, 1, MPI_INT, recv_sizes_$arr_id, 1, MPI_INT, MPI_COMM_WORLD);\n"
+        s *= """
+              for(int i=0; i<__hpat_num_pes; i++) {
+                total_recv_count_$arr_id += recv_sizes_$arr_id[i];
+              }
+              total_recv_count_$arr_id /= el_size_$arr_id;
+        """
+        # send and recv buffers
+        s *= "char *send_buf_$arr_id = new char[total_send_count_$arr_id * el_size_$arr_id];\n"
+        s *= "char *recv_buf_$arr_id = new char[total_recv_count_$arr_id * el_size_$arr_id];\n"
+        # pack data in send buffer
+        s *= """
+             int curr_buff_loc_$arr_id = 0;
+             for(int i=0; i<__hpat_num_pes; i++) {
+               send_dis_$arr_id[i] = curr_buff_loc_$arr_id;
+               for(auto& x: $sets[i]) {
+                 $key_ctype *ptr1 = ($key_ctype*) &send_buf_$arr_id[curr_buff_loc_$arr_id];
+                 *ptr1 = x.first;
+                 curr_buff_loc_$arr_id += sizeof($key_ctype);
+                 $j2c_type *ptr2 = ($j2c_type*) &send_buf_$arr_id[curr_buff_loc_$arr_id];
+                 *ptr2 = x.second;
+                 curr_buff_loc_$arr_id += sizeof($j2c_type);
+               }
+               recv_dis_$arr_id[i] = curr_buff_loc_$arr_id;
+              }
+        """
+        s *= """ MPI_Alltoallv(send_buf_$arr_id, send_sizes_$arr_id, send_dis_$arr_id, MPI_CHAR,
+                                             recv_buf_$arr_id, recv_sizes_$arr_id, recv_dis_$arr_id, MPI_CHAR, MPI_COMM_WORLD);
+                delete[] send_buf_$arr_id;
+             """
+        s *= """
+              curr_buff_loc_$arr_id = 0;
+              for(int i=0; i<total_recv_count_$arr_id; i++) {
+                  $key_ctype key = *(($key_ctype*)&recv_buf_$arr_id[curr_buff_loc_$arr_id]);
+                  curr_buff_loc_$arr_id += sizeof($key_ctype);
+                  $j2c_type val = *(($j2c_type*)&recv_buf_$arr_id[curr_buff_loc_$arr_id]);
+                  curr_buff_loc_$arr_id += sizeof($j2c_type);
+                  recv_unique_set_$(expr_arr)_tmp_agg_$id.insert(std::make_pair(key, val));
+              }
+              delete[] recv_buf_$arr_id;
+              for(auto& x:recv_unique_set_$(expr_arr)_tmp_agg_$id) {
+                  if(unique_map_$(expr_arr)_tmp_agg_$id.find(x.first)==unique_map_$(expr_arr)_tmp_agg_$id.end())
+                    unique_map_$(expr_arr)_tmp_agg_$id[x.first] = 1;
+                  else
+                    unique_map_$(expr_arr)_tmp_agg_$id[x.first] += 1;
+              }
+              recv_unique_set_$(expr_arr)_tmp_agg_$id.clear();
+        """
+    else
+        s *= " j2c_array< $j2c_type > rbuf_$(id)_$expr_arr = j2c_array< $j2c_type >::new_j2c_array_1d(NULL, rsize_$id);\n"
+        s *= """ MPI_Alltoallv($(expr_arr)_tmp_agg_$id.getData(), scount_$id, sdis_$id, $mpi_type,
+                                             rbuf_$(id)_$expr_arr.getData(), rcount_$id, rdis_$id, $mpi_type, MPI_COMM_WORLD);
+             """
+    end
 end
 
 function pattern_match_call_rebalance(func::GlobalRef, arr::LHSVar, count::LHSVar, linfo)
