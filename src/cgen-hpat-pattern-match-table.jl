@@ -889,7 +889,7 @@ function gen_expr_arr_comm(id, func, expr_arr, j2c_type, mpi_type, key_ctype)
               }
               recv_dis_$arr_id[0] = 0;
               for(int i=1; i<__hpat_num_pes; i++) {
-                recv_dis_$arr_id[i] = recv_sizes_$arr_id[i-1] + recv_dis_$arr_id[i-1]; 
+                recv_dis_$arr_id[i] = recv_sizes_$arr_id[i-1] + recv_dis_$arr_id[i-1];
               }
         """
         s *= """ MPI_Alltoallv(send_buf_$arr_id, send_sizes_$arr_id, send_dis_$arr_id, MPI_CHAR,
@@ -942,6 +942,7 @@ function pattern_match_call_rebalance(func::GlobalRef, arr::LHSVar, count::LHSVa
         s *= "$c_typ *__hpat_tmp_$c_arr = new $c_typ[__hpat_row_size_$c_arr*$c_count];\n"
         # copy old data
         s *= "int64_t __hpat_new_data_ind_$c_arr = 0;\n"
+        s *= "#define MIN(x, y) (((x) < (y)) ? (x) : (y))\n"
         s *= "for(int64_t i=0; i<MIN(__hpat_old_size_$c_arr, $c_count); i++) {\n"
         s *= "   for(int64_t j=0; j<__hpat_row_size_$c_arr; j++){\n"
         s *= "    __hpat_tmp_$c_arr[__hpat_new_data_ind_$c_arr] = $c_arr.data[__hpat_new_data_ind_$c_arr];\n"
