@@ -2,7 +2,7 @@ using HPAT
 
 #HPAT.DomainPass.set_debug_level(3)
 
-@acc hpat function q25(d_date, file_name)
+@acc hpat function q25(d_date, num_centroids, iterations, file_name)
     store_sales = DataSource(DataTable{:ss_customer_sk=Int64, :ss_ticket_number=Int64, :ss_sold_date_sk=Int64, :ss_net_paid=Float64}, HDF5, file_name)
     web_sales = DataSource(DataTable{:ws_bill_customer_sk=Int64, :ws_order_number=Int64, :ws_sold_date_sk=Int64, :ws_net_paid=Float64}, HDF5, file_name)
 
@@ -23,9 +23,12 @@ using HPAT
                                       :recency = maximum(:most_recent_date),
                                       :frequency = sum(:frequency),
                                       :totalspend = sum(:amount))
-#    result[:recency] = (37621 - result[:recency] < 60 ? 1.0 : 0.0);
-    return result[:cid], result[:recency], result[:frequency], result[:totalspend]
 
+    #return result[:cid], result[:recency], result[:frequency], result[:totalspend]
+    recency = 37621 - result[:recency] .< 60;
+    points = transpose(typed_hcat(Float64, result[:cid], recency, result[:frequency], result[:totalspend]))
+    model = Kmeans(points, num_centroids, iterations)
+    return model
 end
 
-println(q25(33000, "test_q25.hdf5"))
+println(q25(33000, 8, 20,"test_q25.hdf5"))
