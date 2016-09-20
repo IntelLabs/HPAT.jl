@@ -2,7 +2,7 @@
 #define HPAT_SORT_H_
 
 #define  __HPAT_MIN_MERGE_SIZE 64
-#define MIN(x,y) (((x) < (y) ? (x) : (y)))
+#define MIN(x,y) ((x) < (y) ? (x) : (y))
 
 typedef struct {
   uint64_t start;

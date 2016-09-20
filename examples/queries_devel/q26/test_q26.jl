@@ -35,12 +35,12 @@ using HPAT
 
     customer_i_class = customer_i_class[:ss_item_count>item_count]
 
-    points = transpose(Base.typed_hcat(Int64,customer_i_class[:ss_item_count], customer_i_class[:id1], customer_i_class[:id2],
+    points = transpose(typed_hcat(Float64,customer_i_class[:ss_item_count], customer_i_class[:id1], customer_i_class[:id2],
     customer_i_class[:id3], customer_i_class[:id4], customer_i_class[:id5], customer_i_class[:id6],
     customer_i_class[:id7], customer_i_class[:id8], customer_i_class[:id9], customer_i_class[:id10],
     customer_i_class[:id11], customer_i_class[:id12], customer_i_class[:id13], customer_i_class[:id14], customer_i_class[:id15]))
-    pointsF = convert(Matrix{Float64},points)
-    model = Kmeans(pointsF, num_centroids, iterations)
+
+    model = Kmeans(points, num_centroids, iterations)
     return model
 end
 
