@@ -848,7 +848,7 @@ function gen_expr_arr_comm(id, func, expr_arr, j2c_type, mpi_type, key_ctype)
         arr_id = "$(id)_$expr_arr"
         sets = "unique_set_$(expr_arr)_tmp_agg_$id"
         # send and recv sizes, in bytes
-        s *= "int el_size_$arr_id = sizeof($key_ctype)+sizeof($j2c_type);"
+        s *= "int el_size_$arr_id = sizeof($key_ctype)+sizeof($j2c_type);\n"
         s *= "int total_send_count_$arr_id = 0;\n"
         s *= "int total_recv_count_$arr_id = 0;\n"
         s *= "int *send_sizes_$arr_id = (int*)malloc(sizeof(int)*__hpat_num_pes);\n"
@@ -860,7 +860,7 @@ function gen_expr_arr_comm(id, func, expr_arr, j2c_type, mpi_type, key_ctype)
         s *= """
               for(int i=0; i<__hpat_num_pes; i++) {
                 send_sizes_$arr_id[i] = $sets[i].size() * el_size_$arr_id;
-                total_send_count_$arr_id = $sets[i].size();
+                total_send_count_$arr_id += $sets[i].size();
               }
         """
         s *= "MPI_Alltoall(send_sizes_$arr_id, 1, MPI_INT, recv_sizes_$arr_id, 1, MPI_INT, MPI_COMM_WORLD);\n"
