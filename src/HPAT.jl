@@ -44,6 +44,8 @@ using ParallelAccelerator.CGen
 import MPI
 
 export hpat, hpat_checkpoint, hpat_debug, @acc, @noacc
+using Base.typed_hcat
+export typed_hcat
 
 ParallelAccelerator.CGen.setCreateMain(true)
 
