@@ -886,7 +886,10 @@ function gen_expr_arr_comm(id, func, expr_arr, j2c_type, mpi_type, key_ctype)
                  *ptr2 = x.second;
                  curr_buff_loc_$arr_id += sizeof($j2c_type);
                }
-               recv_dis_$arr_id[i] = curr_buff_loc_$arr_id;
+              }
+              recv_dis_$arr_id[0] = 0;
+              for(int i=1; i<__hpat_num_pes; i++) {
+                recv_dis_$arr_id[i] = recv_sizes_$arr_id[i-1] + recv_dis_$arr_id[i-1]; 
               }
         """
         s *= """ MPI_Alltoallv(send_buf_$arr_id, send_sizes_$arr_id, send_dis_$arr_id, MPI_CHAR,
