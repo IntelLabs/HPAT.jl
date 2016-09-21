@@ -73,7 +73,7 @@ for dataset_factor in "100" ; do
     echo ":D Running Spark"
     ${SPARK_DIR}/sbin/start-all.sh
     # Psephi08 master
-    ${SPARK_DIR}/bin/spark-submit --conf spark.sql.autoBroadcastJoinThreshold=-1 --jars /home/whassan/commons-csv-1.1.jar,/home/whassan/spark-csv_2.10-1.4.0.jar --class Query05 $SPARK_QUERY_DIR/target/scala-2.10/query26_2.10-0.1.jar $table1_path $table2_path $table3_path $table4_path &> tmp_spark.txt
+    ${SPARK_DIR}/bin/spark-submit --conf spark.sql.autoBroadcastJoinThreshold=-1 --jars /home/whassan/commons-csv-1.1.jar,/home/whassan/spark-csv_2.10-1.4.0.jar --class Query05 $SPARK_QUERY_DIR/target/scala-2.11/query26_2.11-0.1.jar $table1_path $table2_path $table3_path $table4_path &> tmp_spark.txt
 
 
     time_q05_spark=`cat tmp_spark.txt  | grep '\*\*\*\*\*\*' | cut -d ' ' -f 6`
