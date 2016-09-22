@@ -26,6 +26,7 @@ THE POSSIBILITY OF SUCH DAMAGE.
 #using Debug
 
 using CompilerTools.LivenessAnalysis
+using CompilerTools.TransitiveDependence
 
 function getArrayDistributionInfo(ast, state)
     set_user_partitionings(state)
@@ -184,7 +185,7 @@ function get_arr_dist_info_serial_code(node, state, top_level_number)
 end
 
 function get_arr_dist_info_parfor(node, state, top_level_number, parfor)
-    rws = parfor.rws
+    rws = CompilerTools.ReadWriteSet.from_exprs(parfor.body, ParallelAccelerator.ParallelIR.pir_rws_cb, state.LambdaVarInfo)
     partitioning = ONE_D
 
     if length(parfor.arrays_read_past_index)!=0 || length(parfor.arrays_written_past_index)!=0
@@ -201,11 +202,13 @@ function get_arr_dist_info_parfor(node, state, top_level_number, parfor)
                                                             parfor.body, ParallelIR.pir_live_cb, state.LambdaVarInfo)
     # @dprintln(3, "body_lives = ", body_lives)
     @dprintln(2,"DistPass arr info walk parfor indexVariable: ", indexVariable, " accesses: ", allArrAccesses)
+    @dprintln(2,"parfor = ", parfor)
     # If an array is accessed with a Parfor's index variable, the parfor and array should have same partitioning
     for arr in keys(allArrAccesses)
         # an array can be accessed multiple times in Pafor
         # for each access:
         for access_indices in allArrAccesses[arr]
+            @dprintln(3, "access_indices = ", access_indices)
             indices = map(toLHSVar,access_indices)
             # if array would be accessed in parallel in this Parfor
             if indices[end]==indexVariable
@@ -250,9 +253,31 @@ function get_arr_dist_info_parfor(node, state, top_level_number, parfor)
     return CompilerTools.AstWalker.ASTWALK_RECURSE
 end
 
-function isAccessIndexDependent(indices::Vector{Any}, indexVariable::LHSVar, body_lives::BlockLiveness, state)
+#function isAccessIndexDependent(indices::Vector{Any}, indexVariable::LHSVar, body_lives::BlockLiveness, state)
+#    deps = CompilerTools.TransitiveDependence.computeDependencies(body_lives)
+function isAccessIndexDependent(indices::Vector{Any}, indexVariable::LHSVar, deps, state)
     # if any index is dependent
-    return reduce(|, [ isAccessIndexDependent(indices[i], indexVariable, body_lives, state) for i in 1:length(indices)] )
+    return reduce(|, [ isAccessIndexDependent(indices[i], indexVariable, deps, state) for i in 1:length(indices)] )
+end
+
+function isAccessIndexDependent(index::LHSVar, indexVariable::LHSVar, deps::Dict{LHSVar, Set{LHSVar}}, state)
+    @dprintln(3,"isAccessIndexDependent for index ", index, " and variable ", indexVariable, " with deps ", deps)
+    if index == indexVariable
+        return false
+    end
+
+    if haskey(deps, index)
+        ret = in(indexVariable, deps[index])
+        @dprintln(3,"isAccessIndexDependent returned ", ret)
+        return ret
+    else
+        @dprintln(2, "isAccessIndexDependent could not find index ", index, " in deps.")
+        return false
+    end
+end
+
+function isAccessIndexDependent(index::Int, indexVariable::LHSVar, deps::Dict{LHSVar, Set{LHSVar}}, state)
+    return false
 end
 
 """
@@ -263,14 +288,7 @@ function isAccessIndexDependent(index::LHSVar, indexVariable::LHSVar, body_lives
     for bb in collect(values(body_lives.basic_blocks))
         for stmt in bb.statements
             if isBareParfor(stmt.tls.expr)
-                # inner_fake_body = CompilerTools.LambdaHandling.LambdaVarInfoToLambdaExpr(state.LambdaVarInfo, TypedExpr(nothing, :body, getParforNode(stmt.tls.expr).body...))
-                # @dprintln(3,"inner fake_body = ", fake_body)
-
-                inner_body_lives = CompilerTools.LivenessAnalysis.from_lambda(state.LambdaVarInfo,
-                                                                              TypedExpr(nothing, :body, getParforNode(stmt.tls.expr).body...),
-                                                                              ParallelIR.pir_live_cb, state.LambdaVarInfo)
-                # @dprintln(3, "inner body_lives = ", body_lives)
-                return isAccessIndexDependent(index, indexVariable, inner_body_lives, state)
+                return isAccessIndexDependent(index, indexVariable, state.deps, state)
             elseif in(index,stmt.def) && in(indexVariable, stmt.use)
                 @dprintln(2,"DistPass arr info walk dependent index found: ", index," ",indexVariable,"  ",stmt)
                 return true

@@ -115,7 +115,8 @@ function from_root(function_name, ast::Tuple)
     (linfo, body) = ast
     lives = computeLiveness(body, linfo)
     user_partitionings = get_user_partitionings(body)
-    state::DistPassState = initDistState(linfo,lives,user_partitionings)
+    deps = CompilerTools.TransitiveDependence.computeDependenciesAST(body, ParallelAccelerator.ParallelIR.dependenceCB, nothing)
+    state::DistPassState = initDistState(linfo,lives,user_partitionings,deps)
 
     # find if an array should be partitioned, sequential, or shared
     getArrayDistributionInfo(body, state)
@@ -176,9 +177,10 @@ type DistPassState
     max_label :: Int # holds the max number of all LabelNodes
     user_partitionings::Dict{Symbol,Partitioning}
     dist_vars::Dict{Symbol,LHSVar} # a dictionary for distributed variables such as __hpat_num_pes
-    function DistPassState(linfo, lives, user_partitionings)
+    deps
+    function DistPassState(linfo, lives, user_partitionings, deps)
         new(Dict{LHSVar, Array{ArrDistInfo,1}}(), Dict{Int,Partitioning}(), Dict{Int,Vector{LHSVar}}(), linfo,0, lives,
-             Dict{LHSVar,Array{Union{LHSVar,Int},1}}(),0,user_partitionings, Dict{Symbol,LHSVar}())
+             Dict{LHSVar,Array{Union{LHSVar,Int},1}}(),0,user_partitionings, Dict{Symbol,LHSVar}(), deps)
     end
 end
 
@@ -233,8 +235,8 @@ function get_user_partitionings(body)
     return Dict{Symbol,Symbol}()
 end
 
-function initDistState(linfo::LambdaVarInfo, lives, user_partitionings)
-    state = DistPassState(linfo, lives, user_partitionings)
+function initDistState(linfo::LambdaVarInfo, lives, user_partitionings, deps)
+    state = DistPassState(linfo, lives, user_partitionings, deps)
 
     vars = getLocalVariables(linfo)
     # Populate the symbol table
@@ -727,6 +729,7 @@ function from_parfor(node::Expr, state)
 
     parfor = node.args[1]
     parfor.body = from_nested_body(parfor.body, state)
+    parfor_rws = CompilerTools.ReadWriteSet.from_exprs(parfor.body, ParallelAccelerator.ParallelIR.pir_rws_cb, state.LambdaVarInfo)
 
     if state.parfor_partitioning[parfor.unique_id]==ONE_D
       return from_parfor_1d(node, state, parfor)
@@ -745,7 +748,7 @@ function from_parfor(node::Expr, state)
         end
         if has_rand
             # only rank 0 executes rand(), then broadcasts results
-            writeArrs = collect(keys(parfor.rws.writeSet.arrays))
+            writeArrs = collect(keys(parfor_rws.writeSet.arrays))
             @assert length(writeArrs)==1 "Only one parfor output supported now"
             write_arr = toLHSVar(writeArrs[1])
             # generate new label
