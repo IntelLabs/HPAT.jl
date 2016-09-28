@@ -106,7 +106,7 @@ dist_ir_funcs = Set([   :unsafe_arrayref,
                         :NaiveBayes,
                         :arraylen, :arraysize, :reshape, :tuple, :hcat, :typed_hcat, :vcat,
                         :transpose!, :transpose, :gemm_wrapper!,
-                        :gemv!])
+                        :gemv!, :cumsum!])
 
 # ENTRY to distributedIR
 function from_root(function_name, ast::Tuple)
@@ -969,6 +969,9 @@ function from_call(node::Expr, state)
         @dprintln(3,"found arraylen on dist array: ",node," ",arr," len: ",len)
         @dprintln(3,"found arraylen on dist array: ",node," ",arr)
         return [len]
+    elseif isBaseFunc(func,:cumsum!) && isONE_D(toLHSVar(node.args[2]), state)
+        new_func = GlobalRef(HPAT.API, :dist_cumsum!)
+        node.args[1] = new_func
     end
     return [node]
 end

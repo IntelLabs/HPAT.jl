@@ -322,6 +322,39 @@ function pattern_match_call_dist_bcast(f::Any, v::Any, rf::Any,linfo)
     return ""
 end
 
+function pattern_match_call_dist_cumsum(f::GlobalRef, out_arr::LHSVar, in_arr::LHSVar, linfo)
+    @dprintln(3, "pattern_match_call_dist_cumsum f = ", f)
+    s = ""
+    if f==GlobalRef(HPAT.API,:dist_cumsum!)
+        c_out_arr = ParallelAccelerator.CGen.from_expr(out_arr, linfo)
+        c_in_arr = ParallelAccelerator.CGen.from_expr(in_arr, linfo)
+        s *= "$c_out_arr;\n"
+
+        typ = eltype(ParallelAccelerator.CGen.getSymType(in_arr, linfo))
+        ctyp = ParallelAccelerator.CGen.toCtype(typ)
+        mpi_typ = get_mpi_type_from_var_type(typ)
+
+        sum_var = "tmp_sum_$c_in_arr"
+        prefix_var = "prefix_$c_in_arr"
+        size_var = "size_$c_in_arr"
+        s *= "int64_t $size_var = " * ParallelAccelerator.CGen.from_arraysize(in_arr,1,linfo) *";\n"
+        s *= "$ctyp $sum_var=0, $prefix_var=0;\n"
+        s *= "for(int i=0; i<$size_var; i++)\n"
+        s *= "  $sum_var += $c_in_arr.data[i];\n"
+        s *= "MPI_Exscan(&$sum_var, &$prefix_var, 1, $mpi_typ, MPI_SUM, MPI_COMM_WORLD);\n"
+        s *= "for(int i=0; i<$size_var; i++) {\n"
+        s *= "  $prefix_var += $c_in_arr.data[i];\n"
+        s *= "  $c_out_arr.data[i] = $prefix_var;\n"
+        s *= "}\n"
+    end
+    return s
+end
+
+
+function pattern_match_call_dist_cumsum(f::Any, v::Any, rf::Any,linfo)
+    return ""
+end
+
 """
 Generate code for HDF5 file open
 """
@@ -1276,6 +1309,7 @@ function pattern_match_call(ast::Array{Any, 1}, linfo)
     @dprintln(3,"ast1_typ = ", typeof(ast[1]), " ast2_typ = ", typeof(ast[2]), " ast3_typ = ", typeof(ast[3]))
     s *= pattern_match_call_dist_h5_size(ast[1],ast[2],ast[3], linfo)
     s *= pattern_match_call_dist_bcast(ast[1],ast[2],ast[3], linfo)
+    s *= pattern_match_call_dist_cumsum(ast[1],ast[2],ast[3], linfo)
     s *= pattern_match_call_value_checkpoint(ast[1], ast[2], ast[3], linfo)
     s *= pattern_match_call_restore_checkpoint_start(ast[1], ast[2], linfo)
     s *= pattern_match_call_restore_checkpoint_value(ast[1], ast[2], ast[3], linfo)

@@ -397,6 +397,12 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
         elseif isBaseFunc(func,:gemv!)
             return get_arr_dist_info_gemv(node, state, top_level_number, lhs, rhs)
             # TODO: Check why toLHSVar(rhs.args[2])].dim_sizes[1] is zero for all arrays
+        elseif isBaseFunc(func,:cumsum!)
+            @assert length(rhs.args)==3 "cumsum case not handled $rhs"
+            out = toLHSVar(rhs.args[2])
+            in_arr = toLHSVar(rhs.args[3])
+            state.arrs_dist_info[lhs].partitioning = state.arrs_dist_info[out].partitioning = state.arrs_dist_info[in_arr].partitioning
+            state.arrs_dist_info[lhs].dim_sizes = state.arrs_dist_info[out].dim_sizes
         elseif func.name == :hcat
             @dprintln(3,"DistPass arr info handling hcat: ", rhs)
             state.arrs_dist_info[lhs].dim_sizes[1] = state.arrs_dist_info[toLHSVar(rhs.args[2])].dim_sizes[1]
