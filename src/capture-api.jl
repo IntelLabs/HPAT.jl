@@ -137,7 +137,7 @@ function translate_stencil(lhs::Symbol, rhs::Expr, state)
     do_node = Expr(:->, var_tuple, do_block)
 
     run_stencil_call = Expr(:call, :runStencil, do_node, lhs, in_arr, 1, Expr(:quote, :oob_skip))
-    alloc_assign = Expr(:(=), lhs, :(Array(eltype($in_arr), length($in_arr))) )
+    alloc_assign = Expr(:(=), lhs, :(Array(eltype($in_arr), size($in_arr, 1))) )
     ret = Expr(:block, alloc_assign, run_stencil_call)
     @dprintln(3, "translating stencil returns: ", ret)
     return ret
