@@ -590,6 +590,9 @@ function getHPATcall(call::Expr)
         if call.args[1]==GlobalRef(Main,:NaiveBayes)
             call.args[1]=GlobalRef(HPAT.API,:NaiveBayes)
         end
+        if call.args[1]==GlobalRef(Main,:runStencil)
+            call.args[1]=GlobalRef(ParallelAccelerator.API,:runStencil)
+        end
         return getHPATcall_inner(call.args[1])
     end
     return :null

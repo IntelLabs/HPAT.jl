@@ -98,12 +98,49 @@ function process_assignment(node, state, lhs::Symbol, rhs::Expr)
     elseif rhs.head==:call && (rhs.args[1]==:Kmeans || rhs.args[1]==:LinearRegression || rhs.args[1]==:NaiveBayes)
         in_matrix = rhs.args[2]
         node.args[1] = :($lhs::typeof($in_matrix))
+    elseif rhs.head==:call && rhs.args[1]==:stencil
+        return translate_stencil(lhs, rhs, state)
     end
     CompilerTools.AstWalker.ASTWALK_RECURSE
 end
 
 function process_assignment(node, state, lhs::ANY, rhs::ANY)
     CompilerTools.AstWalker.ASTWALK_RECURSE
+end
+
+""" desugar stencil() and construct runStencl call, example:
+      avg = stencil(x->(x[-1]+2*x[0]+x[1])/4.0, t1[:val2])
+        :runStencil
+        :((b,a)->begin  # REPL[5], line 5:
+            b[0] = (a[-1] + 2*a[0] + a[1])/4.0 # REPL[5], line 6:
+            return (b,a)
+        end)
+        :avg
+        :t1_val2
+        1
+        :(:oob_skip)
+ format: do_node(in_tuple, do_block)  out in 1 :(:oob_skip)
+"""
+function translate_stencil(lhs::Symbol, rhs::Expr, state)
+    @dprintln(3, "translating stencil: ", lhs," = ",rhs)
+    println(rhs)
+    in_lambda = rhs.args[2]
+    @assert in_lambda.head==:-> "invalid stencil call $rhs"
+    # t1[:val2] to t1_val2
+    in_arr = process_node(rhs.args[3], state, 0, false, true)
+
+    in_sym = in_lambda.args[1]
+    in_expr = in_lambda.args[2].args[end]
+    var_tuple = Expr(:tuple, :b, in_sym)
+    stencil_expr = Expr(:(=), Expr(:ref, :b, 0), in_expr)
+    do_block = Expr(:block, stencil_expr, Expr(:return, var_tuple))
+    do_node = Expr(:->, var_tuple, do_block)
+
+    run_stencil_call = Expr(:call, :runStencil, do_node, lhs, in_arr, 1, Expr(:quote, :oob_skip))
+    alloc_assign = Expr(:(=), lhs, :(Array(eltype($in_arr), length($in_arr))) )
+    ret = Expr(:block, alloc_assign, run_stencil_call)
+    @dprintln(3, "translating stencil returns: ", ret)
+    return ret
 end
 
 function translate_table_vcat(t_out, rhs::Expr, state)
