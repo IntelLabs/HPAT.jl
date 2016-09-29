@@ -40,10 +40,11 @@ using CompilerTools.OptFramework.OptPass
 using ParallelAccelerator
 using ParallelAccelerator.Driver
 using ParallelAccelerator.CGen
+import ParallelAccelerator.API.runStencil
 
 import MPI
 
-export hpat, hpat_checkpoint, hpat_debug, @acc, @noacc
+export hpat, hpat_checkpoint, hpat_debug, @acc, @noacc, runStencil
 using Base.typed_hcat
 export typed_hcat
 
@@ -225,7 +226,9 @@ const hpat =
     [ OptPass(captureHPAT, PASS_MACRO),
       OptPass(captureOperators, PASS_MACRO),
       OptPass(toCartesianArray, PASS_MACRO),
+      OptPass(expandParMacro, PASS_MACRO),
       OptPass(runDomainPass, PASS_TYPED),
+      OptPass(extractCallGraph, PASS_TYPED),
       OptPass(toDomainIR, PASS_TYPED),
       OptPass(runDataTablePass, PASS_TYPED),
       OptPass(toParallelIR, PASS_TYPED),
@@ -238,8 +241,10 @@ const hpat_checkpoint =
       OptPass(captureHPAT, PASS_MACRO),
       OptPass(captureOperators, PASS_MACRO),
       OptPass(toCartesianArray, PASS_MACRO),
+      OptPass(expandParMacro, PASS_MACRO),
       OptPass(runDomainPass, PASS_TYPED),
       OptPass(addCheckpointing, PASS_TYPED),
+      OptPass(extractCallGraph, PASS_TYPED),
       OptPass(toDomainIR, PASS_TYPED),
       OptPass(runDataTablePass, PASS_TYPED),
       OptPass(toParallelIR, PASS_TYPED),
@@ -251,8 +256,10 @@ const hpat_checkpoint_internal =
     [ OptPass(captureHPAT, PASS_MACRO),
       OptPass(captureOperators, PASS_MACRO),
       OptPass(toCartesianArray, PASS_MACRO),
+      OptPass(expandParMacro, PASS_MACRO),
       OptPass(runDomainPass, PASS_TYPED),
       OptPass(addCheckpointingRestart, PASS_TYPED),
+      OptPass(extractCallGraph, PASS_TYPED),
       OptPass(toDomainIR, PASS_TYPED),
       OptPass(runDataTablePass, PASS_TYPED),
       OptPass(toParallelIR, PASS_TYPED),
