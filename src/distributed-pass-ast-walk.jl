@@ -298,6 +298,14 @@ function isAccessIndexDependent(index::LHSVar, indexVariable::LHSVar, body_lives
     return false
 end
 
+function isAccessIndexDependent(index::Expr, indexVariable::LHSVar, body_lives::BlockLiveness, state)
+    return reduce(|, [ isAccessIndexDependent(index.args[i], indexVariable, body_lives, state) for i in 1:length(index.args)] )
+end
+
+function isAccessIndexDependent(index::Union{GlobalRef,Type}, indexVariable::LHSVar, body_lives::BlockLiveness, state)
+    return false
+end
+
 # TODO: is this general?
 function isAccessIndexDependent(index::Int, indexVariable::LHSVar, body_lives::BlockLiveness, state)
     return false
