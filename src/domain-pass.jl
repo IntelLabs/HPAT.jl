@@ -101,7 +101,7 @@ function from_root(function_name, ast)
     #println("DomainPass.from_root returns function = ", function_name, " body = ", body)
 
     lives = computeLiveness(body, linfo)
-    body = CompilerTools.AstWalker.AstWalk(body, remove_dead, ParallelAccelerator.ParallelIR.RemoveDeadState(lives))
+    body = ParallelAccelerator.ParallelIR.AstWalk(body, remove_dead, ParallelAccelerator.ParallelIR.RemoveDeadState(lives))
     @dprintln(1,"Body after dead code elimination.  function = ", function_name, " ast = ", linfo, body)
 
     # transform body
