@@ -178,9 +178,10 @@ type DistPassState
     user_partitionings::Dict{Symbol,Partitioning}
     dist_vars::Dict{Symbol,LHSVar} # a dictionary for distributed variables such as __hpat_num_pes
     deps
+    parfor_stencils::Dict{Int,Vector{Int}}
     function DistPassState(linfo, lives, user_partitionings, deps)
         new(Dict{LHSVar, Array{ArrDistInfo,1}}(), Dict{Int,Partitioning}(), Dict{Int,Vector{LHSVar}}(), linfo,0, lives,
-             Dict{LHSVar,Array{Union{LHSVar,Int},1}}(),0,user_partitionings, Dict{Symbol,LHSVar}(), deps)
+             Dict{LHSVar,Array{Union{LHSVar,Int},1}}(),0,user_partitionings, Dict{Symbol,LHSVar}(), deps, Dict{Int,Vector{Int}}())
     end
 end
 
@@ -731,7 +732,9 @@ function from_parfor(node::Expr, state)
     parfor.body = from_nested_body(parfor.body, state)
     parfor_rws = CompilerTools.ReadWriteSet.from_exprs(parfor.body, ParallelAccelerator.ParallelIR.pir_rws_cb, state.LambdaVarInfo)
 
-    if state.parfor_partitioning[parfor.unique_id]==ONE_D
+    if parfor.unique_id in keys(state.parfor_stencils)
+        return from_parfor_stencil_1d(node, state, parfor, state.parfor_stencils[parfor.unique_id])
+    elseif state.parfor_partitioning[parfor.unique_id]==ONE_D
       return from_parfor_1d(node, state, parfor)
     elseif state.parfor_partitioning[parfor.unique_id]==TWO_D
       return from_parfor_2d(node, state, parfor)
@@ -768,6 +771,83 @@ function from_parfor(node::Expr, state)
         end
     end
     return [node]
+end
+
+function from_parfor_stencil_1d(node::Expr, state, parfor, stencil_inds::Vector{Int})
+    @dprintln(3,"DistPass translating stencil 1d parfor: ", parfor.unique_id)
+
+    in_arr = state.parfor_arrays[parfor.unique_id][1]
+    out_arr = state.parfor_arrays[parfor.unique_id][end]
+    dprintln(3, "stencil input arr: ", in_arr," output_arr: ", out_arr, " parfor node: ", node)
+
+    # indices on left and right side of stencil e.g. -2, -1 , 1, 2
+    left_inds = filter(x->x<0, stencil_inds)
+    right_inds = filter(x->x>0, stencil_inds)
+
+    # no change to the loopnest start since index variable is not used in actual stencil computation
+    # upper bound should be replaced with local size of array
+    loopnest = parfor.loopNests[1]
+    dprintln(3, "stencil loopnest before change: ", loopnest)
+    loopnest.upper.args[3].args[2] = Expr(:call, GlobalRef(Base, :arraysize), in_arr,1)
+    dprintln(3, "stencil loopnest after change: ", loopnest)
+
+    # send/recv on left
+    # node 0 should just set output to input
+    label_left = next_label(state)
+    label_left_node = LabelNode(label_left)
+    # goto label if not node_id==0
+    goto_left_node = Expr(:gotoifnot, mk_call(GlobalRef(Base,:(===)),
+        [state.dist_vars[:node_id], 0]), label_left)
+    # out_arr[1] = in_arr[1] on first node
+    assign_leftmost = Expr(:call, GlobalRef(Base,:unsafe_arrayset), out_arr,
+        Expr(:call, GlobalRef(Base,:unsafe_arrayref), in_arr, 1), 1)
+    send_left = Expr(:call,GlobalRef(HPAT.API,:__hpat_send_left), in_arr, right_inds)
+    recv_left = Expr(:call,GlobalRef(HPAT.API,:__hpat_recv_left), in_arr, left_inds)
+    label_after_left = next_label(state)
+    label_after_left_node = LabelNode(label_after_left)
+    goto_after_left_node = GotoNode(label_after_left)
+
+    # send/recv on right
+    # node pes-1 should just set output to input
+    label_right = next_label(state)
+    label_right_node = LabelNode(label_right)
+    # goto label if not node_id==num_pes-1
+    goto_right_node = Expr(:gotoifnot, mk_call(GlobalRef(Base,:(===)),
+        [state.dist_vars[:node_id], mk_call(GlobalRef(Core.Intrinsics,:ne_int), [state.dist_vars[:num_pes],-1])]), label_right)
+    # out_arr[n] = in_arr[n] on last node
+    assign_rightmost = Expr(:call, GlobalRef(Base,:unsafe_arrayset), out_arr,
+        Expr(:call, GlobalRef(Base,:unsafe_arrayref), in_arr,
+        mk_call(GlobalRef(Base, :arraysize), [in_arr,1])),
+        mk_call(GlobalRef(Base, :arraysize), [out_arr,1]) )
+    send_right = Expr(:call,GlobalRef(HPAT.API,:__hpat_send_right), in_arr, left_inds)
+    recv_right = Expr(:call,GlobalRef(HPAT.API,:__hpat_recv_right), in_arr, right_inds)
+    label_after_right = next_label(state)
+    label_after_right_node = LabelNode(label_after_right)
+    goto_after_right_node = GotoNode(label_after_right)
+
+    # node 0 doesn't wait left
+    label_wleft = next_label(state)
+    label_wleft_node = LabelNode(label_wleft)
+    # goto label if not node_id!=0
+    goto_wleft_node = Expr(:gotoifnot, mk_call(GlobalRef(Core.Intrinsics,:ne_int),
+        [state.dist_vars[:node_id], 0]), label_wleft)
+    wait_left = Expr(:call,GlobalRef(HPAT.API,:__hpat_wait_left), out_arr)
+
+    # node pes-1 doesn't wait right
+    label_wright = next_label(state)
+    label_wright_node = LabelNode(label_wright)
+    # goto label if not node_id==num_pes-1
+    goto_wright_node = Expr(:gotoifnot, mk_call(GlobalRef(Core.Intrinsics,:ne_int),
+        [state.dist_vars[:node_id], mk_call(GlobalRef(Core.Intrinsics,:sub_int), [state.dist_vars[:num_pes],1])]), label_wright)
+    wait_right = Expr(:call,GlobalRef(HPAT.API,:__hpat_wait_right), out_arr)
+
+    # if ! node==0 goto 1, out[1]=in[1] goto 2, 1: send/rev 2: ...
+    # if ! node==pes-1 goto 1, out[n]=in[n] goto 2, 1: send/rev 2: ...
+    res = Any[goto_left_node, assign_leftmost, goto_after_left_node, label_left_node, send_left, recv_left, label_after_left_node,
+        goto_right_node, assign_rightmost, goto_after_right_node, label_right_node, send_right, recv_right, label_after_right_node, node,
+        goto_wleft_node, wait_left, label_wleft, goto_wright_node, wait_right, label_wright_node]
+    dprintln(3, "stencil returns: ", res)
+  return res
 end
 
 function from_parfor_1d(node::Expr, state, parfor)

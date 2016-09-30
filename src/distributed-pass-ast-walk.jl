@@ -197,6 +197,8 @@ function get_arr_dist_info_parfor(node, state, top_level_number, parfor)
 
     allArrAccesses = merge(rws.readSet.arrays,rws.writeSet.arrays)
     myArrs = LHSVar[]
+    is_stencil = false
+    stencil_inds = Int[]
 
     body_lives = CompilerTools.LivenessAnalysis.from_lambda(state.LambdaVarInfo,
                                                             parfor.body, ParallelIR.pir_live_cb, state.LambdaVarInfo)
@@ -213,6 +215,14 @@ function get_arr_dist_info_parfor(node, state, top_level_number, parfor)
             # if array would be accessed in parallel in this Parfor
             if indices[end]==indexVariable
                 push!(myArrs, arr)
+            end
+            # only 1D stencil is supported for now
+            if length(indices)==1 && isStencilAccess(indices[1], indexVariable)
+                is_stencil = true
+                push!(myArrs, arr)
+                stencil_rel_ind = getStencilAccessInd(indices[1])
+                push!(stencil_inds, stencil_rel_ind)
+                continue
             end
             # An array access index can be dependent on parfor's
             # index variable as in nested comprehension case of K-Means.
@@ -249,6 +259,9 @@ function get_arr_dist_info_parfor(node, state, top_level_number, parfor)
     state.parfor_arrays[parfor.unique_id] = myArrs
     for arr in myArrs
         setArrayPartitioning(arr,partitioning,state)
+    end
+    if length(stencil_inds)!=0
+        state.parfor_stencils[parfor.unique_id] = stencil_inds
     end
     return CompilerTools.AstWalker.ASTWALK_RECURSE
 end
@@ -314,6 +327,24 @@ end
 function get_arr_dist_info(ast::Any, state::DistPassState, top_level_number, is_top_level, read)
     return CompilerTools.AstWalker.ASTWALK_RECURSE
 end
+
+function isStencilAccess(index::Expr, indexVariable::LHSVar)
+    # example :((Base.box)(Int64,(Core.Intrinsics.add_int)(_9,-1)))
+    if index.head==:call && index.args[1]==GlobalRef(Base,:box) && isa(index.args[3],Expr) &&
+        index.args[3].head==:call && index.args[3].args[1]==GlobalRef(Core.Intrinsics,:add_int) &&
+        index.args[3].args[2]==indexVariable && isa(index.args[3].args[3],Int)
+        @dprintln(3, "stencil found ", index.args[3].args[3])
+        return true
+    end
+    return false
+end
+
+isStencilAccess(index::LHSVar, indexVariable::LHSVar) = false
+
+function getStencilAccessInd(index::Expr)
+    return index.args[3].args[3]
+end
+
 
 """ return LHSVar if arg is RHSVar, otherwise no change
     used for allocation sizes which could be LHSVar or Int or TypedVar or Expr

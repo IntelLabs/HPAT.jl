@@ -123,7 +123,7 @@ end
 """
 function translate_stencil(lhs::Symbol, rhs::Expr, state)
     @dprintln(3, "translating stencil: ", lhs," = ",rhs)
-    println(rhs)
+
     in_lambda = rhs.args[2]
     @assert in_lambda.head==:-> "invalid stencil call $rhs"
     # t1[:val2] to t1_val2
