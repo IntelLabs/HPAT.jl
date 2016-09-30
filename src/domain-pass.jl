@@ -28,6 +28,7 @@ module DomainPass
 
 import ParallelAccelerator
 import ParallelAccelerator.DomainIR
+import ParallelAccelerator.ParallelIR.computeLiveness
 
 using CompilerTools
 import CompilerTools.DebugMsg
@@ -35,6 +36,7 @@ DebugMsg.init()
 
 using CompilerTools.LambdaHandling
 using CompilerTools.Helper
+using CompilerTools.AstWalker
 #using Debug
 
 import HPAT
@@ -69,20 +71,40 @@ const generatedExprHeads = [:alloc,
                             :join,
                             :aggregate]
 
+function remove_dead(node :: Expr, data :: ParallelAccelerator.ParallelIR.RemoveDeadState, top_level_number, is_top_level, read)
+    # FIX FIX FIX  This is wrong...for now we just assume anything HPAT added to AST is not dead.
+    if in(node.head, generatedExprHeads)
+        return node
+    end
+    return ParallelAccelerator.ParallelIR.remove_dead(node, data, top_level_number, is_top_level, read)
+end
+
+function remove_dead(node :: ANY, data :: ParallelAccelerator.ParallelIR.RemoveDeadState, top_level_number, is_top_level, read)
+    return ParallelAccelerator.ParallelIR.remove_dead(node, data, top_level_number, is_top_level, read)
+end
+
 # ENTRY to DomainPass
 function from_root(function_name, ast)
 
     linfo, body = CompilerTools.LambdaHandling.lambdaToLambdaVarInfo(ast)
     @dprintln(1,"Starting main DomainPass.from_root.  function = ", function_name, " ast = ", linfo, body)
 
+    lives = computeLiveness(body, linfo)
+
     tableCols, tableTypes, tableIds = get_table_meta(body)
     @dprintln(3,"HPAT tables: ", tableCols,tableTypes)
-    state::DomainState = DomainState(linfo, tableCols, tableTypes, tableIds, 0)
+    state::DomainState = DomainState(linfo, tableCols, tableTypes, tableIds, 0, lives)
 
     # transform body
     body.args = from_toplevel_body(body.args, state)
     @dprintln(1,"DomainPass.from_root returns function = ", function_name, " body = ", body)
     #println("DomainPass.from_root returns function = ", function_name, " body = ", body)
+
+    lives = computeLiveness(body, linfo)
+    body = CompilerTools.AstWalker.AstWalk(body, remove_dead, ParallelAccelerator.ParallelIR.RemoveDeadState(lives))
+    @dprintln(1,"Body after dead code elimination.  function = ", function_name, " ast = ", linfo, body)
+
+    # transform body
     return LambdaVarInfoToLambda(state.linfo, body.args, ParallelAccelerator.DomainIR.AstWalk)
 end
 
@@ -94,6 +116,7 @@ type DomainState
     tableIds::Dict{Int,Symbol}
     # a unique id for domain operations (data sources/sinks, table operations)
     unique_id::Int
+    lives  :: CompilerTools.LivenessAnalysis.BlockLiveness
 end
 
 """
@@ -508,7 +531,9 @@ function translate_aggregate(nodes, curr_pos, aggregate_node, state)
         push!(out_col_arrs, nodes[k].args[1])
     end
     new_aggregate_node = Expr(:aggregate, t2, t1, key_arr, in_e_arr_list, in_func_list, out_col_arrs, opr_num)
-    return remove_before, remove_after, Any[new_aggregate_node]
+    @dprintln(3,"translate_aggregate returning with remove_before = ", remove_before, " remove_after = ", remove_after, " node = ", new_aggregate_node)
+    return 0, remove_after, Any[new_aggregate_node]
+    #return remove_before, remove_after, Any[new_aggregate_node]
 end
 
 # dummy function so liveness in parallel-ir can know the output type (typeOfOpr)
