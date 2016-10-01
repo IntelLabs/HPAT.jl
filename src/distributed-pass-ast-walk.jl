@@ -197,7 +197,6 @@ function get_arr_dist_info_parfor(node, state, top_level_number, parfor)
 
     allArrAccesses = merge(rws.readSet.arrays,rws.writeSet.arrays)
     myArrs = LHSVar[]
-    is_stencil = false
     stencil_inds = Int[]
 
     body_lives = CompilerTools.LivenessAnalysis.from_lambda(state.LambdaVarInfo,
@@ -214,12 +213,17 @@ function get_arr_dist_info_parfor(node, state, top_level_number, parfor)
             indices = map(toLHSVar,access_indices)
             # if array would be accessed in parallel in this Parfor
             if indices[end]==indexVariable
-                push!(myArrs, arr)
+                # put read arrays first
+                if arr in keys(rws.readSet.arrays)
+                    myArrs = LHSVar[arr; myArrs]
+                else
+                    push!(myArrs, arr)
+                end
             end
             # only 1D stencil is supported for now
             if length(indices)==1 && isStencilAccess(indices[1], indexVariable)
-                is_stencil = true
-                push!(myArrs, arr)
+                # put input array of stencil first
+                myArrs = LHSVar[arr; myArrs]
                 stencil_rel_ind = getStencilAccessInd(indices[1])
                 push!(stencil_inds, stencil_rel_ind)
                 continue
