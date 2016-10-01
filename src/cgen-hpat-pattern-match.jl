@@ -111,6 +111,97 @@ function pattern_match_call_dist_init2d(f::ANY,linfo)
     return ""
 end
 
+function pattern_match_call_dist_init_stencil_reqs(f::GlobalRef,linfo)
+    s = ""
+    if f==GlobalRef(HPAT.API,:__hpat_init_stencil_reqs)
+        # TODO: assuming 1D stencil
+        s *= "MPI_Request mpi_req_send_left, mpi_req_recv_left, mpi_req_send_right, mpi_req_recv_right;"
+    end
+    return s
+end
+
+pattern_match_call_dist_init_stencil_reqs(f::Any,l) = ""
+
+function pattern_match_call_dist_send_left(f::GlobalRef, in_arr::LHSVar, linfo)
+    s = ""
+    if f==GlobalRef(HPAT.API,:__hpat_send_left)
+        # TODO: assuming 1D stencil
+        c_in_arr = ParallelAccelerator.CGen.from_expr(in_arr, linfo)
+        typ = eltype(ParallelAccelerator.CGen.getSymType(in_arr, linfo))
+        mpi_typ = get_mpi_type_from_var_type(typ)
+        s *= "MPI_Isend($c_in_arr.data, 1, $mpi_typ, __hpat_node_id-1, 11, MPI_COMM_WORLD, &mpi_req_send_left);"
+    end
+    return s
+end
+
+pattern_match_call_dist_send_left(f::ANY, in_arr::ANY, linfo) = ""
+
+function pattern_match_call_dist_recv_left(f::GlobalRef, tmp_var::LHSVar, linfo)
+    s = ""
+    if f==GlobalRef(HPAT.API,:__hpat_recv_left)
+        # TODO: assuming 1D stencil
+        c_tmp_var = ParallelAccelerator.CGen.from_expr(tmp_var, linfo)
+        typ = ParallelAccelerator.CGen.getSymType(tmp_var, linfo)
+        mpi_typ = get_mpi_type_from_var_type(typ)
+        s *= "MPI_Irecv(&$c_tmp_var, 1, $mpi_typ, __hpat_node_id-1, 22, MPI_COMM_WORLD, &mpi_req_recv_left);"
+    end
+    return s
+end
+
+pattern_match_call_dist_recv_left(f::ANY, tmp_var::ANY, linfo) = ""
+
+function pattern_match_call_dist_send_right(f::GlobalRef, in_arr::LHSVar, linfo)
+    s = ""
+    if f==GlobalRef(HPAT.API,:__hpat_send_right)
+        # TODO: assuming 1D stencil
+        c_in_arr = ParallelAccelerator.CGen.from_expr(in_arr, linfo)
+        typ = eltype(ParallelAccelerator.CGen.getSymType(in_arr, linfo))
+        mpi_typ = get_mpi_type_from_var_type(typ)
+        s *= "MPI_Isend(&$c_in_arr.data[$c_in_arr.ARRAYLEN()-1], 1, $mpi_typ, __hpat_node_id+1, 22, MPI_COMM_WORLD, &mpi_req_send_right);"
+    end
+    return s
+end
+
+pattern_match_call_dist_send_right(f::ANY, in_arr::ANY, linfo) = ""
+
+function pattern_match_call_dist_recv_right(f::GlobalRef, tmp_var::LHSVar, linfo)
+    s = ""
+    if f==GlobalRef(HPAT.API,:__hpat_recv_right)
+        # TODO: assuming 1D stencil
+        c_tmp_var = ParallelAccelerator.CGen.from_expr(tmp_var, linfo)
+        typ = ParallelAccelerator.CGen.getSymType(tmp_var, linfo)
+        mpi_typ = get_mpi_type_from_var_type(typ)
+        s *= "MPI_Irecv(&$c_tmp_var, 1, $mpi_typ, __hpat_node_id+1, 11, MPI_COMM_WORLD, &mpi_req_recv_right);"
+    end
+    return s
+end
+
+pattern_match_call_dist_recv_right(f::ANY, in_arr::ANY, linfo) = ""
+
+function pattern_match_call_dist_wait_left(f::GlobalRef, linfo)
+    s = ""
+    if f==GlobalRef(HPAT.API,:__hpat_wait_left)
+        # TODO: assuming 1D stencil
+        s *= "MPI_Wait(&mpi_req_recv_left, MPI_STATUS_IGNORE);\n"
+        s *= "MPI_Wait(&mpi_req_send_left, MPI_STATUS_IGNORE);\n"
+    end
+    return s
+end
+
+pattern_match_call_dist_wait_left(f::ANY, linfo) = ""
+
+function pattern_match_call_dist_wait_right(f::GlobalRef, linfo)
+    s = ""
+    if f==GlobalRef(HPAT.API,:__hpat_wait_right)
+        # TODO: assuming 1D stencil
+        s *= "MPI_Wait(&mpi_req_recv_right, MPI_STATUS_IGNORE);\n"
+        s *= "MPI_Wait(&mpi_req_send_right, MPI_STATUS_IGNORE);\n"
+    end
+    return s
+end
+
+pattern_match_call_dist_wait_right(f::ANY, linfo) = ""
+
 function pattern_match_call_dist_add_extra_block(f::GlobalRef, local_blocks::LHSVar,
       total_blocks::LHSVar, node_id::LHSVar, num_pes::LHSVar, linfo)
   s = ""
@@ -1296,6 +1387,9 @@ function pattern_match_call(ast::Array{Any, 1}, linfo)
     s *= pattern_match_call_dist_init(ast[1], linfo)
     s *= pattern_match_call_dist_init_gaas(ast[1], linfo)
     s *= pattern_match_call_dist_init2d(ast[1], linfo)
+    s *= pattern_match_call_dist_init_stencil_reqs(ast[1], linfo)
+    s *= pattern_match_call_dist_wait_left(ast[1], linfo)
+    s *= pattern_match_call_dist_wait_right(ast[1], linfo)
     s *= pattern_match_call_get_sec_since_epoch(ast[1], linfo)
   elseif length(ast)==2
     @dprintln(3,"ast1_typ = ", typeof(ast[1]), " ast2_typ = ", typeof(ast[2]))
@@ -1305,6 +1399,10 @@ function pattern_match_call(ast::Array{Any, 1}, linfo)
     s *= pattern_match_call_end_checkpoint(ast[1], ast[2], linfo)
     s *= pattern_match_call_finish_checkpoint(ast[1], ast[2], linfo)
     s *= pattern_match_call_restore_checkpoint_end(ast[1], ast[2], linfo)
+    s *= pattern_match_call_dist_send_left(ast[1], ast[2], linfo)
+    s *= pattern_match_call_dist_recv_left(ast[1], ast[2], linfo)
+    s *= pattern_match_call_dist_send_right(ast[1], ast[2], linfo)
+    s *= pattern_match_call_dist_recv_right(ast[1], ast[2], linfo)
   elseif length(ast)==3
     @dprintln(3,"ast1_typ = ", typeof(ast[1]), " ast2_typ = ", typeof(ast[2]), " ast3_typ = ", typeof(ast[3]))
     s *= pattern_match_call_dist_h5_size(ast[1],ast[2],ast[3], linfo)

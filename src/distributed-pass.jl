@@ -779,10 +779,12 @@ function from_parfor_stencil_1d(node::Expr, state, parfor, stencil_inds::Vector{
     in_arr = state.parfor_arrays[parfor.unique_id][1]
     out_arr = state.parfor_arrays[parfor.unique_id][end]
     dprintln(3, "stencil input arr: ", in_arr," output_arr: ", out_arr, " parfor node: ", node)
+    data_typ = eltype(CompilerTools.LambdaHandling.getType(out_arr, state.LambdaVarInfo))
 
     # indices on left and right side of stencil e.g. -2, -1 , 1, 2
     left_inds = filter(x->x<0, stencil_inds)
     right_inds = filter(x->x>0, stencil_inds)
+    @assert left_inds==[-1] && right_inds==[1] "only simple 3-point stencil supported for now"
 
     # no change to the loopnest start since index variable is not used in actual stencil computation
     # upper bound should be replaced with local size of array
@@ -790,6 +792,14 @@ function from_parfor_stencil_1d(node::Expr, state, parfor, stencil_inds::Vector{
     dprintln(3, "stencil loopnest before change: ", loopnest)
     loopnest.upper.args[3].args[2] = Expr(:call, GlobalRef(Base, :arraysize), in_arr,1)
     dprintln(3, "stencil loopnest after change: ", loopnest)
+
+    recv_left_tmp = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+        Symbol("recv_left_tmp"), data_typ, ISASSIGNED, state.LambdaVarInfo))
+    recv_right_tmp = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+        Symbol("recv_right_tmp"), data_typ, ISASSIGNED, state.LambdaVarInfo))
+
+    # create MPI request objects for Isend/Irecv
+    init_stencil_reqs = mk_call(GlobalRef(HPAT.API,:__hpat_init_stencil_reqs),[])
 
     # send/recv on left
     # node 0 should just set output to input
@@ -801,8 +811,8 @@ function from_parfor_stencil_1d(node::Expr, state, parfor, stencil_inds::Vector{
     # out_arr[1] = in_arr[1] on first node
     assign_leftmost = Expr(:call, GlobalRef(Base,:unsafe_arrayset), out_arr,
         Expr(:call, GlobalRef(Base,:unsafe_arrayref), in_arr, 1), 1)
-    send_left = Expr(:call,GlobalRef(HPAT.API,:__hpat_send_left), in_arr, right_inds)
-    recv_left = Expr(:call,GlobalRef(HPAT.API,:__hpat_recv_left), in_arr, left_inds)
+    send_left = Expr(:call,GlobalRef(HPAT.API,:__hpat_send_left), in_arr)
+    recv_left = Expr(:call,GlobalRef(HPAT.API,:__hpat_recv_left), recv_left_tmp)
     label_after_left = next_label(state)
     label_after_left_node = LabelNode(label_after_left)
     goto_after_left_node = GotoNode(label_after_left)
@@ -819,8 +829,8 @@ function from_parfor_stencil_1d(node::Expr, state, parfor, stencil_inds::Vector{
         Expr(:call, GlobalRef(Base,:unsafe_arrayref), in_arr,
         mk_call(GlobalRef(Base, :arraysize), [in_arr,1])),
         mk_call(GlobalRef(Base, :arraysize), [out_arr,1]) )
-    send_right = Expr(:call,GlobalRef(HPAT.API,:__hpat_send_right), in_arr, left_inds)
-    recv_right = Expr(:call,GlobalRef(HPAT.API,:__hpat_recv_right), in_arr, right_inds)
+    send_right = Expr(:call, GlobalRef(HPAT.API,:__hpat_send_right), in_arr)
+    recv_right = Expr(:call, GlobalRef(HPAT.API,:__hpat_recv_right), recv_right_tmp)
     label_after_right = next_label(state)
     label_after_right_node = LabelNode(label_after_right)
     goto_after_right_node = GotoNode(label_after_right)
@@ -831,7 +841,7 @@ function from_parfor_stencil_1d(node::Expr, state, parfor, stencil_inds::Vector{
     # goto label if not node_id!=0
     goto_wleft_node = Expr(:gotoifnot, mk_call(GlobalRef(Core.Intrinsics,:ne_int),
         [state.dist_vars[:node_id], 0]), label_wleft)
-    wait_left = Expr(:call,GlobalRef(HPAT.API,:__hpat_wait_left), out_arr)
+    wait_left = Expr(:call, GlobalRef(HPAT.API,:__hpat_wait_left))
 
     # node pes-1 doesn't wait right
     label_wright = next_label(state)
@@ -839,13 +849,13 @@ function from_parfor_stencil_1d(node::Expr, state, parfor, stencil_inds::Vector{
     # goto label if not node_id==num_pes-1
     goto_wright_node = Expr(:gotoifnot, mk_call(GlobalRef(Core.Intrinsics,:ne_int),
         [state.dist_vars[:node_id], mk_call(GlobalRef(Core.Intrinsics,:sub_int), [state.dist_vars[:num_pes],1])]), label_wright)
-    wait_right = Expr(:call,GlobalRef(HPAT.API,:__hpat_wait_right), out_arr)
+    wait_right = Expr(:call, GlobalRef(HPAT.API,:__hpat_wait_right))
 
     # if ! node==0 goto 1, out[1]=in[1] goto 2, 1: send/rev 2: ...
     # if ! node==pes-1 goto 1, out[n]=in[n] goto 2, 1: send/rev 2: ...
-    res = Any[goto_left_node, assign_leftmost, goto_after_left_node, label_left_node, send_left, recv_left, label_after_left_node,
+    res = Any[init_stencil_reqs, goto_left_node, assign_leftmost, goto_after_left_node, label_left_node, send_left, recv_left, label_after_left_node,
         goto_right_node, assign_rightmost, goto_after_right_node, label_right_node, send_right, recv_right, label_after_right_node, node,
-        goto_wleft_node, wait_left, label_wleft, goto_wright_node, wait_right, label_wright_node]
+        goto_wleft_node, wait_left, label_wleft_node, goto_wright_node, wait_right, label_wright_node]
     dprintln(3, "stencil returns: ", res)
   return res
 end
