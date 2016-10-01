@@ -851,13 +851,47 @@ function from_parfor_stencil_1d(node::Expr, state, parfor, stencil_inds::Vector{
         [state.dist_vars[:node_id], mk_call(GlobalRef(Core.Intrinsics,:sub_int), [state.dist_vars[:num_pes],1])]), label_wright)
     wait_right = Expr(:call, GlobalRef(HPAT.API,:__hpat_wait_right))
 
+    border_left_body = get_stencil_border_compute(parfor.body, recv_left_tmp, left_inds[1], 1)
+    border_right_body = get_stencil_border_compute(parfor.body, recv_right_tmp, right_inds[1],
+        mk_call(GlobalRef(Base, :arraysize), [in_arr,1]))
+
     # if ! node==0 goto 1, out[1]=in[1] goto 2, 1: send/rev 2: ...
     # if ! node==pes-1 goto 1, out[n]=in[n] goto 2, 1: send/rev 2: ...
     res = Any[init_stencil_reqs, goto_left_node, assign_leftmost, goto_after_left_node, label_left_node, send_left, recv_left, label_after_left_node,
         goto_right_node, assign_rightmost, goto_after_right_node, label_right_node, send_right, recv_right, label_after_right_node, node,
-        goto_wleft_node, wait_left, label_wleft_node, goto_wright_node, wait_right, label_wright_node]
+        goto_wleft_node, wait_left, border_left_body..., label_wleft_node, goto_wright_node, wait_right, border_right_body..., label_wright_node]
     dprintln(3, "stencil returns: ", res)
   return res
+end
+
+function get_stencil_border_compute(body, tmp_var, stencil_ind, border_ind)
+    new_body = deepcopy(body)
+    for node in new_body
+        if isAssignmentNode(node) && isCall(node.args[2]) &&
+              node.args[2].args[1]==GlobalRef(Base,:unsafe_arrayref)
+            rhs = node.args[2]
+            index = rhs.args[3]
+            # if access is stencil
+            if isa(index,Expr) && index.head==:call && index.args[1]==GlobalRef(Base,:box) && isa(index.args[3],Expr) &&
+                  index.args[3].head==:call && index.args[3].args[1]==GlobalRef(Core.Intrinsics,:add_int) &&
+                  isa(index.args[3].args[3],Int)
+                # if this is the border we are replacing, replace arrayref call
+                if index.args[3].args[3]==stencil_ind
+                    node.args[2] = tmp_var
+                else
+                    # replace index variable with 1
+                    index.args[3].args[2] = border_ind
+                end
+            else
+                @assert isa(index, LHSVar) "unexpected index $index"
+                # replace index variable with 1
+                rhs.args[3] = border_ind
+            end
+        elseif isCall(node) && node.args[1]==GlobalRef(Base,:unsafe_arrayset)
+            node.args[4] = border_ind
+        end
+    end
+    return new_body
 end
 
 function from_parfor_1d(node::Expr, state, parfor)
