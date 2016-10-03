@@ -1,3 +1,5 @@
+module StencilTest1
+
 using HPAT
 
 #HPAT.CaptureAPI.set_debug_level(3)
@@ -16,17 +18,26 @@ end
 
 using HDF5
 using MPI
-if MPI.Comm_rank(MPI.COMM_WORLD)==0 
-    h5write("test1_1.hdf5", "/userid", [1, 2, 3, 1, 2])
-    h5write("test1_1.hdf5", "/val2", [1.2, 2.1, 3.1, 3.2, 1.9])
-end
-a = test1("test1_1.hdf5")
-println(a)
-
-
 using Base.Test
-@test_approx_eq a [1.2, 2.125, 2.875, 2.85, 1.9]
 
-if MPI.Comm_rank(MPI.COMM_WORLD)==0 
-    rm("test1_1.hdf5")
+function main()
+
+    if MPI.Comm_rank(MPI.COMM_WORLD)==0 
+        h5write("test1_1.hdf5", "/userid", [1, 2, 3, 1, 2])
+        h5write("test1_1.hdf5", "/val2", [1.2, 2.1, 3.1, 3.2, 1.9])
+    end
+    a = test1("test1_1.hdf5")
+    println(a)
+
+
+    @test_approx_eq a [1.2, 2.125, 2.875, 2.85, 1.9]
+
+    if MPI.Comm_rank(MPI.COMM_WORLD)==0 
+        rm("test1_1.hdf5")
+    end
+
 end
+
+end
+
+StencilTest1.main()

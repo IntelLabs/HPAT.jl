@@ -1,6 +1,8 @@
+module IndexTest
+
 using HPAT
 
-HPAT.DistributedPass.set_debug_level(3)
+#HPAT.DistributedPass.set_debug_level(3)
 
 @acc hpat function index_test(numCenter, file_name)
     points = DataSource(Matrix{Float64},HDF5,"/points", file_name)
@@ -17,14 +19,21 @@ function main()
 end
 
 using HDF5
-using MPI 
-if MPI.Comm_rank(MPI.COMM_WORLD)==0 
-    h5write("test1_1.hdf5", "/points", [1 2 3 4; 5 6 7 8]) 
-end
-a = index_test(2, "test1_1.hdf5")
-println(HPAT.get_saved_array_partitionings())
+using MPI
 
-if MPI.Comm_rank(MPI.COMM_WORLD)==0 
+function main()
+    if MPI.Comm_rank(MPI.COMM_WORLD)==0 
+        h5write("test1_1.hdf5", "/points", [1 2 3 4; 5 6 7 8]) 
+    end
+    a = index_test(2, "test1_1.hdf5")
+    println(HPAT.get_saved_array_partitionings())
+
+    if MPI.Comm_rank(MPI.COMM_WORLD)==0 
         rm("test1_1.hdf5")
+    end
+
 end
 
+end
+
+IndexTest.main()

@@ -1,3 +1,5 @@
+module Q05_Test
+
 using HPAT
 using HDF5
 using Base.Test
@@ -58,13 +60,21 @@ end
     return customer_demo_clicks[:customer_clicks_sk], customer_demo_clicks[:customer_demo_clicks_sk] , customer_demo_clicks[:clicks_in_2], customer_demo_clicks[:clicks_in_3]
 end
 
-println("     Testing Query 05[small]")
-create_dataset_small("test_q05.hdf5")
-return_arr= q05(3, 7, 9, "test_q05.hdf5")
+function main()
 
-@test return_arr[1] == [2,2,2,8,2,2,2,8,8]
-@test return_arr[2] == [3,3,3,3,3,3,3,3,8]
-@test return_arr[3] == [0,0,0,0,0,0,0,0,0]
-@test return_arr[4] == [1,1,1,1,1,1,1,1,1]
+    println("     Testing Query 05[small]")
+    create_dataset_small("test_q05.hdf5")
+    return_arr= q05(3, 7, 9, "test_q05.hdf5")
 
-rm("test_q05.hdf5")
+    @test return_arr[1] == [2,2,2,8,2,2,2,8,8]
+    @test return_arr[2] == [3,3,3,3,3,3,3,3,8]
+    @test return_arr[3] == [0,0,0,0,0,0,0,0,0]
+    @test return_arr[4] == [1,1,1,1,1,1,1,1,1]
+
+    rm("test_q05.hdf5")
+
+end
+
+end
+
+Q05_Test.main()

@@ -1,3 +1,5 @@
+module Q26_Test
+
 using HPAT
 using HDF5
 using Base.Test
@@ -82,16 +84,24 @@ end
     customer_i_class = customer_i_class[:ss_item_count>item_count]
     return customer_i_class[:ss_item_count],customer_i_class[:id3]
 end
-println("     Testing Query 26[small]")
-create_dataset_small("test_q26.hdf5")
-return_arr= q26(1, 1, 10, "test_q26.hdf5")
-@test return_arr[1] == [2,2]
-@test return_arr[2] == [1,1]
-rm("test_q26.hdf5")
 
-println("     Testing Query 26[large]")
-create_dataset_large("test_q26.hdf5")
-return_arr= q26(90882, 1, 10, "test_q26.hdf5")
-@test return_arr[1] == [3,2,2,2,2]
-@test return_arr[2] == [0,1,0,2,0]
-rm("test_q26.hdf5")
+function main()
+    println("     Testing Query 26[small]")
+    create_dataset_small("test_q26.hdf5")
+    return_arr= q26(1, 1, 10, "test_q26.hdf5")
+    @test return_arr[1] == [2,2]
+    @test return_arr[2] == [1,1]
+    rm("test_q26.hdf5")
+
+    println("     Testing Query 26[large]")
+    create_dataset_large("test_q26.hdf5")
+    return_arr= q26(90882, 1, 10, "test_q26.hdf5")
+    @test return_arr[1] == [3,2,2,2,2]
+    @test return_arr[2] == [0,1,0,2,0]
+    rm("test_q26.hdf5")
+
+end
+
+end
+
+Q26_Test.main()

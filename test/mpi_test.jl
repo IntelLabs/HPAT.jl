@@ -1,3 +1,5 @@
+module MPI_Test
+
 import MPI
 
 function main()
@@ -10,4 +12,6 @@ function main()
     MPI.Finalize()
 end
 
-main()
+end
+
+MPI_Test.main()

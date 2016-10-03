@@ -1,3 +1,5 @@
+module LengthUniqueTest
+
 using HPAT
 
 #HPAT.CaptureAPI.set_debug_level(3)
@@ -17,18 +19,27 @@ end
 
 using HDF5
 using MPI
-if MPI.Comm_rank(MPI.COMM_WORLD)==0 
-    h5write("test_q25.hdf5", "/ss_customer_sk", [1,1,2,2,1])
-    h5write("test_q25.hdf5", "/ss_ticket_number", [0,3,5,6,0])
-    h5write("test_q25.hdf5", "/ss_sold_date_sk", [37580,34000,35000,36000,37600])
-    h5write("test_q25.hdf5", "/ss_net_paid", [101.0,24.0,3.5,50.0,3.2])
+using Base.Test
+
+function main()
+
+    if MPI.Comm_rank(MPI.COMM_WORLD)==0 
+        h5write("test_q25.hdf5", "/ss_customer_sk", [1,1,2,2,1])
+        h5write("test_q25.hdf5", "/ss_ticket_number", [0,3,5,6,0])
+        h5write("test_q25.hdf5", "/ss_sold_date_sk", [37580,34000,35000,36000,37600])
+        h5write("test_q25.hdf5", "/ss_net_paid", [101.0,24.0,3.5,50.0,3.2])
+    end
+
+    c, f, m, a = q25("33000", "test_q25.hdf5")
+    println(c,f,m,a)
+
+    @test c==[1,2]
+    @test f==[2,2]
+    @test m==[37600,36000]
+    @test_approx_eq a [128.2,53.5]
+
 end
 
-c, f, m, a = q25("33000", "test_q25.hdf5")
-println(c,f,m,a)
+end
 
-using Base.Test
-@test c==[1,2]
-@test f==[2,2]
-@test m==[37600,36000]
-@test_approx_eq a [128.2,53.5]
+LengthUniqueTest.main()

@@ -1,13 +1,41 @@
 using Base.Test
 
+println("testing MPI...")
 run(`julia mpi_test.jl`)
 run(`mpirun -np 2 julia mpi_test.jl`)
-run(`julia source_test.jl`)
-run(`julia sink_test.jl`)
+println("done testing MPI.")
+
+println("testing data source/sink...")
+include("source_test.jl")
+include("sink_test.jl")
 run(`mpirun -np 2 julia sink_test.jl`)
-run(`julia q26_test.jl`)
-run(`julia q05_test.jl`)
+println("done testing data source/sink.")
+
+println("testing filter...")
+include("filter_test1.jl")
+println("done testing filter.")
+
+println("testing join...")
+include("join_test1.jl")
+println("done testing join.")
+
+println("testing aggregate...")
+include("aggregate_test1.jl")
+include("aggregate_rename_test1.jl")
+println("done testing aggregate...")
+
+println("testing push filter up...")
+include("push_filter_test1.jl")
+println("done testing push filter up...")
+
+include("q26_test.jl")
+include("q05_test.jl")
+include("length_unique_test1.jl")
+include("tables_cat.jl")
+include("stencil_test1.jl")
+run(`mpirun -np 2 julia stencil_test2.jl`)
 run(`mpirun -np 2 julia cumsum_test.jl`)
+include("index_test.jl")
 
 # commented out since MKL BLACS and SCALAPACK libraries are not linked automatically currently
 #run(`mpirun -np 4 julia --depwarn=no 2d_test.jl`)
