@@ -823,7 +823,7 @@ function from_parfor_stencil_1d(node::Expr, state, parfor, stencil_inds::Vector{
     label_right_node = LabelNode(label_right)
     # goto label if not node_id==num_pes-1
     goto_right_node = Expr(:gotoifnot, mk_call(GlobalRef(Base,:(===)),
-        [state.dist_vars[:node_id], mk_call(GlobalRef(Core.Intrinsics,:ne_int), [state.dist_vars[:num_pes],-1])]), label_right)
+        [state.dist_vars[:node_id], mk_call(GlobalRef(Core.Intrinsics,:sub_int), [state.dist_vars[:num_pes],1])]), label_right)
     # out_arr[n] = in_arr[n] on last node
     assign_rightmost = Expr(:call, GlobalRef(Base,:unsafe_arrayset), out_arr,
         Expr(:call, GlobalRef(Base,:unsafe_arrayref), in_arr,
