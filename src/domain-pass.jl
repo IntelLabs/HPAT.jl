@@ -544,7 +544,7 @@ end
 
 function replace_length_unique(func_list)
     for (i,f) in enumerate(func_list)
-        if f==GlobalRef(Main,:length_unique)
+        if isa(f,GlobalRef) && f.name==:length_unique
             func_list[i] = GlobalRef(HPAT.DomainPass, :length_unique)
         end
     end
@@ -606,16 +606,16 @@ function getHPATcall(call::Expr)
         end
         # TODO: hack to get around Julia 0.4 function resolution issue (q26)
         # remove in 0.5
-        if call.args[1]==GlobalRef(Main,:Kmeans)
+        if isa(call.args[1],GlobalRef) && call.args[1].name==:Kmeans
             call.args[1]=GlobalRef(HPAT.API,:Kmeans)
         end
-        if call.args[1]==GlobalRef(Main,:LinearRegression)
+        if isa(call.args[1],GlobalRef) && call.args[1].name==:LinearRegression
             call.args[1]=GlobalRef(HPAT.API,:LinearRegression)
         end
-        if call.args[1]==GlobalRef(Main,:NaiveBayes)
+        if isa(call.args[1],GlobalRef) && call.args[1].name==:NaiveBayes
             call.args[1]=GlobalRef(HPAT.API,:NaiveBayes)
         end
-        if call.args[1]==GlobalRef(Main,:runStencil)
+        if isa(call.args[1],GlobalRef) && call.args[1].name==:runStencil
             call.args[1]=GlobalRef(ParallelAccelerator.API,:runStencil)
         end
         return getHPATcall_inner(call.args[1])

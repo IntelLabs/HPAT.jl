@@ -684,19 +684,19 @@ function alloc_agg_arr(func, expr_arr_tmp, key_ctype, arr_ctyp, num_total_keys)
 end
 
 # TODO Combine all below five functions into one.
-function return_reduction_string_with_closure(agg_key_col_input,expr_arr,agg_map,func)
+function return_reduction_string_with_closure(agg_key_col_input,expr_arr,agg_map, func::GlobalRef)
     s = ""
-    if func==GlobalRef(Main,:length)
+    if func.name==:length
         s *= "if ($agg_map.find($agg_key_col_input.ARRAYELEM(i)) == $agg_map.end())\n"
         s *= "$agg_map[$agg_key_col_input.ARRAYELEM(i)] = 1;\n"
         s *= "else \n"
         s *= "$agg_map[$agg_key_col_input.ARRAYELEM(i)] += 1;\n\n"
-    elseif func==GlobalRef(Main,:sum)
+    elseif func.name==:sum
         s *= "if ($agg_map.find($agg_key_col_input.ARRAYELEM(i)) == $agg_map.end())\n"
         s *= "$agg_map[$agg_key_col_input.ARRAYELEM(i)] = $expr_arr.ARRAYELEM(i) ;\n"
         s *= "else \n"
         s *= "$agg_map[$agg_key_col_input.ARRAYELEM(i)] +=  $expr_arr.ARRAYELEM(i)  ;\n\n"
-    elseif func==GlobalRef(Main,:maximum)
+    elseif func.name==:maximum
         s *= "if ($agg_map.find($agg_key_col_input.ARRAYELEM(i)) == $agg_map.end())){\n"
         s *= "$agg_map[$agg_key_col_input.ARRAYELEM(i)] = $expr_arr.ARRAYELEM(i) ;}\n"
         s *= "else{ \n"
@@ -708,15 +708,15 @@ function return_reduction_string_with_closure(agg_key_col_input,expr_arr,agg_map
     return s
 end
 
-function return_combiner_string_with_closure_first_elem(new_column_name, expr_arr, func, write_index, key,key_ctype, j2c_type)
+function return_combiner_string_with_closure_first_elem(new_column_name, expr_arr, func::GlobalRef, write_index, key,key_ctype, j2c_type)
     s = ""
-    if func==GlobalRef(Main,:length)
+    if func.name==:length
         s *= "$new_column_name.ARRAYELEM($write_index) = 1;\n"
-    elseif func==GlobalRef(Main,:sum)
+    elseif func.name==:sum
         s *= "$new_column_name.ARRAYELEM($write_index) = $expr_arr.ARRAYELEM(i);\n"
-    elseif func==GlobalRef(Main,:maximum)
+    elseif func.name==:maximum
         s *= "$new_column_name.ARRAYELEM($write_index) = $expr_arr.ARRAYELEM(i);\n"
-    elseif func==GlobalRef(HPAT.DomainPass,:length_unique)
+    elseif func.name==:length_unique
         # s *= "$new_column_name.ARRAYELEM($write_index) = 1;\n"
         s *= "unique_set_$new_column_name[node_id].insert(std::make_pair($key,$expr_arr.ARRAYELEM(i)));\n"
     else
@@ -725,16 +725,16 @@ function return_combiner_string_with_closure_first_elem(new_column_name, expr_ar
     return s
 end
 
-function return_combiner_string_with_closure_second_elem(new_column_name, expr_arr, func, current_index, key,key_ctype, j2c_type)
+function return_combiner_string_with_closure_second_elem(new_column_name, expr_arr, func::GlobalRef, current_index, key,key_ctype, j2c_type)
     s = ""
-    if func==GlobalRef(Main,:length)
+    if func.name==:length
         s *= "$new_column_name.ARRAYELEM($current_index) += 1;\n"
-    elseif func==GlobalRef(Main,:sum)
+    elseif func.name==:sum
         s *= "$new_column_name.ARRAYELEM($current_index) += $expr_arr.ARRAYELEM(i);\n"
-    elseif func==GlobalRef(Main,:maximum)
+    elseif func.name==:maximum
         s *= "if ($new_column_name.ARRAYELEM($current_index) < $expr_arr.ARRAYELEM(i))\n"
         s *= "$new_column_name.ARRAYELEM($current_index) = $expr_arr.ARRAYELEM(i);\n"
-    elseif func==GlobalRef(HPAT.DomainPass,:length_unique)
+    elseif func.name==:length_unique
         #s *= "if(unique_map_$expr_arr[$key].find($expr_arr.ARRAYELEM(i)) == unique_map_$expr_arr[$key].end()){\n"
         #s *= "unique_map_$expr_arr[$key][$expr_arr.ARRAYELEM(i)] = true;\n"
         #s *= "$new_column_name.ARRAYELEM($current_index) += 1;\n"
@@ -747,15 +747,15 @@ function return_combiner_string_with_closure_second_elem(new_column_name, expr_a
 end
 
 # reduction is after alltoallv so data is already partially aggregated
-function return_reduction_string_with_closure_first_elem(new_column_name,expr_arr,func,write_index, key, old_expr_arr)
+function return_reduction_string_with_closure_first_elem(new_column_name,expr_arr,func::GlobalRef,write_index, key, old_expr_arr)
     s = ""
-    if func==GlobalRef(Main,:length)
+    if func.name==:length
         s *= "$new_column_name.ARRAYELEM($write_index) = $expr_arr.ARRAYELEM(i);\n"
-    elseif func==GlobalRef(Main,:sum)
+    elseif func.name==:sum
         s *= "$new_column_name.ARRAYELEM($write_index) = $expr_arr.ARRAYELEM(i);\n"
-    elseif func==GlobalRef(Main,:maximum)
+    elseif func.name==:maximum
         s *= "$new_column_name.ARRAYELEM($write_index) = $expr_arr.ARRAYELEM(i);\n"
-    elseif func==GlobalRef(HPAT.DomainPass,:length_unique)
+    elseif func.name==:length_unique
         #s *= "$new_column_name.ARRAYELEM($write_index) = $expr_arr.ARRAYELEM(i);\n"
         #s *= "unique_map_$old_expr_arr[$key].clear();\n"
         #s *= "unique_map_$old_expr_arr[$key][$expr_arr.ARRAYELEM(i)] = true;\n"
@@ -766,16 +766,16 @@ function return_reduction_string_with_closure_first_elem(new_column_name,expr_ar
     return s
 end
 
-function return_reduction_string_with_closure_second_elem(new_column_name,expr_arr,func, current_index, key, old_expr_arr)
+function return_reduction_string_with_closure_second_elem(new_column_name,expr_arr,func::GlobalRef, current_index, key, old_expr_arr)
     s = ""
-    if func==GlobalRef(Main,:length)
+    if func.name==:length
         s *= "$new_column_name.ARRAYELEM($current_index) += $expr_arr.ARRAYELEM(i);\n"
-    elseif func==GlobalRef(Main,:sum)
+    elseif func.name==:sum
         s *= "$new_column_name.ARRAYELEM($current_index) +=  $expr_arr.ARRAYELEM(i);\n"
-    elseif func==GlobalRef(Main,:maximum)
+    elseif func.name==:maximum
         s *= "if ($new_column_name.ARRAYELEM($current_index) < $expr_arr.ARRAYELEM(i))\n"
         s *= "$new_column_name.ARRAYELEM($current_index) = $expr_arr.ARRAYELEM(i);\n"
-    elseif func==GlobalRef(HPAT.DomainPass,:length_unique)
+    elseif func.name==:length_unique
         #s *= "if(unique_map_$old_expr_arr[$key].find($expr_arr.ARRAYELEM(i)) != unique_map_$old_expr_arr[$key].end()){\n"
         #s *= "unique_map_$old_expr_arr[$key][$expr_arr.ARRAYELEM(i)] = true;\n"
         #s *= "$new_column_name.ARRAYELEM($current_index) += $expr_arr.ARRAYELEM(i);\n"
