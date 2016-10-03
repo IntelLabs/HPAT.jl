@@ -18,7 +18,7 @@ if rank==0 h5write("dtest.hdf5","/M",convert(Vector{Float64},collect(1:16))) end
 mult("dtest.hdf5","testout.hdf5")
 if rank==0
     A = h5read("testout.hdf5","/y")
-    @test A==convert(Vector{Float64},collect(1:16))
+    @test_approx_eq A convert(Vector{Float64},collect(1:16))
     rm("dtest.hdf5")
     rm("testout.hdf5")
 end

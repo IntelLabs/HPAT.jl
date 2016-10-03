@@ -55,7 +55,8 @@ function getArrayDistributionInfo(ast, state)
 end
 
 function set_user_partitionings(state)
-    for (arr,part) in state.user_partitionings
+    for (var,part) in state.user_partitionings
+        arr = CompilerTools.LambdaHandling.lookupLHSVarByName(var, state.LambdaVarInfo)
       state.arrs_dist_info[arr].partitioning = part
     end
 end
