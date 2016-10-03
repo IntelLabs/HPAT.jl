@@ -21,7 +21,7 @@ println("done testing join.")
 
 println("testing aggregate...")
 include("aggregate_test1.jl")
-include("aggregate_rename_test1.jl")
+include("aggregate_rename_test.jl")
 println("done testing aggregate...")
 
 println("testing push filter up...")
