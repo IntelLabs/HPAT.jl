@@ -188,11 +188,6 @@ function get_arr_dist_info_parfor(node, state, top_level_number, parfor)
     rws = CompilerTools.ReadWriteSet.from_exprs(parfor.body, ParallelAccelerator.ParallelIR.pir_rws_cb, state.LambdaVarInfo)
     partitioning = ONE_D
 
-    if length(parfor.arrays_read_past_index)!=0 || length(parfor.arrays_written_past_index)!=0
-        @dprintln(2,"DistPass arr info walk parfor sequential: ", node)
-        partitioning = SEQ
-    end
-
     indexVariable = toLHSVar(parfor.loopNests[1].indexVariable)
 
     allArrAccesses = merge(rws.readSet.arrays,rws.writeSet.arrays)
@@ -248,6 +243,12 @@ function get_arr_dist_info_parfor(node, state, top_level_number, parfor)
     # keep mapping from parfors to arrays
     # state.parfor_info[parfor.unique_id] = myArrs
     @dprintln(3,"DistPass arr info walk parfor arrays: ", myArrs)
+
+    # stencils have arrays read/written past index
+    if length(stencil_inds)==0 && (length(parfor.arrays_read_past_index)!=0 || length(parfor.arrays_written_past_index)!=0)
+        @dprintln(2,"DistPass arr info walk parfor sequential: ", node)
+        partitioning = SEQ
+    end
 
     for arr in myArrs
         partitioning = min(partitioning,getArrayPartitioning(arr,state))
