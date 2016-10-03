@@ -346,6 +346,7 @@ function isStencilAccess(index::Expr, indexVariable::LHSVar)
 end
 
 isStencilAccess(index::LHSVar, indexVariable::LHSVar) = false
+isStencilAccess(index::Int, indexVariable::LHSVar) = false
 
 function getStencilAccessInd(index::Expr)
     return index.args[3].args[3]
