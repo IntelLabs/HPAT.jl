@@ -30,7 +30,7 @@ println("done testing push filter up...")
 
 include("q26_test.jl")
 include("q05_test.jl")
-include("length_unique_test1.jl")
+include("length_unique_test.jl")
 include("tables_cat.jl")
 include("stencil_test1.jl")
 run(`mpirun -np 2 julia stencil_test2.jl`)
