@@ -898,6 +898,10 @@ function live_cb(node::Expr)
         exprs_to_process = [key_arr;in_e_arrs;assign_exprs]
         @dprintln(3,"DomainPass aggregate live CB returns: ", exprs_to_process)
         return exprs_to_process
+    elseif node.head==:call && isa(node.args[1],GlobalRef) && node.args[1]==GlobalRef(Core,:tuple) &&
+          length(node.args)==3 && isa(node.args[3],GlobalRef) && node.args[3].name==:length_unique
+        @dprintln(3,"DomainPass length_unique live CB returns: ", Any[node.args[2]])
+        return Any[node.args[2]]
     end
     return nothing
 end
