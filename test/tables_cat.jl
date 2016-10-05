@@ -5,10 +5,12 @@ using HPAT
 #HPAT.CaptureAPI.set_debug_level(3)
 #HPAT.DomainPass.set_debug_level(3)
 #ParallelAccelerator.set_debug_level(3)
+#ParallelAccelerator.ParallelIR.set_debug_level(3)
 #ParallelAccelerator.CGen.setCreateMain(true)
 #ParallelAccelerator.CGen.set_debug_level(3)
 #using CompilerTools
 #CompilerTools.OptFramework.set_debug_level(3)
+#CompilerTools.CFGs.set_debug_level(3)
 
 @acc hpat function test1(file_name)
     t1 = DataSource(DataTable{:userid=Int64, :val2=Float64}, HDF5, file_name)
