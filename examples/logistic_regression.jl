@@ -27,6 +27,11 @@ using HPAT
 using MPI
 using DocOpt
 
+#HPAT.set_debug_level(3)
+#HPAT.DistributedPass.set_debug_level(3)
+#CompilerTools.TransitiveDependence.set_debug_level(3)
+#CompilerTools.LivenessAnalysis.set_debug_level(4)
+
 @acc hpat function logistic_regression(iterations, file_name)
     points = DataSource(Matrix{Float32},HDF5,"/points", file_name)
     responses = DataSource(Vector{Float32},HDF5,"/responses", file_name)
