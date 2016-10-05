@@ -1,14 +1,24 @@
 module IndexTest
 
 using HPAT
+using ParallelAccelerator
+using CompilerTools
 
+#CompilerTools.OptFramework.set_debug_level(3)
+#CompilerTools.LivenessAnalysis.set_debug_level(5)
+#CompilerTools.LambdaHandling.set_debug_level(3)
+#CompilerTools.TransitiveDependence.set_debug_level(3)
 #HPAT.DistributedPass.set_debug_level(3)
+#ParallelAccelerator.DomainIR.set_debug_level(3)
+#ParallelAccelerator.ParallelIR.set_debug_level(3)
 
 @acc hpat function index_test(numCenter, file_name)
     points = DataSource(Matrix{Float64},HDF5,"/points", file_name)
     D,N = size(points) # number of features, instances
     centroids :: Array{Float64,2} = rand(D, numCenter)
 
+#    dist::Array{Array{Float64,1},1} = [ Float64[sum(points[:,i+j]) for j in 1:numCenter] for i in 1:(N-numCenter)]
+#    dist::Array{Array{Float64,1},1} = [ Float64[sqrt(sum((points[:,i+j]-centroids[:,j]))) for j in 1:numCenter] for i in 1:(N-numCenter)]
     dist::Array{Array{Float64,1},1} = [ Float64[sqrt(sum((points[:,i+j]-centroids[:,j]).^2)) for j in 1:numCenter] for i in 1:(N-numCenter)]
     labels::Array{Int,1} = [indmin(dist[i]) for i in 1:(N-numCenter)]
     return sum(labels)
