@@ -66,7 +66,7 @@ function save_array_partitionings(state)
     for (k,v) in state.arrs_dist_info
         d[k] = state.arrs_dist_info[k].partitioning
     end
-    HPAT.set_saved_array_partitionings(d)
+    HPAT.set_saved_array_partitionings(d, state.LambdaVarInfo)
 end
 
 """
@@ -228,8 +228,12 @@ function get_arr_dist_info_parfor(node, state, top_level_number, parfor)
             # index variable as in nested comprehension case of K-Means.
             # Parfor can't be parallelized in general cases since array can't be partitioned properly.
             # ParallelIR should optimize out the trivial cases where indices are essentially equal (i=1+1*index-1 in k-means)
-            if isAccessIndexDependent(indices, indexVariable, body_lives, state)
-                #push!(myArrs, arr)
+            if isAccessIndexDependent(indices[1:end-1], indexVariable, body_lives, state)
+                @dprintln(2,"DistPass arr info walk arr index dependent: ",arr," ", indices, " ", indexVariable)
+                partitioning = SEQ
+            end
+            if isAccessIndexDependent(indices[end], indexVariable, body_lives, state)
+                push!(myArrs, arr)
                 @dprintln(2,"DistPass arr info walk arr index dependent: ",arr," ", indices, " ", indexVariable)
                 partitioning = SEQ
             end
@@ -244,6 +248,7 @@ function get_arr_dist_info_parfor(node, state, top_level_number, parfor)
     # keep mapping from parfors to arrays
     # state.parfor_info[parfor.unique_id] = myArrs
     @dprintln(3,"DistPass arr info walk parfor arrays: ", myArrs)
+    @dprintln(3,"DistPass arr info walk parfor partitioning: ", partitioning)
 
     # stencils have arrays read/written past index
     if length(stencil_inds)==0 && (length(parfor.arrays_read_past_index)!=0 || length(parfor.arrays_written_past_index)!=0)

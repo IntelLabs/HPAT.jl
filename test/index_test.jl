@@ -3,6 +3,13 @@ module IndexTest
 using HPAT
 using ParallelAccelerator
 using CompilerTools
+using HDF5
+using MPI
+using Base.Test
+using HPAT.Partitioning
+using HPAT.SEQ
+using HPAT.TWO_D
+using HPAT.ONE_D
 
 #CompilerTools.OptFramework.set_debug_level(3)
 #CompilerTools.LivenessAnalysis.set_debug_level(5)
@@ -24,19 +31,6 @@ using CompilerTools
     return sum(labels)
 end
 
-function main()
-
-end
-
-using HDF5
-using MPI
-using Base.Test
-
-using HPAT.Partitioning
-using HPAT.SEQ
-using HPAT.TWO_D
-using HPAT.ONE_D
-
 
 function main()
     if MPI.Comm_rank(MPI.COMM_WORLD)==0 
@@ -45,10 +39,11 @@ function main()
     a = index_test(2, "test1_1.hdf5")
     println(HPAT.get_saved_array_partitionings())
 
-    # every partitoning should be sequential
-    for p in values(HPAT.get_saved_array_partitionings())
-        @test p==SEQ
-    end
+    # The partitioning for points should be SEQ.
+    @test HPAT.get_saved_partitioning_for_symbol(:points)==SEQ
+#    for p in values(HPAT.get_saved_array_partitionings())
+#        @test p==SEQ
+#    end
 
     if MPI.Comm_rank(MPI.COMM_WORLD)==0 
         rm("test1_1.hdf5")

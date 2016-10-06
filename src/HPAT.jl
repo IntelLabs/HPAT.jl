@@ -68,13 +68,20 @@ OptFramework.setSaveOriginalFunction(false)
 
 # save distributed arrays of last compiled function for debugging
 saved_array_partitionings = Dict{LHSVar,Partitioning}()
+saved_linfo = nothing
 
-function set_saved_array_partitionings(d)
+function set_saved_array_partitionings(d, l)
     global saved_array_partitionings = d
+    global saved_linfo = l
 end
 
 function get_saved_array_partitionings()
     return saved_array_partitionings
+end
+
+function get_saved_partitioning_for_symbol(name :: Symbol)
+    lv = CompilerTools.LambdaHandling.toLHSVar(name, saved_linfo)
+    return saved_array_partitionings[lv]
 end
 
 force_parallel = true
