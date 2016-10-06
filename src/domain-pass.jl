@@ -93,7 +93,7 @@ function from_root(function_name, ast)
 
     tableCols, tableTypes, tableIds = get_table_meta(body)
     @dprintln(3,"HPAT tables: ", tableCols,tableTypes)
-    state::DomainState = DomainState(linfo, tableCols, tableTypes, tableIds, 0, lives)
+    state::DomainState = DomainState(linfo, tableCols, tableTypes, tableIds, 0, -1, lives)
 
     # transform body
     body.args = from_toplevel_body(body.args, state)
@@ -116,6 +116,8 @@ type DomainState
     tableIds::Dict{Int,Symbol}
     # a unique id for domain operations (data sources/sinks, table operations)
     unique_id::Int
+    # first column src of each table stores id so others reads its size variable
+    prev_table_first_src_num::Int
     lives  :: CompilerTools.LivenessAnalysis.BlockLiveness
 end
 
@@ -645,6 +647,14 @@ function translate_data_source_HDF5(lhs::LHSVar, rhs::Expr, state)
     hdf5_file = rhs.args[4]
     # update counter and get data source number
     dsrc_num = get_unique_id(state)
+    # if array is part of table, first column stores the sizes and others read
+    # allocs should have same sizes so fusion works
+    is_table_column_not_first = false
+    if table_column_first(hdf5_var, state)
+        state.prev_table_first_src_num = dsrc_num
+    elseif table_column_notfirst(hdf5_var, state)
+        is_table_column_not_first = true
+    end
     dsrc_id_var = addTempVariable(Int64, state.linfo)
     push!(res, TypedExpr(Int64, :(=), dsrc_id_var, dsrc_num))
     # get array type
@@ -668,8 +678,16 @@ function translate_data_source_HDF5(lhs::LHSVar, rhs::Expr, state)
         size_i = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
             size_i_name, Int64, ISASSIGNEDONCE | ISASSIGNED, state.linfo))
         # size_i = addTempVariable(Int64, state.linfo)
-        size_i_call = mk_call(GlobalRef(HPAT.API,:__hpat_get_H5_dim_size), [arr_size_var, i])
-        push!(res, TypedExpr(Int64, :(=), size_i, size_i_call))
+        # table columns just read size from first column array for fusion
+        if is_table_column_not_first
+            prev_id = state.prev_table_first_src_num
+            prev_size_name = Symbol("__hpat_h5_dim_size_"*string(prev_id)*"_"*string(i))
+            prev_size_var = CompilerTools.LambdaHandling.lookupLHSVarByName(prev_size_name, state.linfo)
+            push!(res, Expr(:(=), size_i, prev_size_var))
+        else
+            size_i_call = mk_call(GlobalRef(HPAT.API,:__hpat_get_H5_dim_size), [arr_size_var, i])
+            push!(res, TypedExpr(Int64, :(=), size_i, size_i_call))
+        end
         push!(size_expr, size_i)
     end
     arrdef = TypedExpr(arr_typ, :alloc, elem_typ, size_expr)
@@ -680,6 +698,28 @@ function translate_data_source_HDF5(lhs::LHSVar, rhs::Expr, state)
     close_call = mk_call(GlobalRef(HPAT.API,:__hpat_data_source_HDF5_close), [dsrc_id_var])
     push!(res, close_call)
     return res
+end
+
+function table_column_first(hdf5_var, state)
+    col_name = Symbol(hdf5_var[2:end])
+    for t in values(state.tableCols)
+        if t[1]==col_name
+            dprintln(3, "first table column src found ", col_name, " ", t)
+            return true
+        end
+    end
+    return false
+end
+
+function table_column_notfirst(hdf5_var, state)
+    col_name = Symbol(hdf5_var[2:end])
+    for t in values(state.tableCols)
+        if col_name in t[2:end]
+            dprintln(3, "notfirst table column src found ", col_name, " ", t)
+            return true
+        end
+    end
+    return false
 end
 
 function translate_data_source_TXT(lhs::LHSVar, rhs::Expr, state)

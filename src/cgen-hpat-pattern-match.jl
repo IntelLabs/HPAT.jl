@@ -1413,6 +1413,7 @@ function pattern_match_call(ast::Array{Any, 1}, linfo)
     s *= pattern_match_call_restore_checkpoint_value(ast[1], ast[2], ast[3], linfo)
     s *= pattern_match_call_data_src_read_seq(ast[1],ast[2],ast[3], linfo)
     s *= pattern_match_call_rebalance(ast[1],ast[2],ast[3], linfo)
+    s *= pattern_match_call_h5size(ast[1],ast[2],ast[3], linfo)
   elseif length(ast)==4
     s *= pattern_match_call_dist_reduce(ast[1],ast[2],ast[3], ast[4], linfo)
     # text file read
@@ -1571,6 +1572,22 @@ function pattern_match_call_gemm_2d(fun::ANY, C::ANY, tA::ANY, tB::ANY, A::ANY, 
             B_local_size_x::ANY, B_local_size_y::ANY,linfo)
     return ""
 end
+
+function pattern_match_call_h5size(fun::GlobalRef, id, lhs, linfo)
+    @dprintln(3, "assignment pattern match h5size: ", fun, " ", id)
+    s = ""
+    if fun.name==:__hpat_data_source_HDF5_size
+        num = ParallelAccelerator.CGen.from_expr(id, linfo)
+        s = "hid_t space_id_$num = H5Dget_space(dataset_id_$num);\n"
+        s *= "assert(space_id_$num != -1);\n"
+        s *= "hsize_t data_ndim_$num = H5Sget_simple_extent_ndims(space_id_$num);\n"
+        s *= "hsize_t space_dims_$num[data_ndim_$num];\n"
+        s *= "H5Sget_simple_extent_dims(space_id_$num, space_dims_$num, NULL);\n"
+    end
+    return s
+end
+
+pattern_match_call_h5size(fun::ANY, id, lhs, linfo) = ""
 
 function from_assignment_match_dist(lhs::RHSVar, rhs::Expr, linfo)
     @dprintln(3, "assignment pattern match dist2: ",lhs," = ",rhs)
