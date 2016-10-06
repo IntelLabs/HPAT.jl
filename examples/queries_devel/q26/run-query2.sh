@@ -62,7 +62,7 @@ for dataset_factor in "10"; do
     fi
     echo ":D Running Spark"
     ${SPARK_DIR}/sbin/start-all.sh
-    ${SPARK_DIR}/bin/spark-submit --conf spark.sql.autoBroadcastJoinThreshold=-1 --jars /home/whassan/commons-csv-1.1.jar,/home/whassan/spark-csv_2.10-1.4.0.jar --class Query26 $SPARK_QUERY_DIR/target/scala-2.11/query26_2.11-0.1.jar $table1_path $table2_path &> tmp_spark.txt
+    ${SPARK_DIR}/bin/spark-submit --conf spark.sql.autoBroadcastJoinThreshold=-1 --class Query26 $SPARK_QUERY_DIR/target/scala-2.11/benchmarks_2.11-0.3.jar $table1_path $table2_path &> tmp_spark.txt
     ${SPARK_DIR}/sbin/stop-all.sh
 
 

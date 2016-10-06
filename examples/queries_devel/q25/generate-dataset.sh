@@ -7,7 +7,7 @@ DATASET_PATH=/home.old/whassan/tmp/csv/q25/
 mkdir -p ${DATASET_PATH}
 NUM_MAP_TASKS=2
 
-for dataset_factor in 20; do
+for dataset_factor in 100 200; do
     if [ -f ${DATASET_PATH}/store_sales_${dataset_factor}f.dat ]; then
         rm ${DATASET_PATH}/store_sales_${dataset_factor}f.dat
     fi
