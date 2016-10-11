@@ -106,6 +106,7 @@ dist_ir_funcs = Set([   :unsafe_arrayref,
                         :NaiveBayes,
                         :arraylen, :arraysize, :reshape, :tuple, :hcat, :typed_hcat, :vcat,
                         :transpose!, :transpose, :gemm_wrapper!,
+                        :__hpat_transpose_hcat,
                         :gemv!, :cumsum!])
 
 # ENTRY to distributedIR

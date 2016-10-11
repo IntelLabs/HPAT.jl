@@ -63,7 +63,7 @@ const generatedFuncs = [:__hpat_data_source_HDF5_open,
                         :__hpat_filter,
                         :__hpat_join,
                         :__hpat_aggregate,
-                        ]
+                        :__hpat_transpose_hcat]
 
 
 const generatedExprHeads = [:alloc,
@@ -567,11 +567,42 @@ function from_assignment(node::Expr, state)
 
     # pattern match distributed calls that need domain translation
     hpat_call::Symbol = getHPATcall(node.args[2])
-    if hpat_call==:null
-        return [node]
+    if hpat_call!=:null
+        return translate_hpat_dist_calls(node.args[1], node.args[2], hpat_call, state)
     end
-    return translate_hpat_dist_calls(node.args[1], node.args[2], hpat_call, state)
+    return translate_hpat_transpose_hcat(node, node.args[1], node.args[2], state)
 end
+
+function translate_hpat_transpose_hcat(node::Expr, lhs::LHSVar, rhs::Expr, state)
+    # convert :invoke to :call to be consistent
+    if isInvoke(rhs)
+        local func = getCallFunction(rhs)
+        local args = getCallArguments(rhs)
+        rhs.head = :call
+        rhs.args = [func; args]
+    end
+
+    if isCall(rhs) && length(rhs.args)==2 && rhs.args[1].name==:transpose
+        inner_call = rhs.args[2]
+        if isInvoke(inner_call)
+            local func_i = getCallFunction(inner_call)
+            local args_i = getCallArguments(inner_call)
+            inner_call.head = :call
+            inner_call.args = [func_i; args_i]
+        end
+        # normalize typed_hcat to hcat, remove type arg
+        if isCall(inner_call) && inner_call.args[1].name==:typed_hcat
+            inner_call.args = Any[GlobalRef(Base,:hcat), inner_call.args[3:end]...]
+        end
+        if isCall(inner_call) && inner_call.args[1].name==:hcat
+            node.args[2] = mk_call(GlobalRef(HPAT.API,:__hpat_transpose_hcat), inner_call.args[2:end])
+            @dprintln(3, "transpose and hcat fused ", node)
+        end
+    end
+    return [node]
+end
+
+translate_hpat_transpose_hcat(node::ANY, lhs::ANY, rhs::ANY, state) = [node]
 
 function translate_hpat_dist_calls(lhs::LHSVar, rhs::Expr, hpat_call::Symbol, state)
     if hpat_call==:data_source_HDF5

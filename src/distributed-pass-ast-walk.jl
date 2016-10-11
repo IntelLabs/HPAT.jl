@@ -510,6 +510,21 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
             state.arrs_dist_info[lhs].dim_sizes[1] = state.arrs_dist_info[in_arr].dim_sizes[2]
             partitioning = min(state.arrs_dist_info[lhs].partitioning, state.arrs_dist_info[in_arr].partitioning)
             state.arrs_dist_info[lhs].partitioning = state.arrs_dist_info[in_arr].partitioning = partitioning
+        elseif func==GlobalRef(HPAT.API, :__hpat_transpose_hcat)
+            # lhs = HPAT.API.__hpat_transpose_hcat(arr1,...)
+            @dprintln(3,"DistPass arr info handling transpose_hcat: ", rhs)
+            # each column consists of 1 element from each input
+            state.arrs_dist_info[lhs].dim_sizes[1] = length(rhs.args)-1
+            # take size from one input
+            state.arrs_dist_info[lhs].dim_sizes[2] = state.arrs_dist_info[toLHSVar(rhs.args[2])].dim_sizes[1]
+            min_partitioning = state.arrs_dist_info[lhs].partitioning
+            for curr_array_index in 2:length(rhs.args)
+                min_partitioning = min(min_partitioning, state.arrs_dist_info[toLHSVar(rhs.args[curr_array_index])].partitioning)
+            end
+            for curr_array_index in 2:length(rhs.args)
+                state.arrs_dist_info[toLHSVar(rhs.args[curr_array_index])].partitioning = min_partitioning
+            end
+            state.arrs_dist_info[lhs].partitioning = min_partitioning
         end
     else
         # lhs is sequential if rhs is unknown
