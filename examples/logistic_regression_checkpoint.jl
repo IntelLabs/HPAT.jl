@@ -27,16 +27,16 @@ using HPAT
 using MPI
 using DocOpt
 
-CompilerTools.OptFramework.set_debug_level(3)
-CompilerTools.CFGs.set_debug_level(3)
-CompilerTools.Loops.set_debug_level(3)
-ParallelAccelerator.DomainIR.set_debug_level(3)
-ParallelAccelerator.ParallelIR.set_debug_level(3)
-ParallelAccelerator.CGen.set_debug_level(3)
-HPAT.Checkpointing.set_debug_level(3)
-HPAT.CGenPatternMatch.set_debug_level(3)
-HPAT.set_debug_level(3)
-HPAT.Checkpointing.setCheckpointDebug(50)    # Do checkpoints every 50 seconds.
+#CompilerTools.OptFramework.set_debug_level(3)
+#CompilerTools.CFGs.set_debug_level(3)
+#CompilerTools.Loops.set_debug_level(3)
+#ParallelAccelerator.DomainIR.set_debug_level(3)
+#ParallelAccelerator.ParallelIR.set_debug_level(3)
+#ParallelAccelerator.CGen.set_debug_level(3)
+#HPAT.Checkpointing.set_debug_level(3)
+#HPAT.CGenPatternMatch.set_debug_level(3)
+#HPAT.set_debug_level(3)
+#HPAT.Checkpointing.setCheckpointDebug(50)    # Do checkpoints every 50 seconds.
 #CompilerTools.LivenessAnalysis.set_debug_level(5)
 
 @acc hpat_checkpoint function logistic_regression(iterations, file_name)
@@ -68,48 +68,25 @@ Options:
 
 """
     arguments = docopt(doc)
+    iterations = 20
+    file_name = HPAT.getDefaultDataPath()*"logistic_regression.hdf5"
 
     if (arguments["--iterations"] != nothing)
         iterations = parse(Int, arguments["--iterations"])
-    else
-        iterations = 20
     end
 
     if (arguments["--file"] != nothing)
-        file_name::ASCIIString = arguments["--file"]
-    else
-        file_name = HPAT.getDefaultDataPath()*"logistic_regression.hdf5"
+        file_name = arguments["--file"]
     end 
 
     do_restart = arguments["--restart"]
 
-    srand(0)
-    rank = MPI.Comm_rank(MPI.COMM_WORLD)
-    pes = MPI.Comm_size(MPI.COMM_WORLD)
-
-    if rank==0 println("iterations = ", iterations) end
-    if rank==0 println("file= ", file_name) end
-
-    tic()
-    if do_restart
-        HPAT.restart(logistic_regression, 0, file_name)
-    else
-        logistic_regression(0,file_name)
-    end
-    time = toq()
-    if rank==0 println("SELFPRIMED ", time) end
-    MPI.Barrier(MPI.COMM_WORLD)
-
-    tic()
     if do_restart
         W = HPAT.restart(logistic_regression, iterations, file_name)
     else
         W = logistic_regression(iterations, file_name)
     end
-    time = toq()
-    if rank==0 println("result = ", W) end
-    if rank==0 println("rate = ", iterations / time, " iterations/sec") end
-    if rank==0 println("SELFTIMED ", time) end
+    if MPI.Comm_rank(MPI.COMM_WORLD)==0 println("result = ", W) end
 end
 
 main()

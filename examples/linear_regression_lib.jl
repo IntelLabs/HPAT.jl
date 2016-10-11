@@ -9,18 +9,7 @@ using MPI
     return coeffs
 end
 
-c2 = calcLinearRegression(HPAT.getDefaultDataPath()*"/linear_regression_train_small.hdf5")
-rank = MPI.Comm_rank(MPI.COMM_WORLD)
-pes = MPI.Comm_size(MPI.COMM_WORLD)
-
-
-MPI.Barrier(MPI.COMM_WORLD)
-t1 = time_ns()
 c2 = calcLinearRegression(HPAT.getDefaultDataPath()*"/linear_regression_train_large.hdf5")
-t2 = time_ns()
 
-if rank==0
-	println("nodes: ", pes, "\nlinear regression exec time: ", (t2-t1)/1.0e9, "\nCoeffs: ", c2)
-end
+if MPI.Comm_rank(MPI.COMM_WORLD)==0	println("linear regression Coeffs: ", c2) end
 
-MPI.Barrier(MPI.COMM_WORLD)

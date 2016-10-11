@@ -1044,7 +1044,7 @@ function from_call(node::Expr, state)
         if (isONE_D(arr1,state) || isONE_D_VAR(arr1,state)) &&
             (isONE_D(arr2,state) || isONE_D_VAR(arr2,state))
 
-            node.args[1] = GlobalRef(HPAT.API, symbol("$(func.name)_dist"))
+            node.args[1] = GlobalRef(HPAT.API, Symbol("$(func.name)_dist"))
 
             extra_daal_includes = """ #include "daal.h"
             using namespace daal;

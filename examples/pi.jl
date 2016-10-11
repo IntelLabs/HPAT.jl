@@ -47,28 +47,15 @@ Options:
   --points=<points>  Specify number of generated random points; defaults to 10^7.
 """
     arguments = docopt(doc)
+    points = 10^7
 
     if (arguments["--points"] != nothing)
         points = parse(Int, arguments["--points"])
-    else
-        points = 10^7
     end
-    rank = MPI.Comm_rank(MPI.COMM_WORLD)
-    pes = MPI.Comm_size(MPI.COMM_WORLD)
     
-    if rank==0 println("points= ", points) end
-
-    tic()
-    calcPi(100)
-    if rank==0 println("SELFPRIMED ", toq()) end
-
-    MPI.Barrier(MPI.COMM_WORLD)
-    tic()
     pi_val = calcPi(points)
-    time = toq()
-    if rank==0 println("pi = ", pi_val) end
-    if rank==0 println("SELFTIMED ", time) end
 
+    if MPI.Comm_rank(MPI.COMM_WORLD)==0 println("pi = ", pi_val) end
 end
 
 main()

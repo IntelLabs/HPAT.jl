@@ -34,18 +34,7 @@ if (length(ARGS) > 0)
 	n = parse(Int, ARGS[1])
 end
 
-rank = MPI.Comm_rank(MPI.COMM_WORLD)
-pes = MPI.Comm_size(MPI.COMM_WORLD)
-
-checksum = blackscholes(10000)
-
-MPI.Barrier(MPI.COMM_WORLD)
-t1 = time_ns()
 checksum = blackscholes(n)
-t2 = time_ns()
 
-if rank==0
-	println("nodes: ", pes, "\ntime: ", (t2-t1)/1.0e9, "\nchecksum: ", checksum)
-end
+if MPI.Comm_rank(MPI.COMM_WORLD)==0	println("checksum: ", checksum) end
 
-MPI.Barrier(MPI.COMM_WORLD)

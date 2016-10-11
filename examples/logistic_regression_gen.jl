@@ -55,39 +55,22 @@ Options:
   --instances=<instances>    Specify number of instances; defaults to 10^7.
 """
     arguments = docopt(doc)
+    iterations = 20
+    instances = 10^7
 
     if (arguments["--iterations"] != nothing)
         iterations = parse(Int, arguments["--iterations"])
-    else
-        iterations = 20
     end
 
     if (arguments["--instances"] != nothing)
         instances = parse(Int, arguments["--instances"])
-    else
-        instances = 10^7
     end
 
-    srand(0)
     rank = MPI.Comm_rank(MPI.COMM_WORLD)
-    pes = MPI.Comm_size(MPI.COMM_WORLD)
 
-    if rank==0 println("iterations = ", iterations) end
-    if rank==0 println("instances = ", instances) end
-
-    tic()
-    logistic_regression(2,4096)
-    time = toq()
-    if rank==0 println("SELFPRIMED ", time) end
-    MPI.Barrier(MPI.COMM_WORLD)
-
-    tic()
     W = logistic_regression(iterations, instances)
-    time = toq()
-    if rank==0 println("result = ", W) end
-    if rank==0 println("rate = ", iterations / time, " iterations/sec") end
-    if rank==0 println("SELFTIMED ", time) end
 
+    if MPI.Comm_rank(MPI.COMM_WORLD)==0 println("result = ", W) end
 end
 
 main()

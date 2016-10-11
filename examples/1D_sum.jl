@@ -46,30 +46,13 @@ Options:
 """
     arguments = docopt(doc)
 
+    file_name = HPAT.getDefaultDataPath()*"1D_large.hdf5"
     if (arguments["--file"] != nothing)
-        file_name::ASCIIString = arguments["--file"]
-    else
-        file_name = HPAT.getDefaultDataPath()*"1D_large.hdf5"
+        file_name= arguments["--file"]
     end 
 
-    rank = MPI.Comm_rank(MPI.COMM_WORLD)
-    pes = MPI.Comm_size(MPI.COMM_WORLD)
-
-    if rank==0 println("file= ", file_name) end
-
-    small_file::ASCIIString = HPAT.getDefaultDataPath()*"1D_small.hdf5"
-    tic()
-    calc1Dsum(small_file)
-    time = toq()
-    if rank==0 println("SELFPRIMED ", time) end
-    MPI.Barrier(MPI.COMM_WORLD)
-
-    tic()
     S = calc1Dsum(file_name)
-    time = toq()
-    if rank==0 println("result = ", S) end
-    if rank==0 println("SELFTIMED ", time) end
-
+    if MPI.Comm_rank(MPI.COMM_WORLD)==0 println("result ", S) end
 end
 
 main()

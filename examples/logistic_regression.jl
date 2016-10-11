@@ -59,39 +59,20 @@ Options:
 
 """
     arguments = docopt(doc)
+    iterations = 20
+    file_name = HPAT.getDefaultDataPath()*"logistic_regression.hdf5"
 
     if (arguments["--iterations"] != nothing)
         iterations = parse(Int, arguments["--iterations"])
-    else
-        iterations = 20
     end
 
     if (arguments["--file"] != nothing)
-        file_name::ASCIIString = arguments["--file"]
-    else
-        file_name = HPAT.getDefaultDataPath()*"logistic_regression.hdf5"
+        file_name = arguments["--file"]
     end 
 
-    srand(0)
-    rank = MPI.Comm_rank(MPI.COMM_WORLD)
-    pes = MPI.Comm_size(MPI.COMM_WORLD)
-
-    if rank==0 println("iterations = ", iterations) end
-    if rank==0 println("file= ", file_name) end
-
-    tic()
-    logistic_regression(2,file_name)
-    time = toq()
-    if rank==0 println("SELFPRIMED ", time) end
-    MPI.Barrier(MPI.COMM_WORLD)
-
-    tic()
     W = logistic_regression(iterations, file_name)
-    time = toq()
-    if rank==0 println("result = ", W) end
-    if rank==0 println("rate = ", iterations / time, " iterations/sec") end
-    if rank==0 println("SELFTIMED ", time) end
 
+    if MPI.Comm_rank(MPI.COMM_WORLD)==0 println("result = ", W) end
 end
 
 main()
