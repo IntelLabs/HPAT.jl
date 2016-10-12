@@ -1591,9 +1591,39 @@ end
 
 pattern_match_call_h5size(fun::ANY, id, lhs, linfo) = ""
 
+function from_assignment_match_transpose_hcat(lhs, rhs::Expr, linfo)
+    s = ""
+    if isCall(rhs) && rhs.args[1]==GlobalRef(HPAT.API,:__hpat_transpose_hcat)
+        args = getCallArguments(rhs)
+        in_typ = getType(args[1], linfo)
+        # TODO: transpose hcat of single values like transpose(hcat(1,2,3)) => 2D array [1;2;3]
+        #if !(in_typ<:Array)
+        #    return single_value_hcat(lhs, args, linfo)
+        #end
+        for a in args
+            atyp = getType(a, linfo)
+            @assert atyp<:Array && ndims(atyp)==1 "CGen only supports hcat of 1D arrays"
+        end
+        typ = eltype(getType(lhs, linfo))
+        size = length(args)
+        ctyp = ParallelAccelerator.CGen.toCtype(typ)
+        len = ParallelAccelerator.CGen.from_arraysize(args[1],1,linfo)
+        clhs = ParallelAccelerator.CGen.from_expr(lhs,linfo)
+        s *= "$clhs = j2c_array<$ctyp>::new_j2c_array_2d(NULL, $size, $len);\n"
+        s *= "for(int i=0; i<$len; i++) {\n"
+        for j in 1:size
+            arr = ParallelAccelerator.CGen.from_expr(args[j],linfo)
+            s *= "$clhs.data[i*$size+$(j-1)] = $arr.data[i];\n"
+        end
+        s *= "}\n"
+    end
+    return s
+end
+
 function from_assignment_match_dist(lhs::RHSVar, rhs::Expr, linfo)
     @dprintln(3, "assignment pattern match dist2: ",lhs," = ",rhs)
     s = ""
+    s *= from_assignment_match_transpose_hcat(lhs, rhs, linfo)
     local num::AbstractString
     if rhs.head==:call && (isa(rhs.args[1],GlobalRef) || isa(rhs.args[1],TopNode)) && rhs.args[1].name==:__hpat_data_source_HDF5_size
         num = ParallelAccelerator.CGen.from_expr(rhs.args[2], linfo)
