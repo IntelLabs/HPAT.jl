@@ -582,7 +582,7 @@ function translate_hpat_transpose_hcat(node::Expr, lhs::LHSVar, rhs::Expr, state
         rhs.args = [func; args]
     end
 
-    if isCall(rhs) && length(rhs.args)==2 && rhs.args[1].name==:transpose
+    if isCall(rhs) && length(rhs.args)==2 && isa(rhs.args[1],GlobalRef) && rhs.args[1].name==:transpose
         inner_call = rhs.args[2]
         if isInvoke(inner_call)
             local func_i = getCallFunction(inner_call)
