@@ -2,12 +2,12 @@
 #set -e
 set -x
 
-BIG_DATA_BENCHMARK_PATH=/home/whassan/Big-Data-Benchmark-for-Big-Bench/
-DATASET_PATH=/home.old/whassan/tmp/csv/q25/
+BIG_DATA_BENCHMARK_PATH=/home/etotoni/Downloads/Big-Data-Benchmark-for-Big-Bench/
+DATASET_PATH=/srv/data/tmp/q25
 mkdir -p ${DATASET_PATH}
 NUM_MAP_TASKS=2
 
-for dataset_factor in 100 200; do
+for dataset_factor in 100 200 300; do
     if [ -f ${DATASET_PATH}/store_sales_${dataset_factor}f.dat ]; then
         rm ${DATASET_PATH}/store_sales_${dataset_factor}f.dat
     fi
@@ -20,10 +20,10 @@ for dataset_factor in 100 200; do
     for i in $(seq ${NUM_MAP_TASKS}); do
 	
     hadoop dfsadmin -safemode leave
-	hadoop fs -cat /home.old/whassan/user/whassan/benchmarks/bigbench/data/store_sales/store_sales_${i}.dat > ${DATASET_PATH}/store_sales_${i}_${dataset_factor}f.dat
-	hadoop fs -rmr /home.old/whassan/user/whassan/benchmarks/bigbench/data/store_sales/store_sales_${i}.dat
-    hadoop fs -cat /home.old/whassan/user/whassan/benchmarks/bigbench/data/web_sales/web_sales_${i}.dat > ${DATASET_PATH}/web_sales_${i}_${dataset_factor}f.dat
-    hadoop fs -rmr /home.old/whassan/user/whassan/benchmarks/bigbench/data/web_sales/web_sales_${i}.dat
+	hadoop fs -cat /user/etotoni/benchmarks/bigbench/data/store_sales/store_sales_${i}.dat > ${DATASET_PATH}/store_sales_${i}_${dataset_factor}f.dat
+	hadoop fs -rmr /user/etotoni/benchmarks/bigbench/data/store_sales/store_sales_${i}.dat
+    hadoop fs -cat /user/etotoni/benchmarks/bigbench/data/web_sales/web_sales_${i}.dat > ${DATASET_PATH}/web_sales_${i}_${dataset_factor}f.dat
+    hadoop fs -rmr /user/etotoni/benchmarks/bigbench/data/web_sales/web_sales_${i}.dat
 	
     # schema in data-generator/config/bigbench-schema.xml
     # 1: ss_sold_date_sk, 4: ss_customer_sk, 10: ss_ticket_number, 21: ss_net_paid
@@ -41,7 +41,7 @@ for dataset_factor in 100 200; do
     cat ${DATASET_PATH}/store_sales_sanitized_[0-9]_${dataset_factor}f.dat > ${DATASET_PATH}/store_sales_sanitized_${dataset_factor}f.csv
     cat ${DATASET_PATH}/web_sales_sanitized_[0-9]_${dataset_factor}f.dat > ${DATASET_PATH}/web_sales_sanitized_${dataset_factor}f.csv
     hadoop dfsadmin -safemode leave
-    hadoop fs -rmr /home.old/whassan/user/whassan/benchmarks/bigbench/data/
+    hadoop fs -rmr /user/etotoni/benchmarks/bigbench/data/
 
     rm ${DATASET_PATH}/store_sales_sanitized_[0-9]_${dataset_factor}f.dat
     rm ${DATASET_PATH}/web_sales_sanitized_[0-9]_${dataset_factor}f.dat

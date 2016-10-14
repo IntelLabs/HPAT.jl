@@ -14,7 +14,7 @@
 
 # Set DIRs according to your environment
 ROOT_DIR=${HOME}
-SPARK_DIR=${ROOT_DIR}/spark-2.0.0/
+SPARK_DIR=${ROOT_DIR}/spark-2.0.1/
 SPARK_QUERY_DIR=${ROOT_DIR}/pse-hpc/spark-sql-query-tests/
 RESULT_DIR=${ROOT_DIR}/tmp/results/
 RESULT_FILE=${RESULT_DIR}/q26-`date +"%Y_%m_%d_%H_%M"`.csv
