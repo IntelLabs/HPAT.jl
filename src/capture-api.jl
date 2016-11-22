@@ -188,7 +188,7 @@ function process_macros(node, state, func)
         state.array_partitioning[node.args[2]] = convert_partitioning(node.args[3])
         return CompilerTools.AstWalker.ASTWALK_REMOVE
     end
-    return node
+    return CompilerTools.AstWalker.ASTWALK_RECURSE 
 end
 
 function convert_partitioning(p::Symbol)
