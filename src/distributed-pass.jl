@@ -105,6 +105,7 @@ dist_ir_funcs = Set([   :unsafe_arrayref,
                         :LinearRegression,
                         :NaiveBayes,
                         :arraylen, :arraysize, :reshape, :tuple, :hcat, :typed_hcat, :vcat,
+                        :convert,
                         :transpose!, :transpose, :gemm_wrapper!,
                         :__hpat_transpose_hcat,
                         :gemv!, :cumsum!])
