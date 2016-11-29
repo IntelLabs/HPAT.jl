@@ -88,6 +88,8 @@ mk_div_int_expr(a,b) = mk_call(GlobalRef(Base,:box),[Int64, mk_call(GlobalRef(Ba
 
 dist_ir_funcs = Set([   :unsafe_arrayref,
                         :unsafe_arrayset,
+                        :getindex,
+                        :setindex,
                         :__hpat_data_source_HDF5_open,
                         :__hpat_data_sink_HDF5_open,
                         :__hpat_data_source_HDF5_size,
@@ -1112,7 +1114,8 @@ function adjust_arrayrefs(stmt::Expr, loopnest, top_level_number, is_top_level, 
     if isCall(stmt)
         topCall = stmt.args[1]
         #ref_args = stmt.args[2:end]
-        if isBaseFunc(topCall,:unsafe_arrayref) || isBaseFunc(topCall,:unsafe_arrayset)
+        if isBaseFunc(topCall,:unsafe_arrayref) || isBaseFunc(topCall,:unsafe_arrayset) ||
+            topCall==GlobalRef(ParallelAccelerator.API,:getindex) || topCall==GlobalRef(ParallelAccelerator.API,:setindex)
             # TODO: simply divide the last dimension, more general partitioning needed
             index_arg = toLHSVar(stmt.args[end])
             if isa(index_arg, LHSVar) && index_arg==toLHSVar(loopnest.indexVariable)
