@@ -268,14 +268,20 @@ function pattern_match_reduce_maximum(reductionFunc::DelayedFunc,linfo)
     if length(args)==3 && args[1].args[2].args[1].name==:slt_int &&
         args[2].args[2].args[1].name==:select_value
         return true
+    elseif args[1].args[2].args[1]==GlobalRef(Base,:max)
+        return true
     end
     return false
 end
 
 function pattern_match_reduce_sum(reductionFunc::DelayedFunc,linfo)
     reduce_box = reductionFunc.args[1][1].args[2]
-    @assert reduce_box.args[1]==GlobalRef(Core.Intrinsics,:box) "invalid reduction function"
-    if reduce_box.args[3].args[1].name==:add_float || reduce_box.args[3].args[1].name==:add_int
+    if reduce_box.args[1]==GlobalRef(Core.Intrinsics,:box)
+    #@assert reduce_box.args[1]==GlobalRef(Core.Intrinsics,:box) "invalid reduction function"
+        if reduce_box.args[3].args[1].name==:add_float || reduce_box.args[3].args[1].name==:add_int
+            return true
+        end
+    elseif reduce_box.args[1]==GlobalRef(Base,:+)
         return true
     end
     return false
