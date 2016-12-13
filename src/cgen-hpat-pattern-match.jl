@@ -1386,6 +1386,17 @@ function pattern_match_call_data_sink_write_2d(f::ANY, id::ANY, hdf5_var::ANY, a
     return ""
 end
 
+function pattern_match_call_tic_toc(func::GlobalRef, linfo)
+    if func==GlobalRef(Base,:tic)
+        return "0; double __hpat_t1 = MPI_Wtime()"
+    elseif func==GlobalRef(Base,:toc)
+        return "0; if(__hpat_node_id==0) printf(\"exec time %lf\\n\", MPI_Wtime()-__hpat_t1);"
+    end
+    return ""
+end
+
+pattern_match_call_tic_toc(func::ANY, linfo) = ""
+
 function pattern_match_call(ast::Array{Any, 1}, linfo)
 
   @dprintln(3,"hpat pattern matching ",ast)
@@ -1399,6 +1410,7 @@ function pattern_match_call(ast::Array{Any, 1}, linfo)
     s *= pattern_match_call_dist_wait_left(ast[1], linfo)
     s *= pattern_match_call_dist_wait_right(ast[1], linfo)
     s *= pattern_match_call_get_sec_since_epoch(ast[1], linfo)
+    s *= pattern_match_call_tic_toc(ast[1], linfo)
   elseif length(ast)==2
     @dprintln(3,"ast1_typ = ", typeof(ast[1]), " ast2_typ = ", typeof(ast[2]))
     s *= pattern_match_call_data_src_close(ast[1], ast[2], linfo)
