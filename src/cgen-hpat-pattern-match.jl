@@ -287,13 +287,6 @@ function pattern_match_reduce_sum(reductionFunc::DelayedFunc,linfo)
     return false
 end
 
-function pattern_match_reduce_sum(reductionFunc::GlobalRef,linfo)
-    if reductionFunc.name==:add_float || reductionFunc.name==:add_int
-        return true
-    end
-    return false
-end
-
 function pattern_match_call_dist_reduce(f::GlobalRef, var::TypedVar, reductionFunc::DelayedFunc, output::LHSVar,linfo)
     if f.name==:hpat_dist_reduce
         mpi_type = get_mpi_type_from_var_type(var.typ)
@@ -335,7 +328,7 @@ function pattern_match_call_dist_portion(f::ANY, total::ANY, div::ANY, num_pes::
     return ""
 end
 
-function pattern_match_call_dist_node_end(f::GlobalRef, total::RHSVar, div::RHSVar, num_pes::LHSVar, node_id::LHSVar,linfo)
+function pattern_match_call_dist_node_end(f::GlobalRef, total::Union{RHSVar,Int}, div::RHSVar, num_pes::LHSVar, node_id::LHSVar,linfo)
     s = ""
     if f.name==:__hpat_get_node_end
         c_total = ParallelAccelerator.CGen.from_expr(total, linfo)
