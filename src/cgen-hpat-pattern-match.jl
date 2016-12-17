@@ -287,6 +287,13 @@ function pattern_match_reduce_sum(reductionFunc::DelayedFunc,linfo)
     return false
 end
 
+function pattern_match_reduce_sum(reductionFunc::GlobalRef,linfo)
+    if reductionFunc.name==:add_float || reductionFunc.name==:add_int
+        return true
+    end
+    return false
+end
+
 function pattern_match_call_dist_reduce(f::GlobalRef, var::TypedVar, reductionFunc::DelayedFunc, output::LHSVar,linfo)
     if f.name==:hpat_dist_reduce
         mpi_type = get_mpi_type_from_var_type(var.typ)
