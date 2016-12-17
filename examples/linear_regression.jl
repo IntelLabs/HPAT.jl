@@ -27,14 +27,9 @@ using HPAT
 using MPI
 using DocOpt
 
-#HPAT.set_debug_level(3)
-#HPAT.DistributedPass.set_debug_level(3)
-#CompilerTools.TransitiveDependence.set_debug_level(3)
-#CompilerTools.LivenessAnalysis.set_debug_level(4)
-
 @acc hpat function linear_regression(iterations, file_name)
     points = DataSource(Matrix{Float64},HDF5,"/points", file_name)
-    labels = DataSource(Vector{Float64},HDF5,"/labels", file_name)
+    labels = DataSource(Matrix{Float64},HDF5,"/labels", file_name)
     D,N = size(points) # number of features,samples
     p = size(labels,1) # number of functions
     w = zeros(p,D)
