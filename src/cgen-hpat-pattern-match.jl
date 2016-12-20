@@ -1398,24 +1398,6 @@ end
 
 pattern_match_call_tic_toc(func::ANY, linfo) = ""
 
-function pattern_match_call_subarray_lastdim(func::GlobalRef, arr::RHSVar, index::Union{Int,RHSVar}, linfo)
-    if func==GlobalRef(HPAT.API,:SubArrayLastDim)
-        arr_typ = getType(arr, linfo)
-        typ = eltype(arr_typ)
-        ctyp = ParallelAccelerator.CGen.toCtype(typ)
-        dims = ndims(arr_typ)
-        carr = ParallelAccelerator.CGen.from_expr(toLHSVar(arr), linfo)
-        cindex = ParallelAccelerator.CGen.from_expr(toLHSVarOrNum(index), linfo)
-        shape = mapfoldl(i->from_arraysize(arr,i,linfo), (a,b)->a *","*b, 1:dims-1)
-        low_dims_size = mapfoldl(i->from_arraysize(arr,i,linfo), (a,b)->a *"*"*b, 1:dims-1)
-        pointer = "&($carr.data[$low_dims_size*($cindex-1)])"
-        return "j2c_array<$ctyp>::new_j2c_array_$(dims-1)d($pointer, $shape)"
-    end
-    return ""
-end
-
-pattern_match_call_subarray_lastdim(func::ANY, arr, index, linfo) = ""
-
 function pattern_match_call(ast::Array{Any, 1}, linfo)
 
   @dprintln(3,"hpat pattern matching ",ast)
@@ -1447,7 +1429,6 @@ function pattern_match_call(ast::Array{Any, 1}, linfo)
     s *= pattern_match_call_dist_h5_size(ast[1],ast[2],ast[3], linfo)
     s *= pattern_match_call_dist_bcast(ast[1],ast[2],ast[3], linfo)
     s *= pattern_match_call_dist_cumsum(ast[1],ast[2],ast[3], linfo)
-    s *= pattern_match_call_subarray_lastdim(ast[1],ast[2],ast[3], linfo)
     s *= pattern_match_call_value_checkpoint(ast[1], ast[2], ast[3], linfo)
     s *= pattern_match_call_restore_checkpoint_start(ast[1], ast[2], linfo)
     s *= pattern_match_call_restore_checkpoint_value(ast[1], ast[2], ast[3], linfo)

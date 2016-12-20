@@ -725,12 +725,12 @@ function dist_optimize_assignment(node::Expr, state::DistPassState, top_level_nu
             # create array view
             # SubArray(A,(Colon(),1),(1,))
             # subarr_expr = mk_call(GlobalRef(Base,:SubArray),[arr2, (Colon(), parfor_index), (1,)])
-            subarr_expr = mk_call(GlobalRef(HPAT.API,:SubArrayLastDim),[arr2, parfor_index])
+            subarr_expr = mk_call(GlobalRef(ParallelAccelerator.API,:SubArrayLastDimRead),[arr2, parfor_index])
             push!(out_body, Expr(:(=), temp_var, subarr_expr))
             lhs_temp_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
                 Symbol("_dist_array_tmp_"*string(getDistNewID(state))), Vector{elem_typ}, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
             # lhs_subarr_expr = mk_call(GlobalRef(Base,:SubArray),[lhs, (Colon(), parfor_index), (1,)])
-            lhs_subarr_expr = mk_call(GlobalRef(HPAT.API,:SubArrayLastDim),[out, parfor_index])
+            lhs_subarr_expr = mk_call(GlobalRef(ParallelAccelerator.API,:SubArrayLastDimWrite),[out, parfor_index])
             push!(out_body, Expr(:(=), lhs_temp_var, lhs_subarr_expr))
             gemv_call = mk_call(GlobalRef(Base.LinAlg,:gemv!), [lhs_temp_var,'N', arr1, temp_var])
             push!(out_body, Expr(:(=), lhs_temp_var, gemv_call))
