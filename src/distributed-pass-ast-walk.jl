@@ -685,7 +685,7 @@ end
 return CompilerTools.AstWalker.ASTWALK_RECURSE
 end
 
-function dist_optimize(ast::Any, state::DistPassState, top_level_number, is_top_level, read)
+function dist_optimize(ast::ANY, state::DistPassState, top_level_number, is_top_level, read)
     return CompilerTools.AstWalker.ASTWALK_RECURSE
 end
 
@@ -753,5 +753,9 @@ function dist_optimize_assignment(node::Expr, state::DistPassState, top_level_nu
             return Expr(:parfor, new_parfor)
         end
     end
+    return CompilerTools.AstWalker.ASTWALK_RECURSE
+end
+
+function dist_optimize_assignment(node::Expr, state::DistPassState, top_level_number, lhs::ANY, rhs::ANY)
     return CompilerTools.AstWalker.ASTWALK_RECURSE
 end
