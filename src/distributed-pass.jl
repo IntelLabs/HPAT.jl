@@ -124,6 +124,10 @@ function from_root(function_name, ast::Tuple)
 
     # find if an array should be partitioned, sequential, or shared
     getArrayDistributionInfo(body, state)
+    # increase unique id to max of parfor ids to avoid conflicts for new parfors
+    state.uniqueId = maximum(keys(state.parfor_partitioning)) + 1
+    # perform domain-specific optimizations like expanding matrix multiply
+    #body = ParallelIR.AstWalk(body, dist_optimize, state)
 
     # transform body
     body.args = from_toplevel_body(body.args, state)

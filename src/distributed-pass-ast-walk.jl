@@ -28,6 +28,9 @@ THE POSSIBILITY OF SUCH DAMAGE.
 using CompilerTools.LivenessAnalysis
 using CompilerTools.TransitiveDependence
 
+import ParallelAccelerator.ParallelIR.PIRLoopNest
+import ParallelAccelerator.ParallelIR.InputInfo
+
 function getArrayDistributionInfo(ast, state)
     set_user_partitionings(state)
     before_arr_partitionings = [state.arrs_dist_info[arr].partitioning for arr in keys(state.arrs_dist_info)]
@@ -670,3 +673,84 @@ function eqSize(a::Any, b::Any)
     return a==b
 end
 =#
+
+function dist_optimize(node::Expr, state::DistPassState, top_level_number, is_top_level, read)
+    #@dprintln(3,"DistPass optimize Expr head: ", head)
+if node.head==:(=)
+    #@dprintln(3,"DistPass optimize assignment: ", node)
+    lhs = toLHSVar(node.args[1])
+    rhs = node.args[2]
+    return dist_optimize_assignment(node, state, top_level_number, lhs, rhs)
+end
+return CompilerTools.AstWalker.ASTWALK_RECURSE
+end
+
+function dist_optimize(ast::Any, state::DistPassState, top_level_number, is_top_level, read)
+    return CompilerTools.AstWalker.ASTWALK_RECURSE
+end
+
+function dist_optimize_assignment(node::Expr, state::DistPassState, top_level_number, lhs::LHSVar, rhs::RHSVar)
+    return CompilerTools.AstWalker.ASTWALK_RECURSE
+end
+
+function dist_optimize_assignment(node::Expr, state::DistPassState, top_level_number, lhs::LHSVar, rhs::Expr)
+    if rhs.head==:call && isBaseFunc(rhs.args[1],:gemm_wrapper!)
+        @dprintln(3,"DistPass optimize gemm found: ", node)
+        arr1 = toLHSVar(rhs.args[5])
+        t1 = (rhs.args[3]=='T')
+        arr2 = toLHSVar(rhs.args[6])
+        t2 = (rhs.args[4]=='T')
+        # weight multipied by samples (e.g. w*points)
+        if isSEQ(arr1,state) && isONE_D(arr2,state) && !t1 && !t2
+            @dprintln(3,"DistPass optimize w*points pattern found")
+            size = state.arrs_dist_info[arr2].dim_sizes[end]
+            parfor_index = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+                Symbol("_dist_parfor_"*string(getDistNewID(state))*"_index"), Int, ISASSIGNED,state.LambdaVarInfo))
+            elem_typ = eltype(CompilerTools.LambdaHandling.getType(arr1, state.LambdaVarInfo))
+            temp_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+                Symbol("_dist_array_tmp_"*string(getDistNewID(state))), Vector{elem_typ}, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
+            # TODO: type: SubArray{Float64,1,Array{Float64,2},Tuple{Colon,Int64},true}
+            loopNests = PIRLoopNest[ PIRLoopNest(parfor_index, 1, size, 1) ]
+            parfor_id = getDistNewID(state)
+            first_input_info = InputInfo(arr2)
+            first_input_info.dim = 2
+            #first_input_info.indexed_dims = ones(Int64, first_input_info.dim)
+            first_input_info.indexed_dims = Int64[1,0] # loop over last dimension
+            first_input_info.out_dim = 1
+            first_input_info.elementTemp = temp_var
+            out_body = Any[]
+            pre_statements  = Any[]
+            post_statements = Any[]
+            # create array view
+            # SubArray(A,(Colon(),1),(1,))
+            # subarr_expr = mk_call(GlobalRef(Base,:SubArray),[arr2, (Colon(), parfor_index), (1,)])
+            subarr_expr = mk_call(GlobalRef(HPAT.API,:SubArrayLastDim),[arr2, parfor_index])
+            push!(out_body, Expr(:(=), temp_var, subarr_expr))
+            lhs_temp_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+                Symbol("_dist_array_tmp_"*string(getDistNewID(state))), Vector{elem_typ}, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
+            # lhs_subarr_expr = mk_call(GlobalRef(Base,:SubArray),[lhs, (Colon(), parfor_index), (1,)])
+            lhs_subarr_expr = mk_call(GlobalRef(HPAT.API,:SubArrayLastDim),[lhs, parfor_index])
+            push!(out_body, Expr(:(=), lhs_temp_var, lhs_subarr_expr))
+            gemv_call = mk_call(GlobalRef(Base.LinAlg,:gemv!), [lhs_temp_var,'N', arr1, temp_var])
+            push!(out_body, Expr(:(=), lhs_temp_var, gemv_call))
+
+            new_parfor = ParallelAccelerator.ParallelIR.PIRParForAst(
+                first_input_info,
+                out_body,
+                pre_statements,
+                loopNests,
+                PIRReduction[],
+                post_statements,
+                ParallelAccelerator.ParallelIR.DomainOperation[], # empty domain_oprs
+                top_level_number,
+                parfor_id,
+                Set{LHSVar}(), #arrays_written_past_index
+                Set{LHSVar}()) #arrays_read_past_index
+            @dprintln(3,"DistPass optimize new_parfor ", new_parfor)
+            state.parfor_partitioning[parfor_id] = ONE_D
+            state.parfor_arrays[parfor_id] = [lhs,arr2]
+            return Expr(:parfor, new_parfor)
+        end
+    end
+    return CompilerTools.AstWalker.ASTWALK_RECURSE
+end
