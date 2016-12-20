@@ -696,6 +696,7 @@ end
 function dist_optimize_assignment(node::Expr, state::DistPassState, top_level_number, lhs::LHSVar, rhs::Expr)
     if rhs.head==:call && isBaseFunc(rhs.args[1],:gemm_wrapper!)
         @dprintln(3,"DistPass optimize gemm found: ", node)
+        out = toLHSVar(rhs.args[2])
         arr1 = toLHSVar(rhs.args[5])
         t1 = (rhs.args[3]=='T')
         arr2 = toLHSVar(rhs.args[6])
@@ -715,12 +716,12 @@ function dist_optimize_assignment(node::Expr, state::DistPassState, top_level_nu
             first_input_info = InputInfo(arr2)
             first_input_info.dim = 2
             #first_input_info.indexed_dims = ones(Int64, first_input_info.dim)
-            first_input_info.indexed_dims = Int64[1,0] # loop over last dimension
+            first_input_info.indexed_dims = [true,false] # loop over last dimension
             first_input_info.out_dim = 1
             first_input_info.elementTemp = temp_var
             out_body = Any[]
             pre_statements  = Any[]
-            post_statements = Any[]
+            post_statements = Any[ Expr(:(=), lhs, out) ]
             # create array view
             # SubArray(A,(Colon(),1),(1,))
             # subarr_expr = mk_call(GlobalRef(Base,:SubArray),[arr2, (Colon(), parfor_index), (1,)])
@@ -729,7 +730,7 @@ function dist_optimize_assignment(node::Expr, state::DistPassState, top_level_nu
             lhs_temp_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
                 Symbol("_dist_array_tmp_"*string(getDistNewID(state))), Vector{elem_typ}, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
             # lhs_subarr_expr = mk_call(GlobalRef(Base,:SubArray),[lhs, (Colon(), parfor_index), (1,)])
-            lhs_subarr_expr = mk_call(GlobalRef(HPAT.API,:SubArrayLastDim),[lhs, parfor_index])
+            lhs_subarr_expr = mk_call(GlobalRef(HPAT.API,:SubArrayLastDim),[out, parfor_index])
             push!(out_body, Expr(:(=), lhs_temp_var, lhs_subarr_expr))
             gemv_call = mk_call(GlobalRef(Base.LinAlg,:gemv!), [lhs_temp_var,'N', arr1, temp_var])
             push!(out_body, Expr(:(=), lhs_temp_var, gemv_call))

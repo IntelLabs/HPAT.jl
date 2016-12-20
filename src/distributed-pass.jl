@@ -112,6 +112,16 @@ dist_ir_funcs = Set([   :unsafe_arrayref,
                         :__hpat_transpose_hcat,
                         :gemv!, :cumsum!])
 
+
+
+dist_opt = false
+"""
+Controls whether distributed pass tries to optimize (e.g. expand matrix multiply).
+"""
+function DistOptimize(x :: Bool)
+   global dist_opt = x
+end
+
 # ENTRY to distributedIR
 function from_root(function_name, ast::Tuple)
     @dprintln(1,"Starting main DistributedPass.from_root.  function = ", function_name, " ast = ", ast)
@@ -127,7 +137,7 @@ function from_root(function_name, ast::Tuple)
     # increase unique id to max of parfor ids to avoid conflicts for new parfors
     state.uniqueId = maximum(keys(state.parfor_partitioning)) + 1
     # perform domain-specific optimizations like expanding matrix multiply
-    #body = ParallelIR.AstWalk(body, dist_optimize, state)
+    if dist_opt body = ParallelIR.AstWalk(body, dist_optimize, state) end
 
     # transform body
     body.args = from_toplevel_body(body.args, state)
