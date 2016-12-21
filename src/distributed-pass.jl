@@ -138,7 +138,7 @@ function from_root(function_name, ast::Tuple)
     state.uniqueId = maximum(keys(state.parfor_partitioning)) + 1
     # perform domain-specific optimizations like expanding matrix multiply
     if dist_opt
-        body.args = dist_optimize(body.args, state)
+        body = dist_optimize(body, state)
     end
 
     # transform body

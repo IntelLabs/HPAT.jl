@@ -674,13 +674,16 @@ function eqSize(a::Any, b::Any)
 end
 =#
 
-function dist_optimize(body::Vector{Any}, state::DistPassState)
+function dist_optimize(body::Expr, state::DistPassState)
+    @assert body.head==:body "invalid body in dist_optimize"
     out_body = Any[]
-    for i in 1:length(body)
-        new_node = dist_optimize_node(body[i], i, state)
+    for i in 1:length(body.args)
+        new_node = dist_optimize_node(body.args[i], i, state)
         push!(out_body, new_node)
     end
-    return out_body
+    body.args = out_body
+    state.LambdaVarInfo, body = ParallelAccelerator.ParallelIR.fusion_pass("dist_opt", state.LambdaVarInfo, body)
+    return body
 end
 
 function dist_optimize_node(node::Expr, top_level_number, state)
@@ -691,7 +694,8 @@ function dist_optimize_node(node::Expr, top_level_number, state)
         return dist_optimize_assignment(node, state, top_level_number, lhs, rhs)
     elseif node.head==:parfor
         parfor = node.args[1]
-        parfor.body = dist_optimize(parfor.body, state)
+        new_body = dist_optimize(Expr(:body, parfor.body...), state)
+        parfor.body = new_body.args
     end
     return node
 end
@@ -753,7 +757,7 @@ function dist_optimize_assignment(node::Expr, state::DistPassState, top_level_nu
                 loopNests,
                 PIRReduction[],
                 post_statements,
-                ParallelAccelerator.ParallelIR.DomainOperation[], # empty domain_oprs
+                [ParallelAccelerator.ParallelIR.DomainOperation(:mmap!,Any[])], # empty domain_oprs
                 top_level_number,
                 parfor_id,
                 Set{LHSVar}(), #arrays_written_past_index
