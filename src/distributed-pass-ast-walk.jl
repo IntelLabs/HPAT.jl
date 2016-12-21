@@ -674,23 +674,34 @@ function eqSize(a::Any, b::Any)
 end
 =#
 
-function dist_optimize(node::Expr, state::DistPassState, top_level_number, is_top_level, read)
-    #@dprintln(3,"DistPass optimize Expr head: ", head)
-if node.head==:(=)
-    #@dprintln(3,"DistPass optimize assignment: ", node)
-    lhs = toLHSVar(node.args[1])
-    rhs = node.args[2]
-    return dist_optimize_assignment(node, state, top_level_number, lhs, rhs)
-end
-return CompilerTools.AstWalker.ASTWALK_RECURSE
+function dist_optimize(body::Vector{Any}, state::DistPassState)
+    out_body = Any[]
+    for i in 1:length(body)
+        new_node = dist_optimize_node(body[i], i, state)
+        push!(out_body, new_node)
+    end
+    return out_body
 end
 
-function dist_optimize(ast::ANY, state::DistPassState, top_level_number, is_top_level, read)
-    return CompilerTools.AstWalker.ASTWALK_RECURSE
+function dist_optimize_node(node::Expr, top_level_number, state)
+    if node.head==:(=)
+        #@dprintln(3,"DistPass optimize assignment: ", node)
+        lhs = toLHSVar(node.args[1])
+        rhs = node.args[2]
+        return dist_optimize_assignment(node, state, top_level_number, lhs, rhs)
+    elseif node.head==:parfor
+        parfor = node.args[1]
+        parfor.body = dist_optimize(parfor.body, state)
+    end
+    return node
+end
+
+function dist_optimize_node(node::ANY, top_level_number, state)
+    return node
 end
 
 function dist_optimize_assignment(node::Expr, state::DistPassState, top_level_number, lhs::LHSVar, rhs::RHSVar)
-    return CompilerTools.AstWalker.ASTWALK_RECURSE
+    return node
 end
 
 function dist_optimize_assignment(node::Expr, state::DistPassState, top_level_number, lhs::LHSVar, rhs::Expr)
@@ -721,7 +732,7 @@ function dist_optimize_assignment(node::Expr, state::DistPassState, top_level_nu
             first_input_info.elementTemp = temp_var
             out_body = Any[]
             pre_statements  = Any[]
-            post_statements = Any[ Expr(:(=), lhs, out) ]
+            post_statements = Any[ Expr(:(=), lhs, out), 0 ]
             # create array view
             # SubArray(A,(Colon(),1),(1,))
             # subarr_expr = mk_call(GlobalRef(Base,:SubArray),[arr2, (Colon(), parfor_index), (1,)])
@@ -753,9 +764,9 @@ function dist_optimize_assignment(node::Expr, state::DistPassState, top_level_nu
             return Expr(:parfor, new_parfor)
         end
     end
-    return CompilerTools.AstWalker.ASTWALK_RECURSE
+    return node
 end
 
 function dist_optimize_assignment(node::Expr, state::DistPassState, top_level_number, lhs::ANY, rhs::ANY)
-    return CompilerTools.AstWalker.ASTWALK_RECURSE
+    return node
 end
