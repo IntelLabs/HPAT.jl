@@ -1152,8 +1152,9 @@ function gen_dist_reductions(reductions::Array{PIRReduction,1}, state)
     res = Any[]
     for reduce in reductions
         reduce_var_name = Symbol("__hpat_reduce_"*string(getDistNewID(state)))
+        typ = CompilerTools.LambdaHandling.getType(reduce.reductionVar, state.LambdaVarInfo)
         reduce_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
-            reduce_var_name, reduce.reductionVar.typ, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
+            reduce_var_name, typ, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
 
         reduce_var_init = Expr(:(=), reduce_var, 0)
         reduceCall = Expr(:call,GlobalRef(HPAT.API,:hpat_dist_allreduce),
