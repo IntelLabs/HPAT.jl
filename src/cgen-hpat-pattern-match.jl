@@ -275,6 +275,14 @@ function pattern_match_reduce_maximum(reductionFunc::DelayedFunc,linfo)
     return false
 end
 
+function pattern_match_reduce_maximum(reductionFunc::GlobalRef,linfo)
+    @dprintln(3, "pattern_match_reduce_maximum ", reductionFunc)
+    if reductionFunc.name==:max
+        return true
+    end
+    return false
+end
+
 function pattern_match_reduce_sum(reductionFunc::DelayedFunc,linfo)
     reduce_box = reductionFunc.args[1][1].args[2]
     if reduce_box.args[1]==GlobalRef(Core.Intrinsics,:box)
@@ -289,7 +297,7 @@ function pattern_match_reduce_sum(reductionFunc::DelayedFunc,linfo)
 end
 
 function pattern_match_reduce_sum(reductionFunc::GlobalRef,linfo)
-    if reductionFunc.name==:add_float || reductionFunc.name==:add_int
+    if reductionFunc.name==:add_float || reductionFunc.name==:add_int || reductionFunc.name==:(+)
         return true
     end
     return false
