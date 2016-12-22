@@ -718,13 +718,15 @@ function dist_optimize_assignment(node::Expr, state::DistPassState, top_level_nu
         t2 = (rhs.args[4]=='T')
         # weight multipied by samples (e.g. w*points)
         if isSEQ(arr1,state) && isONE_D(arr2,state) && !t1 && !t2
-            @dprintln(3,"DistPass optimize w*points pattern found")
+            @dprintln(3,"DistPass optimize weight times points pattern found")
             size = state.arrs_dist_info[arr2].dim_sizes[end]
             parfor_index = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
                 Symbol("_dist_parfor_"*string(getDistNewID(state))*"_index"), Int, ISASSIGNED,state.LambdaVarInfo))
             elem_typ = eltype(CompilerTools.LambdaHandling.getType(arr1, state.LambdaVarInfo))
             temp_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
                 Symbol("_dist_array_tmp_"*string(getDistNewID(state))), Vector{elem_typ}, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
+            state.arrs_dist_info[temp_var] = ArrDistInfo(1)
+            setSEQ(temp_var, state)
             # TODO: type: SubArray{Float64,1,Array{Float64,2},Tuple{Colon,Int64},true}
             loopNests = PIRLoopNest[ PIRLoopNest(parfor_index, 1, size, 1) ]
             parfor_id = getDistNewID(state)
@@ -744,6 +746,8 @@ function dist_optimize_assignment(node::Expr, state::DistPassState, top_level_nu
             push!(out_body, Expr(:(=), temp_var, subarr_expr))
             lhs_temp_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
                 Symbol("_dist_array_tmp_"*string(getDistNewID(state))), Vector{elem_typ}, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
+            state.arrs_dist_info[lhs_temp_var] = ArrDistInfo(1)
+            setSEQ(lhs_temp_var, state)
             # lhs_subarr_expr = mk_call(GlobalRef(Base,:SubArray),[lhs, (Colon(), parfor_index), (1,)])
             lhs_subarr_expr = mk_call(GlobalRef(ParallelAccelerator.API,:SubArrayLastDimWrite),[out, parfor_index])
             push!(out_body, Expr(:(=), lhs_temp_var, lhs_subarr_expr))
@@ -756,6 +760,59 @@ function dist_optimize_assignment(node::Expr, state::DistPassState, top_level_nu
                 pre_statements,
                 loopNests,
                 PIRReduction[],
+                post_statements,
+                [ParallelAccelerator.ParallelIR.DomainOperation(:mmap!,Any[])], # empty domain_oprs
+                top_level_number,
+                parfor_id,
+                Set{LHSVar}(), #arrays_written_past_index
+                Set{LHSVar}()) #arrays_read_past_index
+            @dprintln(3,"DistPass optimize new_parfor ", new_parfor)
+            state.parfor_partitioning[parfor_id] = ONE_D
+            state.parfor_arrays[parfor_id] = [lhs,arr2]
+            return Expr(:parfor, new_parfor)
+        # labels multipied by samples (e.g. labels*points')
+        elseif isSEQ(out,state) && isONE_D(arr1,state) && isONE_D(arr2,state) && !t1 && t2
+            @dprintln(3,"DistPass optimize labels times points transpose pattern found")
+            size = state.arrs_dist_info[arr2].dim_sizes[end]
+            parfor_index = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+                Symbol("_dist_parfor_"*string(getDistNewID(state))*"_index"), Int, ISASSIGNED,state.LambdaVarInfo))
+            elem_typ = eltype(CompilerTools.LambdaHandling.getType(arr1, state.LambdaVarInfo))
+            temp_var1 = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+                Symbol("_dist_array_tmp_"*string(getDistNewID(state))), Vector{elem_typ}, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
+            temp_var2 = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+                Symbol("_dist_array_tmp_"*string(getDistNewID(state))), Vector{elem_typ}, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
+            state.arrs_dist_info[temp_var1] = ArrDistInfo(1)
+            setSEQ(temp_var1, state)
+            state.arrs_dist_info[temp_var2] = ArrDistInfo(1)
+            setSEQ(temp_var2, state)
+            # TODO: type: SubArray{Float64,1,Array{Float64,2},Tuple{Colon,Int64},true}
+            loopNests = PIRLoopNest[ PIRLoopNest(parfor_index, 1, size, 1) ]
+            parfor_id = getDistNewID(state)
+            first_input_info = InputInfo(arr2)
+            first_input_info.dim = 2
+            #first_input_info.indexed_dims = ones(Int64, first_input_info.dim)
+            first_input_info.indexed_dims = [true,false] # loop over last dimension
+            first_input_info.out_dim = 1
+            first_input_info.elementTemp = temp_var2
+            out_body = Any[]
+            pre_statements  = Any[ Expr(:(=), out, 0) ]
+            post_statements = Any[ Expr(:(=), lhs, out), 0 ]
+            # create array view
+            # SubArray(A,(Colon(),1),(1,))
+            # subarr_expr = mk_call(GlobalRef(Base,:SubArray),[arr2, (Colon(), parfor_index), (1,)])
+            subarr_expr1 = mk_call(GlobalRef(ParallelAccelerator.API,:SubArrayLastDimRead),[arr1, parfor_index])
+            subarr_expr2 = mk_call(GlobalRef(ParallelAccelerator.API,:SubArrayLastDimRead),[arr2, parfor_index])
+            push!(out_body, Expr(:(=), temp_var1, subarr_expr1))
+            push!(out_body, Expr(:(=), temp_var2, subarr_expr2))
+            gemm_call = mk_call(GlobalRef(Base.LinAlg,:gemm_wrapper!), [out, 'N', 'T', temp_var1, temp_var2])
+            push!(out_body, Expr(:(=), out, gemm_call))
+
+            new_parfor = ParallelAccelerator.ParallelIR.PIRParForAst(
+                first_input_info,
+                out_body,
+                pre_statements,
+                loopNests,
+                [PIRReduction(out, 0, GlobalRef(Base,:(+)))],
                 post_statements,
                 [ParallelAccelerator.ParallelIR.DomainOperation(:mmap!,Any[])], # empty domain_oprs
                 top_level_number,
