@@ -795,7 +795,7 @@ function dist_optimize_assignment(node::Expr, state::DistPassState, top_level_nu
             first_input_info.out_dim = 1
             first_input_info.elementTemp = temp_var2
             out_body = Any[]
-            pre_statements  = Any[ Expr(:(=), out, 0) ]
+            pre_statements  = Any[ mk_call(GlobalRef(ParallelAccelerator.API,:set_zeros),[out]) ]
             post_statements = Any[ Expr(:(=), lhs, out), 0 ]
             # create array view
             # SubArray(A,(Colon(),1),(1,))
