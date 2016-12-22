@@ -360,7 +360,7 @@ function pattern_match_call_dist_node_end(f::ANY, total::ANY, div::ANY, num_pes:
     return ""
 end
 
-function pattern_match_call_dist_allreduce(f::GlobalRef, var::RHSVar, reductionFunc, output::RHSVar, size::Union{RHSVar,Int},linfo)
+function pattern_match_call_dist_allreduce(f::GlobalRef, var::RHSVar, reductionFunc, output::RHSVar, size::Union{Expr,RHSVar,Int},linfo)
     if f.name==:hpat_dist_allreduce
         mpi_type = ""
         var = toLHSVar(var)

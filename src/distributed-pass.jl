@@ -916,6 +916,7 @@ end
 
 function from_parfor_1d(node::Expr, state, parfor)
   @dprintln(3,"DistPass translating 1d parfor: ", parfor.unique_id)
+  @dprintln(3, parfor)
 
   # TODO: assuming 1st loop nest is the last dimension
   loopnest = parfor.loopNests[1]
@@ -1149,6 +1150,7 @@ end
 
 
 function gen_dist_reductions(reductions::Array{PIRReduction,1}, state)
+    @dprintln(3,"DistPass generating reductions: ", reductions)
     res = Any[]
     for reduce in reductions
         reduce_var_name = Symbol("__hpat_reduce_"*string(getDistNewID(state)))
@@ -1157,8 +1159,18 @@ function gen_dist_reductions(reductions::Array{PIRReduction,1}, state)
             reduce_var_name, typ, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
 
         reduce_var_init = Expr(:(=), reduce_var, 0)
+        size = 1
+        if isArrayType(typ)
+            alloc_args = Array(Any,2)
+            alloc_args[1] = eltype(typ)
+            out_dim_sizes = state.arrs_dist_info[reduce.reductionVar].dim_sizes
+            alloc_args[2] = out_dim_sizes
+            alloc_call = ParallelIR.from_alloc(alloc_args)
+            reduce_var_init = Expr(:(=), reduce_var, Expr(:call,alloc_call...))
+            size = mk_mult_int_expr(out_dim_sizes)
+        end
         reduceCall = Expr(:call,GlobalRef(HPAT.API,:hpat_dist_allreduce),
-            reduce.reductionVar,reduce.reductionFunc, reduce_var, 1)
+            reduce.reductionVar,reduce.reductionFunc, reduce_var, size)
         rootCopy = Expr(:(=), reduce.reductionVar, reduce_var)
         append!(res,[reduce_var_init; reduceCall; rootCopy])
     end
