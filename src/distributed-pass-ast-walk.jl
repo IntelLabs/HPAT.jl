@@ -804,7 +804,7 @@ function dist_optimize_assignment(node::Expr, state::DistPassState, top_level_nu
             subarr_expr2 = mk_call(GlobalRef(ParallelAccelerator.API,:SubArrayLastDimRead),[arr2, parfor_index])
             push!(out_body, Expr(:(=), temp_var1, subarr_expr1))
             push!(out_body, Expr(:(=), temp_var2, subarr_expr2))
-            gemm_call = mk_call(GlobalRef(Base.LinAlg,:gemm_wrapper!), [out, 'N', 'T', temp_var1, temp_var2])
+            gemm_call = mk_call(GlobalRef(Base.LinAlg,:gemm_wrapper!), [out, 'N', 'T', temp_var1, temp_var2,1.0,1.0])
             push!(out_body, gemm_call)
 
             new_parfor = ParallelAccelerator.ParallelIR.PIRParForAst(
