@@ -674,6 +674,9 @@ function eqSize(a::Any, b::Any)
 end
 =#
 
+isMeta(node::Expr) = (node.head==:meta)
+isMeta(node::ANY) = false
+
 function recreate_parfor_pre(body, linfo)
     @dprintln(3,"DistPass recreate_parfor_pre ast", linfo, body)
     lives = computeLiveness(body, linfo)
@@ -720,11 +723,12 @@ function recreate_parfor_pre(body, linfo)
     out = Any[]
     for i in 1:length(body.args)
         node = body.args[i]
-        if !(isAllocationAssignment(node) && in(node.args[1], pre_alloc_arrs))
+        if !isMeta(node) && !(isAllocationAssignment(node) && in(node.args[1], pre_alloc_arrs))
             push!(out, node)
         end
         if isBareParfor(node)
             node.args[1].top_level_number = [length(out)]
+            empty!(node.args[1].array_aliases)
         end
     end
     body.args = out
