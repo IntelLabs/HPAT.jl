@@ -708,6 +708,8 @@ function recreate_parfor_pre(body, linfo)
                             parfor.preParFor = [prev_stmt; parfor.preParFor]
                             push!(pre_alloc_arrs, arr)
                             break
+                        elseif in(arr,bb.statements[j].use) || in(arr,bb.statements[j].def)
+                            break
                         end
                     end
                 end
