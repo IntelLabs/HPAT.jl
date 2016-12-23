@@ -51,6 +51,7 @@ import ParallelAccelerator.ParallelIR.isArrayType
 import ParallelAccelerator.ParallelIR.getParforNode
 import ParallelAccelerator.ParallelIR.isBareParfor
 import ParallelAccelerator.ParallelIR.isAllocation
+import ParallelAccelerator.ParallelIR.isAllocationAssignment
 import ParallelAccelerator.ParallelIR.TypedExpr
 import ParallelAccelerator.ParallelIR.get_alloc_shape
 import ParallelAccelerator.ParallelIR.computeLiveness
