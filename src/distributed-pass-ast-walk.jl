@@ -703,9 +703,9 @@ function recreate_parfor_pre(body, linfo)
                     @dprintln(3,"DistPass recreate_parfor_pre write array: ", arr)
                     for j in i-1:-1:1
                         prev_stmt = bb.statements[j].tls.expr
-                        if isAllocationAssignment(prev_stmt) && prev_stmt.args[1]==arr 
+                        if isAllocationAssignment(prev_stmt) && prev_stmt.args[1]==arr
                             @dprintln(3,"DistPass recreate_parfor_pre allocation for parfor found: ", prev_stmt)
-                            push!(parfor.preParFor, prev_stmt)
+                            parfor.preParFor = [prev_stmt; parfor.preParFor]
                             push!(pre_alloc_arrs, arr)
                             break
                         end
@@ -720,6 +720,9 @@ function recreate_parfor_pre(body, linfo)
         node = body.args[i]
         if !(isAllocationAssignment(node) && in(node.args[1], pre_alloc_arrs))
             push!(out, node)
+        end
+        if isBareParfor(node)
+            node.args[1].top_level_number = [length(out)]
         end
     end
     body.args = out
