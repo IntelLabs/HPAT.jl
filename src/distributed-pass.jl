@@ -55,6 +55,7 @@ import ParallelAccelerator.ParallelIR.isAllocationAssignment
 import ParallelAccelerator.ParallelIR.TypedExpr
 import ParallelAccelerator.ParallelIR.get_alloc_shape
 import ParallelAccelerator.ParallelIR.computeLiveness
+import ParallelAccelerator.ParallelIR.PIRParForAst
 
 import ParallelAccelerator.ParallelIR.ISCAPTURED
 import ParallelAccelerator.ParallelIR.ISASSIGNED

@@ -727,13 +727,32 @@ function recreate_parfor_pre(body, linfo)
             push!(out, node)
         end
         if isBareParfor(node)
-            node.args[1].top_level_number = [length(out)]
-            empty!(node.args[1].array_aliases)
+            fix_parfor_for_fusion(node.args[1], length(out), linfo)
         end
     end
     body.args = out
 end
 
+function fix_parfor_for_fusion(parfor::PIRParForAst, new_top_level_number, linfo)
+    parfor.top_level_number = [new_top_level_number]
+    empty!(parfor.array_aliases)
+    # use rws to update first_input, which is used for finding correlation in fusion
+    parfor_indices = [ toLHSVar(parfor.loopNests[i].indexVariable) for i in 1:length(parfor.loopNests) ]
+    rws = CompilerTools.ReadWriteSet.from_exprs(parfor.body, ParallelAccelerator.ParallelIR.pir_rws_cb, linfo)
+    @dprintln(3,"DistPass fix_parfor_for_fusion parfor indices ", parfor_indices)
+    @dprintln(3,"DistPass fix_parfor_for_fusion rws arrays ", union(rws.readSet.arrays, rws.writeSet.arrays))
+
+    for (arr,inds) in union(rws.readSet.arrays, rws.writeSet.arrays)
+        # TODO: is this sufficient condition for parfor/array correlation?
+        indices = map(x->isa(x,Colon)?x:toLHSVar(x), inds[1])
+        if !isempty(intersect(indices, parfor_indices))
+            @dprintln(3,"DistPass fix_parfor_for_fusion updating first_input.array from ",
+                 parfor.first_input.array, " to ", arr)
+            parfor.first_input.array = arr
+            break
+        end
+    end
+end
 
 function dist_optimize(body::Expr, state::DistPassState)
     @assert body.head==:body "invalid body in dist_optimize"
