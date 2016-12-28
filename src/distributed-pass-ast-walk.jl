@@ -737,7 +737,8 @@ function fix_parfor_for_fusion(parfor::PIRParForAst, new_top_level_number, linfo
     parfor.top_level_number = [new_top_level_number]
     empty!(parfor.array_aliases)
     # use rws to update first_input, which is used for finding correlation in fusion
-    parfor_indices = [ toLHSVar(parfor.loopNests[i].indexVariable) for i in 1:length(parfor.loopNests) ]
+    # reverse order to match access array
+    parfor_indices = [ toLHSVar(parfor.loopNests[i].indexVariable) for i in length(parfor.loopNests):-1:1 ]
     rws = CompilerTools.ReadWriteSet.from_exprs(parfor.body, ParallelAccelerator.ParallelIR.pir_rws_cb, linfo)
     @dprintln(3,"DistPass fix_parfor_for_fusion parfor indices ", parfor_indices)
     @dprintln(3,"DistPass fix_parfor_for_fusion rws arrays ", union(rws.readSet.arrays, rws.writeSet.arrays))
@@ -745,7 +746,7 @@ function fix_parfor_for_fusion(parfor::PIRParForAst, new_top_level_number, linfo
     for (arr,inds) in union(rws.readSet.arrays, rws.writeSet.arrays)
         # TODO: is this sufficient condition for parfor/array correlation?
         indices = map(x->isa(x,Colon)?x:toLHSVar(x), inds[1])
-        if !isempty(intersect(indices, parfor_indices))
+        if indices==parfor_indices
             @dprintln(3,"DistPass fix_parfor_for_fusion updating first_input.array from ",
                  parfor.first_input.array, " to ", arr)
             parfor.first_input.array = arr
@@ -835,10 +836,10 @@ function expand_gemm_sp(lhs, out, arr1, arr2, top_level_number, state)
 
     loopNests = PIRLoopNest[ PIRLoopNest(parfor_index1, 1, size1, 1), PIRLoopNest(parfor_index2, 1, size2, 1) ]
     parfor_id = getDistNewID(state)
-    first_input_info = InputInfo(arr2)
+    first_input_info = InputInfo(out)
     first_input_info.dim = 2
     #first_input_info.indexed_dims = ones(Int64, first_input_info.dim)
-    first_input_info.indexed_dims = [true,false] # loop over last dimension
+    first_input_info.indexed_dims = [true,true] # loop over last dimension
     first_input_info.out_dim = 2
     first_input_info.elementTemp = temp_var2
     out_body = Any[]
