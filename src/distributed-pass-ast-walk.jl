@@ -815,40 +815,46 @@ function dist_optimize_assignment(node::Expr, state::DistPassState, top_level_nu
 end
 
 function expand_gemm_sp(lhs, out, arr1, arr2, top_level_number, state)
-    size = state.arrs_dist_info[arr2].dim_sizes[end]
-    parfor_index = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
-        Symbol("_dist_parfor_"*string(getDistNewID(state))*"_index"), Int, ISASSIGNED,state.LambdaVarInfo))
+    size1 = state.arrs_dist_info[arr2].dim_sizes[end]
+    size2 = state.arrs_dist_info[arr1].dim_sizes[1]
+    size3 = state.arrs_dist_info[arr1].dim_sizes[end]
+    # outer loop over samples, inner loop over functions
+    parfor_index1 = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+        Symbol("_dist_parfor_"*string(getDistNewID(state))*"_index1"), Int, ISASSIGNED,state.LambdaVarInfo))
+    parfor_index2 = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+        Symbol("_dist_parfor_"*string(getDistNewID(state))*"_index2"), Int, ISASSIGNED,state.LambdaVarInfo))
+    loop_index = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+        Symbol("_dist_loop_"*string(getDistNewID(state))*"_index"), Int, ISASSIGNED,state.LambdaVarInfo))
     elem_typ = eltype(CompilerTools.LambdaHandling.getType(arr1, state.LambdaVarInfo))
-    temp_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
-        Symbol("_dist_array_tmp_"*string(getDistNewID(state))), Vector{elem_typ}, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
-    state.arrs_dist_info[temp_var] = ArrDistInfo(1)
-    setSEQ(temp_var, state)
-    # TODO: type: SubArray{Float64,1,Array{Float64,2},Tuple{Colon,Int64},true}
-    loopNests = PIRLoopNest[ PIRLoopNest(parfor_index, 1, size, 1) ]
+    temp_var1 = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+        Symbol("_dist_gemm_tmp1_"*string(getDistNewID(state))), elem_typ, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
+    temp_var2 = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+        Symbol("_dist_gemm_tmp2_"*string(getDistNewID(state))), elem_typ, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
+    temp_var3 = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+        Symbol("_dist_gemm_tmp3_"*string(getDistNewID(state))), elem_typ, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
+
+    loopNests = PIRLoopNest[ PIRLoopNest(parfor_index1, 1, size1, 1), PIRLoopNest(parfor_index2, 1, size2, 1) ]
     parfor_id = getDistNewID(state)
     first_input_info = InputInfo(arr2)
     first_input_info.dim = 2
     #first_input_info.indexed_dims = ones(Int64, first_input_info.dim)
     first_input_info.indexed_dims = [true,false] # loop over last dimension
-    first_input_info.out_dim = 1
-    first_input_info.elementTemp = temp_var
+    first_input_info.out_dim = 2
+    first_input_info.elementTemp = temp_var2
     out_body = Any[]
     pre_statements  = Any[]
     post_statements = Any[ Expr(:(=), lhs, out), 0 ]
-    # create array view
-    # SubArray(A,(Colon(),1),(1,))
-    # subarr_expr = mk_call(GlobalRef(Base,:SubArray),[arr2, (Colon(), parfor_index), (1,)])
-    subarr_expr = mk_call(GlobalRef(ParallelAccelerator.API,:SubArrayLastDimRead),[arr2, parfor_index])
-    push!(out_body, Expr(:(=), temp_var, subarr_expr))
-    lhs_temp_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
-        Symbol("_dist_array_tmp_"*string(getDistNewID(state))), Vector{elem_typ}, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
-    state.arrs_dist_info[lhs_temp_var] = ArrDistInfo(1)
-    setSEQ(lhs_temp_var, state)
-    # lhs_subarr_expr = mk_call(GlobalRef(Base,:SubArray),[lhs, (Colon(), parfor_index), (1,)])
-    lhs_subarr_expr = mk_call(GlobalRef(ParallelAccelerator.API,:SubArrayLastDimWrite),[out, parfor_index])
-    push!(out_body, Expr(:(=), lhs_temp_var, lhs_subarr_expr))
-    gemv_call = mk_call(GlobalRef(Base.LinAlg,:gemv!), [lhs_temp_var,'N', arr1, temp_var])
-    push!(out_body, gemv_call)
+
+    push!(out_body, Expr(:(=), temp_var3, 0))
+    # inner loop k dimension
+    push!(out_body, Expr(:loophead, loop_index, 1, size3))
+    # tmp1 = w[j,k]
+    push!(out_body, Expr(:(=), temp_var1, mk_call(GlobalRef(Base,:unsafe_arrayref),[arr1, parfor_index2, loop_index])))
+    # tmp2 = points[k,i]
+    push!(out_body, Expr(:(=), temp_var2, mk_call(GlobalRef(Base,:unsafe_arrayref),[arr2, loop_index, parfor_index1])))
+    push!(out_body, Expr(:(=), temp_var3, mk_add_float_expr(temp_var3, mk_mult_float_expr(temp_var1,temp_var2))))
+    push!(out_body, Expr(:loopend, loop_index))
+    push!(out_body, mk_call(GlobalRef(Base,:unsafe_arrayset),[out, temp_var3, parfor_index2, parfor_index1]))
 
     new_parfor = ParallelAccelerator.ParallelIR.PIRParForAst(
         first_input_info,

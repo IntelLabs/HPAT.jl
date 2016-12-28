@@ -88,6 +88,9 @@ mk_add_int_expr(a,b) = mk_call(GlobalRef(Base,:box),[Int64, mk_call(GlobalRef(Ba
 mk_sub_int_expr(a,b) = mk_call(GlobalRef(Base,:box),[Int64, mk_call(GlobalRef(Base,:sub_int),[a,b])])
 mk_div_int_expr(a,b) = mk_call(GlobalRef(Base,:box),[Int64, mk_call(GlobalRef(Base,:sdiv_int),[a,b])])
 
+mk_add_float_expr(a,b) = mk_call(GlobalRef(Base,:box),[Float64, mk_call(GlobalRef(Base,:add_float),[a,b])])
+mk_mult_float_expr(a,b) = mk_call(GlobalRef(Base,:box),[Float64, mk_call(GlobalRef(Base,:mul_float),[a,b])])
+
 dist_ir_funcs = Set([   :unsafe_arrayref,
                         :unsafe_arrayset,
                         :getindex,
