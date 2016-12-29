@@ -117,24 +117,34 @@ function dist_optimize(body::Expr, state::DistPassState)
     out_body = Any[]
     for i in 1:length(body.args)
         new_node = dist_optimize_node(body.args[i], i, state)
-        push!(out_body, new_node)
+        if isa(new_node, Array)
+            append!(out_body, new_node)
+        else
+            push!(out_body, new_node)
+        end
     end
     body.args = out_body
     recreate_parfor_pre(body, state.LambdaVarInfo)
+    @dprintln(3, "dist_optimize after optimizing but before fusion ", body)
     state.LambdaVarInfo, body = ParallelAccelerator.ParallelIR.fusion_pass("dist_opt", state.LambdaVarInfo, body)
     return body
 end
 
 function dist_optimize_node(node::Expr, top_level_number, state)
-    if node.head==:(=)
+    @dprintln(3,"DistPass optimize node ", top_level_number, " ", node)
+    if isAssignmentNode(node)
         #@dprintln(3,"DistPass optimize assignment: ", node)
         lhs = toLHSVar(node.args[1])
         rhs = node.args[2]
         return dist_optimize_assignment(node, state, top_level_number, lhs, rhs)
     elseif node.head==:parfor
+#        if top_level_number == 58
+#            return doParforInterchange(node, state)
+#        else
         parfor = node.args[1]
         new_body = dist_optimize(Expr(:body, parfor.body...), state)
         parfor.body = new_body.args
+        end
     end
     return node
 end
@@ -293,3 +303,204 @@ function expand_gemm_pp(lhs, out, arr1, arr2, top_level_number, state)
     state.parfor_arrays[parfor_id] = [lhs,arr2]
     return Expr(:parfor, new_parfor)
 end
+
+
+function genLoopHeadFromParfor(parfor)
+    ret = Any[]
+
+    for i = 1:length(parfor.loopNests)
+        push!(ret, Expr(:loophead, parfor.loopNests[i].indexVariable, parfor.loopNests[i].lower, parfor.loopNests[i].upper))
+    end
+
+    return ret
+end
+
+function genLoopEndFromParfor(parfor)
+    ret = Any[]
+
+    for i = length(parfor.loopNests):-1:1
+        push!(ret, Expr(:loopend, parfor.loopNests[i].indexVariable))
+    end
+
+    return ret
+end
+
+function getParforIndices(parfor)
+    ret = Any[]
+
+    for i = 1:length(parfor.loopNests)
+        push!(ret, parfor.loopNests[i].indexVariable)
+    end
+
+    return ret
+end
+
+function genAddInt(x, val)
+    return Expr(:call, GlobalRef(Base, :box), Int64, Expr(:call, GlobalRef(Base, :add_int), deepcopy(x), deepcopy(val)))
+end
+function genSubInt(x, val)
+    return Expr(:call, GlobalRef(Base, :box), Int64, Expr(:call, GlobalRef(Base, :sub_int), deepcopy(x), deepcopy(val)))
+end
+
+function getParforSizes(parfor)
+    ret = Union{RHSVar,Int,Expr}[]
+
+    for i = 1:length(parfor.loopNests)
+        if parfor.loopNests[i].step != 1
+            throw(string("Skip not yet supported in getParforSizes."))
+        end
+
+        if parfor.loopNests[i].lower == 1
+            push!(ret, deepcopy(parfor.loopNests[i].upper))
+        else
+            push!(ret, genAddInt(genSubInt(parfor.loopNests[i].upper, parfor.loopNests[i].lower), 1))
+        end
+    end
+
+    return ret
+end
+
+type InterchangeState
+    index_vars
+    to_array
+end
+
+function interchangeArrayify(node::LHSVar, state::InterchangeState, top_level_number, is_top_level, read)
+    if haskey(state.to_array, node)
+        if read
+            return Expr(:call, GlobalRef(Base, :arrayref), state.to_array[node], state.index_vars...)
+        else
+            throw(string("Don't handle case of write to arrayified symbol outside lhs of assignment."))
+        end
+    end
+    return CompilerTools.AstWalker.ASTWALK_RECURSE
+end
+
+function interchangeArrayify(node::ANY, state::InterchangeState, top_level_number, is_top_level, read)
+    return CompilerTools.AstWalker.ASTWALK_RECURSE
+end
+
+function doParforInterchange(parfor_node::Expr, state::DistPassState)
+    @dprintln(3, "doParforInterchange ", parfor_node, " ", state)
+    ret = Any[]
+    new_array_allocs = Any[]
+    for_pre = Any[]
+    num_inner = 0
+
+    outer_parfor = parfor_node.args[1]
+
+    body_lives = CompilerTools.LivenessAnalysis.from_lambda(state.LambdaVarInfo, outer_parfor.body, ParallelIR.pir_live_cb, state.LambdaVarInfo)
+    @dprintln(3, "body_lives = ", body_lives)
+    non_nested_region = true
+
+    index_vars = reverse(getParforIndices(outer_parfor))
+    sizes = reverse(getParforSizes(outer_parfor))
+    num_dims = length(index_vars)
+    @dprintln(3, "index_vars = ", index_vars, " num_dims = ", num_dims, " sizes = ", sizes)
+
+    to_array = Dict{LHSVar,LHSVar}()
+
+    append!(for_pre, genLoopHeadFromParfor(outer_parfor))
+
+    for i = 1:length(outer_parfor.body)
+        node = outer_parfor.body[i]
+        @dprintln(3, "Processing ", node, " ", non_nested_region)
+
+        if ParallelAccelerator.ParallelIR.isParforAssignmentNode(node)
+            throw(string("Parfor assignment nodes not yet supported in doParforInterchange."))
+        elseif ParallelAccelerator.ParallelIR.isBareParfor(node)
+            num_inner += 1
+            if num_inner > 1
+                @dprintln(1, "Multiple nested inner parfors not supported so reverting to original parfor.")
+                return parfor_node
+            end
+
+            @dprintln(3, "isBareParfor ", non_nested_region)
+            if non_nested_region
+                append!(for_pre, genLoopEndFromParfor(outer_parfor))
+                non_nested_region = false
+            end
+            inner_parfor = node.args[1]
+            @dprintln(3, "isBareParfor ", non_nested_region, " ", inner_parfor)
+            new_outer_parfor = deepcopy(inner_parfor)
+            new_inner_parfor = deepcopy(outer_parfor)
+            new_inner_parfor.body = deepcopy(inner_parfor.body)
+            new_outer_parfor.body = Any[Expr(:parfor, new_inner_parfor)]
+            new_outer_parfor.top_level_number = deepcopy(outer_parfor.top_level_number)
+            for j = 1:length(new_outer_parfor.reductions)
+                @dprintln(3, "Processing reduction ",  new_outer_parfor.reductions[j])
+                rdsvar = toLHSVar(new_outer_parfor.reductions[j].reductionVar)
+                if haskey(to_array, rdsvar)
+                    new_outer_parfor.reductions[j].reductionVar = to_array[rdsvar]
+                    @dprintln(3, "Changed to ",  new_outer_parfor.reductions[j])
+                else
+                    throw(string("During parfor interchange, reduction variable ", rdsvar, " on inner parfor did not become an array during interchange."))
+                end
+            end
+            for j = 1:length(new_inner_parfor.body)
+                inner_node = new_inner_parfor.body[j]
+                @dprintln(3, "Processing inner parfor body node ", inner_node)
+
+                if isAssignmentNode(inner_node)
+                    lhs = toLHSVar(inner_node.args[1])
+                    rhs = inner_node.args[2]
+                    @dprintln(3, "Assignment node: ", lhs)
+                    if haskey(to_array, lhs)
+                        new_rhs = deepcopy(rhs)
+                        new_inner_parfor.body[j] = Expr(:call, GlobalRef(Base, :arrayset), to_array[lhs], ParallelIR.AstWalk(new_rhs, interchangeArrayify, InterchangeState(index_vars, to_array)), index_vars...)
+                    else
+                        acopy = deepcopy(inner_node)
+                        new_inner_parfor.body[j] = ParallelIR.AstWalk(acopy, interchangeArrayify, InterchangeState(index_vars, to_array))
+                    end
+                else
+                    acopy = deepcopy(inner_node)
+                    new_inner_parfor.body[j] = ParallelIR.AstWalk(acopy, interchangeArrayify, InterchangeState(index_vars, to_array))
+                end
+            end
+            append!(new_outer_parfor.preParFor, for_pre)
+            push!(ret, Expr(:parfor, new_outer_parfor))
+        else
+            @dprintln(3, "Node is not a parfor ", non_nested_region)
+            if !non_nested_region
+                append!(ret, genLoopHeadFromParfor(outer_parfor))
+                non_nested_region = true
+            end
+
+            if isAssignmentNode(node)
+                lhs = toLHSVar(node.args[1])
+                rhs = node.args[2]
+                @dprintln(3, "Assignment node: ", lhs)
+                if !haskey(to_array, lhs)
+                    lhs_type = CompilerTools.LambdaHandling.getType(lhs, state.LambdaVarInfo)
+                    atype = Array{lhs_type, num_dims}
+                    new_array_name = Symbol(string("HPAT_",lhs,"_",outer_parfor.unique_id))
+                    CompilerTools.LambdaHandling.addLocalVariable(new_array_name, atype, ISASSIGNED, state.LambdaVarInfo)
+                    new_array_lhsvar = toLHSVar(new_array_name, state.LambdaVarInfo)
+                    @dprintln(3, "New array needed: ", lhs, " ", lhs_type, " ", new_array_name)
+                    push!(new_array_allocs, ParallelAccelerator.ParallelIR.mk_assignment_expr(new_array_lhsvar, ParallelAccelerator.ParallelIR.mk_alloc_array_expr(lhs_type, atype, sizes...), state.LambdaVarInfo))
+                    @dprintln(3, "new_array_allocs = ", new_array_allocs)
+                    to_array[lhs] = new_array_lhsvar
+                    @dprintln(3, "to_array = ", to_array)
+                    state.arrs_dist_info[new_array_lhsvar] = ArrDistInfo(num_dims)
+                    state.arrs_dist_info[new_array_lhsvar].partitioning = SEQ
+                    state.arrs_dist_info[new_array_lhsvar].dim_sizes = sizes
+                end
+                new_rhs = deepcopy(rhs)
+                push!(num_inner == 0 ? for_pre : ret, Expr(:call, GlobalRef(Base, :arrayset), new_array_lhsvar, ParallelIR.AstWalk(new_rhs, interchangeArrayify, InterchangeState(index_vars, to_array)), index_vars...))
+            else
+                acopy = deepcopy(node)
+                push!(num_inner == 0 ? for_pre : ret, ParallelIR.AstWalk(acopy, interchangeArrayify, InterchangeState(index_vars, to_array)))
+            end
+        end
+    end
+
+    if non_nested_region
+        append!(ret, genLoopEndFromParfor(outer_parfor))
+    end
+
+    @dprintln(3, "Output new_array_allocs = ", new_array_allocs)
+    @dprintln(3, "Output regular code = ", ret)
+
+    return [new_array_allocs..., ret...]
+end
+
