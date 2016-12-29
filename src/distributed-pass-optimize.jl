@@ -140,11 +140,10 @@ function dist_optimize_node(node::Expr, top_level_number, state)
     elseif node.head==:parfor
 #        if top_level_number == 58
 #            return doParforInterchange(node, state)
-#        else
+#        end
         parfor = node.args[1]
         new_body = dist_optimize(Expr(:body, parfor.body...), state)
         parfor.body = new_body.args
-        end
     end
     return node
 end
