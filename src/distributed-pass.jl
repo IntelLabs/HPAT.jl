@@ -144,6 +144,8 @@ function from_root(function_name, ast::Tuple)
     # perform domain-specific optimizations like expanding matrix multiply
     if dist_opt
         body = dist_optimize(body, state)
+        @dprintln(3,"DistributedPass after dist_optimize = ", body)
+        @dprintln(3,"DistributedPass after dist_optimize = ", state.LambdaVarInfo)
     end
 
     # transform body
@@ -173,7 +175,7 @@ type ArrDistInfo
         new(ONE_D, zeros(Int64,num_dims),0,
         Array(LHSVar,num_dims), Array(LHSVar,num_dims),
         Array(LHSVar,num_dims), Array(LHSVar,num_dims),
-        Array(LHSVar,num_dims),Array(LHSVar,num_dims))
+        Array(LHSVar,num_dims), Array(LHSVar,num_dims))
     end
 end
 
