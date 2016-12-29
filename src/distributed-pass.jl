@@ -230,6 +230,7 @@ function setArrayPartitioning(arr,part,state)
 end
 
 include("distributed-pass-ast-walk.jl")
+include("distributed-pass-optimize.jl")
 
 function show(io::IO, pnode::HPAT.DistributedPass.DistPassState)
     println(io,"DistPassState arrs_dist_info:")
