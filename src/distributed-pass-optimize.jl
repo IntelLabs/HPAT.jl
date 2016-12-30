@@ -112,6 +112,24 @@ function fix_parfor_for_fusion(parfor::PIRParForAst, new_top_level_number, linfo
     end
 end
 
+"""
+Interchange is needed when the parfor is sequential,
+but has a parallel (1D) parfor inside.
+"""
+function parfor_interchange_needed(parfor::PIRParForAst, state)
+    @dprintln(3, "parfor_interchange_needed parfor: ", parfor)
+    if state.parfor_partitioning[parfor.unique_id]!=SEQ
+        return false
+    end
+    for node in parfor.body
+        if isBareParfor(node) && state.parfor_partitioning[node.args[1].unique_id]==ONE_D
+            @dprintln(3, "parfor_interchange_needed interchange needed due to: ", node.args[1])
+            return true
+        end
+    end
+    return false
+end
+
 function dist_optimize(body::Expr, state::DistPassState)
     @assert body.head==:body "invalid body in dist_optimize"
     out_body = Any[]
@@ -138,10 +156,10 @@ function dist_optimize_node(node::Expr, top_level_number, state)
         rhs = node.args[2]
         return dist_optimize_assignment(node, state, top_level_number, lhs, rhs)
     elseif node.head==:parfor
-#        if top_level_number == 46
-#            return doParforInterchange(node, state)
-#        end
         parfor = node.args[1]
+        if parfor_interchange_needed(parfor, state)
+            return doParforInterchange(node, state)
+        end
         new_body = dist_optimize(Expr(:body, parfor.body...), state)
         parfor.body = new_body.args
     end
@@ -508,4 +526,3 @@ function doParforInterchange(parfor_node::Expr, state::DistPassState)
     return ret
     #return [new_array_allocs..., ret...]
 end
-

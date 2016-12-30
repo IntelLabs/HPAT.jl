@@ -56,6 +56,7 @@ import ParallelAccelerator.ParallelIR.TypedExpr
 import ParallelAccelerator.ParallelIR.get_alloc_shape
 import ParallelAccelerator.ParallelIR.computeLiveness
 import ParallelAccelerator.ParallelIR.PIRParForAst
+import ParallelAccelerator.ParallelIR.isBareParfor
 
 import ParallelAccelerator.ParallelIR.ISCAPTURED
 import ParallelAccelerator.ParallelIR.ISASSIGNED
