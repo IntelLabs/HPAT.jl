@@ -138,7 +138,7 @@ function dist_optimize_node(node::Expr, top_level_number, state)
         rhs = node.args[2]
         return dist_optimize_assignment(node, state, top_level_number, lhs, rhs)
     elseif node.head==:parfor
-#        if top_level_number == 58
+#        if top_level_number == 46
 #            return doParforInterchange(node, state)
 #        end
         parfor = node.args[1]
@@ -400,6 +400,7 @@ function doParforInterchange(parfor_node::Expr, state::DistPassState)
     to_array = Dict{LHSVar,LHSVar}()
 
     append!(for_pre, genLoopHeadFromParfor(outer_parfor))
+    new_outer_parfor = nothing
 
     for i = 1:length(outer_parfor.body)
         node = outer_parfor.body[i]
@@ -456,7 +457,6 @@ function doParforInterchange(parfor_node::Expr, state::DistPassState)
                     new_inner_parfor.body[j] = ParallelIR.AstWalk(acopy, interchangeArrayify, InterchangeState(index_vars, to_array))
                 end
             end
-            append!(new_outer_parfor.preParFor, for_pre)
             push!(ret, Expr(:parfor, new_outer_parfor))
         else
             @dprintln(3, "Node is not a parfor ", non_nested_region)
@@ -497,9 +497,15 @@ function doParforInterchange(parfor_node::Expr, state::DistPassState)
         append!(ret, genLoopEndFromParfor(outer_parfor))
     end
 
+    assert(isa(new_outer_parfor, PIRParForAst))
+    append!(new_outer_parfor.preParFor, new_array_allocs)
+    append!(new_outer_parfor.preParFor, for_pre)
+
     @dprintln(3, "Output new_array_allocs = ", new_array_allocs)
     @dprintln(3, "Output regular code = ", ret)
+    @dprintln(3, "new outer parfor = ", new_outer_parfor)
 
-    return [new_array_allocs..., ret...]
+    return ret
+    #return [new_array_allocs..., ret...]
 end
 
