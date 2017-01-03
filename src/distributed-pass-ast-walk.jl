@@ -174,7 +174,7 @@ function get_arr_dist_info_serial_code(node, state, top_level_number)
 
     @dprintln(3,"DistPass arr info walk serial code vars: ", all_vars)
     # ReadWriteSet is not robust enough now
-    #rws = CompilerTools.ReadWriteSet.from_exprs([node], ParallelIR.pir_live_cb, state.LambdaVarInfo)
+    #rws = CompilerTools.ReadWriteSet.from_exprs([node], ParallelIR.pir_live_cb, state.LambdaVarInfo, state.LambdaVarInfo)
     #readArrs = collect(keys(rws.readSet.arrays))
     #writeArrs = collect(keys(rws.writeSet.arrays))
     #allArrs = [readArrs;writeArrs]
@@ -189,7 +189,7 @@ function get_arr_dist_info_serial_code(node, state, top_level_number)
 end
 
 function get_arr_dist_info_parfor(node, state, top_level_number, parfor)
-    rws = CompilerTools.ReadWriteSet.from_exprs(parfor.body, ParallelAccelerator.ParallelIR.pir_rws_cb, state.LambdaVarInfo)
+    rws = CompilerTools.ReadWriteSet.from_exprs(parfor.body, ParallelAccelerator.ParallelIR.pir_rws_cb, state.LambdaVarInfo, state.LambdaVarInfo)
     partitioning = ONE_D
 
     indexVariable = toLHSVar(parfor.loopNests[1].indexVariable)

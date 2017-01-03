@@ -762,7 +762,7 @@ function from_parfor(node::Expr, state)
 
     parfor = node.args[1]
     parfor.body = from_nested_body(parfor.body, state)
-    parfor_rws = CompilerTools.ReadWriteSet.from_exprs(parfor.body, ParallelAccelerator.ParallelIR.pir_rws_cb, state.LambdaVarInfo)
+    parfor_rws = CompilerTools.ReadWriteSet.from_exprs(parfor.body, ParallelAccelerator.ParallelIR.pir_rws_cb, state.LambdaVarInfo, state.LambdaVarInfo)
 
     if parfor.unique_id in keys(state.parfor_stencils)
         return from_parfor_stencil_1d(node, state, parfor, state.parfor_stencils[parfor.unique_id])
