@@ -244,7 +244,7 @@ function expand_gemm_sp(lhs, out, arr1, arr2, top_level_number, state)
     new_parfor = ParallelAccelerator.ParallelIR.PIRParForAst(
         first_input_info,
         out_body,
-        pre_statements,
+        pre_statements, Any[],
         loopNests,
         PIRReduction[],
         post_statements,
@@ -306,7 +306,7 @@ function expand_gemm_pp(lhs, out, arr1, arr2, top_level_number, state)
     new_parfor = ParallelAccelerator.ParallelIR.PIRParForAst(
         first_input_info,
         out_body,
-        pre_statements,
+        pre_statements, Any[],
         loopNests,
         [PIRReduction(out, 0, GlobalRef(Base,:(+)))],
         post_statements,
