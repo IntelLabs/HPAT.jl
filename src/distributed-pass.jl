@@ -932,6 +932,7 @@ function from_parfor_1d(node::Expr, state, parfor)
 
   # TODO: assuming 1st loop nest is the last dimension
   loopnest = parfor.loopNests[1]
+  parfor.force_simd = true
   # TODO: build a constant table and check the loop variables at this stage
   # @assert loopnest.lower==1 && loopnest.step==1 "DistPass only simple PIR loops supported now"
 
