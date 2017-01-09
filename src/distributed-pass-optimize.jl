@@ -288,7 +288,7 @@ function expand_gemm_pp(lhs, out, arr1, arr2, top_level_number, state)
     first_input_info.out_dim = 1
     first_input_info.elementTemp = temp_var2
     out_body = Any[]
-    pre_statements  = Any[ mk_call(GlobalRef(ParallelAccelerator.API,:set_zeros),[out]) ]
+    pre_statements  = Any[ mk_call(GlobalRef(ParallelAccelerator.API,:set_zeros),[out, mk_mult_int_expr([size3,size2])]) ]
     post_statements = Any[ Expr(:(=), lhs, out), 0 ]
 
     # tmp2 = labels[j,i]
