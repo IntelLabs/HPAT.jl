@@ -797,9 +797,16 @@ function from_parfor(node::Expr, state)
                 bcast_size_var_name, Int, ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
             size_expr = Expr(:(=), bcast_size_var, mk_mult_int_expr(state.arrs_dist_info[write_arr].dim_sizes))
             bcast_expr = Expr(:call,GlobalRef(HPAT.API,:__hpat_dist_broadcast), write_arr, bcast_size_var)
+            push!(parfor.hoisted, goto_node)
+            p_out = pop!(parfor.postParFor)
+            push!(parfor.postParFor, label_node)
+            push!(parfor.postParFor, size_expr)
+            push!(parfor.postParFor, bcast_expr)
+            push!(parfor.postParFor, p_out)
 
             @dprintln(3,"DistPass rand() in sequential parfor ", parfor)
-            return [goto_node; node; label_node; size_expr; bcast_expr]
+            #return [goto_node; node; label_node; size_expr; bcast_expr]
+            return [node]
         end
     end
     return [node]
