@@ -761,7 +761,12 @@ function from_parfor(node::Expr, state)
     @assert node.head==:parfor "DistributedPass invalid parfor head"
 
     parfor = node.args[1]
+
+    parfor.preParFor = from_nested_body(parfor.preParFor, state)
+    parfor.hoisted = from_nested_body(parfor.hoisted, state)
     parfor.body = from_nested_body(parfor.body, state)
+    parfor.postParFor = from_nested_body(parfor.postParFor, state)
+
     parfor_rws = CompilerTools.ReadWriteSet.from_exprs(parfor.body, ParallelAccelerator.ParallelIR.pir_rws_cb, state.LambdaVarInfo, state.LambdaVarInfo)
 
     if parfor.unique_id in keys(state.parfor_stencils)
