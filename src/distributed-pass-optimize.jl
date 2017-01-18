@@ -62,6 +62,12 @@ function recreate_parfor_pre(body, linfo)
                         end
                     end
                 end
+                # add initial value assignment of indmin() to preparfor to allow fusion
+                if i>1 && isNewMTassign(bb.statements[i-1].tls.expr)
+                    @dprintln(3,"DistPass recreate_parfor_pre indmin MT found ")
+                    new_mt = bb.statements[i-1].tls.expr
+                    parfor.preParFor = [new_mt; parfor.preParFor]
+                end
             end
         end
     end
@@ -73,11 +79,25 @@ function recreate_parfor_pre(body, linfo)
             push!(out, node)
         end
         if isBareParfor(node)
-            fix_parfor_for_fusion(node.args[1], length(out), linfo)
+            parfor = node.args[1]
+            # fix parfor generated for indmin() to allow fusion
+            if any(isNewMTassign, parfor.preParFor)
+                empty!(parfor.first_input.range)
+                parfor.first_input.out_dim = 1
+                parfor.first_input.dim = 1
+                parfor.original_domain_nodes = [ParallelAccelerator.ParallelIR.DomainOperation(:mmap!,Any[])]
+                deleteat!(out, length(out)-1)
+            end
+            fix_parfor_for_fusion(parfor, length(out), linfo)
         end
     end
     body.args = out
 end
+
+isNewMTassign(node::Expr) = node.head==:(=) && isNewMT(node.args[2])
+isNewMTassign(node::ANY) = false
+isNewMT(node::Expr) = node.head==:new && is(node.args[1].name,ParallelAccelerator.API.Lib.MT.name)
+isNewMT(node::ANY) = false
 
 function fix_parfor_for_fusion(parfor::PIRParForAst, new_top_level_number, linfo)
     @dprintln(3,"DistPass fix_parfor_for_fusion parfor ", parfor)
