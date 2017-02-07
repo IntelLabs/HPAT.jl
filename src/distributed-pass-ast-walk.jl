@@ -408,7 +408,7 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
         if isBaseFunc(func,:convert)
             # handle convert similar to assignment, ignore type for now
             return get_arr_dist_info_assignment(node, state, top_level_number, lhs, rhs.args[3])
-        elseif isBaseFunc(func,:reshape)
+        elseif isBaseFunc(func,:reshape) || func==GlobalRef(ParallelAccelerator.API,:reshape)
             # only reshape() with constant tuples handled
             if haskey(state.tuple_table, rhs.args[3])
                 state.arrs_dist_info[lhs].dim_sizes = state.tuple_table[rhs.args[3]]

@@ -389,7 +389,7 @@ function from_assignment(node::Expr, state::DistPassState, lhs::LHSVar, rhs::Exp
     @assert node.head==:(=) "DistributedPass invalid assignment head"
     if isAllocation(rhs)
       return from_assignment_alloc(node,state,lhs,rhs)
-    elseif rhs.head==:call && isBaseFunc(rhs.args[1],:reshape)
+  elseif rhs.head==:call && (isBaseFunc(rhs.args[1],:reshape) || rhs.args[1]==GlobalRef(ParallelAccelerator.API,:reshape))
       return from_assignment_reshape(node,state,lhs,rhs)
     elseif rhs.head==:call && isBaseFunc(rhs.args[1],:gemm_wrapper!)
         return from_assignment_gemm(node,state,lhs,rhs)
