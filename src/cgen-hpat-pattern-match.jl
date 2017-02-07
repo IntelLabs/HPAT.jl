@@ -1181,6 +1181,7 @@ function pattern_match_call_data_sink_write(f::GlobalRef, id::Int, hdf5_var, arr
     if f.name==:__hpat_data_sink_HDF5_write
         arr_typ = ParallelAccelerator.CGen.getSymType(arr, linfo)
         num_dims = ndims(arr_typ)
+        @assert num_dims==length(tot_size) "sink total size dimension error"
         data_typ = eltype(arr_typ)
         h5_typ = ""
         carr = ParallelAccelerator.CGen.from_expr(toLHSVar(arr), linfo)
@@ -1205,8 +1206,8 @@ function pattern_match_call_data_sink_write(f::GlobalRef, id::Int, hdf5_var, arr
         s *= " hid_t  filespace_$num, memspace_$num;\n"
         s *= " hsize_t  dataset_dims_$num[$num_dims];\n"
         #s *= " for(int i=0; i<$num_dims; i++) dataset_dims_$num[i]=$(ParallelAccelerator.CGen.from_expr(tot_size[i],linfo));\n"
-        for i in 1:length(tot_size)
-            s*= "dataset_dims_$num[$i-1]=$(ParallelAccelerator.CGen.from_expr(tot_size[i],linfo));\n"
+        for i in 1:num_dims
+            s*= "dataset_dims_$num[$(num_dims-i)]=$(ParallelAccelerator.CGen.from_expr(tot_size[i],linfo));\n"
         end
         s *= "  filespace_$num = H5Screate_simple($num_dims, dataset_dims_$num, NULL);\n"
         s *= "  dataset_id_$num = H5Dcreate(file_id_$num, \"$hdf5_var\", $h5_typ, filespace_$num,\n"
