@@ -24,6 +24,11 @@ end
     return arr
 end
 
+@noinline function data_sink_TXT(y, file_name::AbstractString)
+    writedlm(file_name, y, ' ')
+    return nothing
+end
+
 @noinline function Kmeans{T}(points::Matrix{T}, numCenter::Int, iterNum::Int)
     # naive backup sequential implementation
     D = size(points,1) # number of features

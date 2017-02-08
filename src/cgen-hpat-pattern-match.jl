@@ -531,6 +531,9 @@ function pattern_match_call_data_src_close(f::GlobalRef, id::Int,linfo)
     elseif f.name==:__hpat_data_source_TXT_close
         num = string(id)
         s *= "MPI_File_close(&dsrc_txt_file_$num);\n"
+    elseif f.name==:__hpat_data_sink_TXT_close
+        num = string(id)
+        s *= "MPI_File_close(&dsink_txt_file_$num);\n"
     end
     return s
 end
@@ -769,11 +772,19 @@ Generate code for text file open (no variable name input)
 function pattern_match_call_data_src_open(f::GlobalRef, id::Int, file_name::Union{RHSVar,AbstractString}, arr,linfo)
     s = ""
     if f.name==:__hpat_data_source_TXT_open
-        num::AbstractString = string(id)
-        file_name_str::AbstractString = ParallelAccelerator.CGen.from_expr(file_name, linfo)
+        num = string(id)
+        file_name_str = ParallelAccelerator.CGen.from_expr(file_name, linfo)
         s = """
             MPI_File dsrc_txt_file_$num;
             int ierr_$num = MPI_File_open(MPI_COMM_WORLD, (const char*)$file_name_str.data.data, MPI_MODE_RDONLY, MPI_INFO_NULL, &dsrc_txt_file_$num);
+            assert(ierr_$num==0);
+            """
+    elseif f.name==:__hpat_data_sink_TXT_open
+        num = string(id)
+        file_name_str = ParallelAccelerator.CGen.from_expr(file_name, linfo)
+        s = """
+            MPI_File dsink_txt_file_$num;
+            int ierr_$num = MPI_File_open(MPI_COMM_WORLD, (const char*)$file_name_str.data.data, MPI_MODE_CREATE|MPI_MODE_WRONLY, MPI_INFO_NULL, &dsink_txt_file_$num);
             assert(ierr_$num==0);
             """
     end
@@ -1259,6 +1270,52 @@ function pattern_match_call_data_sink_write(f::ANY, id::ANY, hdf5_var, arr::ANY,
     return ""
 end
 
+function pattern_match_call_data_sink_txt_write(f::GlobalRef, id::Int, arr::RHSVar, start::LHSVar, count::LHSVar,tot_size,linfo)
+    s = ""
+    num::AbstractString = string(id)
+
+    if f.name==:__hpat_data_sink_TXT_write
+        arr_typ = ParallelAccelerator.CGen.getSymType(arr, linfo)
+        num_dims = ndims(arr_typ)
+        @assert num_dims==length(tot_size) "sink total size dimension error"
+        data_typ = eltype(arr_typ)
+        c_arr = ParallelAccelerator.CGen.from_expr(toLHSVar(arr), linfo)
+        c_start = ParallelAccelerator.CGen.from_expr(start, linfo)
+        c_count = ParallelAccelerator.CGen.from_expr(count, linfo)
+        slice_count = string(1)
+        if num_dims>1
+            slice_count = mapfoldl(i->string(tot_size[i]), (a,b)->a*"*"*b, 1:num_dims-1)
+        end
+        s *= """
+        // convert to string
+        std::stringstream CGen_txt_ss_$num;
+        for(uint64_t i=0; i<$c_count; i++) {
+            for(uint64_t j=0; j <$slice_count; j++) {
+                CGen_txt_ss_$num<<$c_arr.data[i*$slice_count+j];
+                if(j==$slice_count-1)
+                    CGen_txt_ss_$num<<"\\n";
+                else
+                    CGen_txt_ss_$num<<",";
+            }
+        }
+        CGen_txt_ss_$num.flush();
+        std::string CGen_txt_str_$num =CGen_txt_ss_$num.str();
+
+        MPI_Offset CGen_txt_buff_size_$num = CGen_txt_str_$num.length();
+        MPI_Offset CGen_txt_offset_$num = 0;
+        MPI_Exscan(&CGen_txt_buff_size_$num, &CGen_txt_offset_$num, 1, MPI_LONG_LONG_INT, MPI_SUM, MPI_COMM_WORLD);
+        MPI_File_write_at_all(dsink_txt_file_$num, CGen_txt_offset_$num, CGen_txt_str_$num.c_str(),
+                          CGen_txt_buff_size_$num, MPI_CHAR, MPI_STATUS_IGNORE);
+        """
+    end
+    return s
+end
+
+function pattern_match_call_data_sink_txt_write(f::ANY, id::ANY, arr::ANY, tot_size::ANY, start::ANY, count::ANY,linfo)
+    return ""
+end
+
+
 function pattern_match_call_data_sink_write_2d(f::GlobalRef, id::Int, hdf5_var, arr::RHSVar,
             start_x::LHSVar, start_y::LHSVar, stride_x::LHSVar, stride_y::LHSVar,
             count_x::LHSVar, count_y::LHSVar, block_x::LHSVar, block_y::LHSVar,
@@ -1471,6 +1528,7 @@ function pattern_match_call(ast::Array{Any, 1}, linfo)
     s *= pattern_match_call_dist_add_extra_block(ast[1],ast[2],ast[3], ast[4], ast[5], linfo)
   elseif length(ast)==6
     s *= pattern_match_call_dist_get_leftovers(ast[1],ast[2],ast[3], ast[4], ast[5],ast[6], linfo)
+    s *= pattern_match_call_data_sink_txt_write(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6], linfo)
   elseif length(ast)==24
     s *= pattern_match_call_gemm_2d(ast[1],ast[2],ast[3],ast[4],ast[5],ast[6],
           ast[7],ast[8],ast[9],ast[10],ast[11],ast[12],ast[13],ast[14],ast[15],

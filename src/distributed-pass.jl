@@ -99,10 +99,12 @@ dist_ir_funcs = Set([   :unsafe_arrayref,
                         :__hpat_data_source_HDF5_open,
                         :__hpat_data_sink_HDF5_open,
                         :__hpat_data_sink_HDF5_create,
+                        :__hpat_data_sink_TXT_open,
                         :__hpat_data_source_HDF5_size,
                         :__hpat_get_H5_dim_size,
                         :__hpat_data_source_HDF5_read,
                         :__hpat_data_sink_HDF5_write,
+                        :__hpat_data_sink_TXT_write,
                         :__hpat_data_source_TXT_open,
                         :__hpat_data_source_TXT_size,
                         :__hpat_get_TXT_dim_size,
@@ -1047,7 +1049,7 @@ function from_call(node::Expr, state)
         return [node]
     elseif func==GlobalRef(HPAT.API,:__hpat_data_sink_HDF5_write)
         arr = toLHSVar(node.args[4])
-        @dprintln(3,"DistPass data source for array: ", arr)
+        @dprintln(3,"DistPass data sink HDF5 for array: ", arr)
         if isONE_D(arr,state)
           # 1D write, add start and count indices of last dimension, total sizes
           push!(node.args, state.arrs_dist_info[arr].starts[end], state.arrs_dist_info[arr].counts[end],
@@ -1062,6 +1064,15 @@ function from_call(node::Expr, state)
            state.arrs_dist_info[arr].dim_sizes)
         end
 
+        return [node]
+    elseif func==GlobalRef(HPAT.API,:__hpat_data_sink_TXT_write)
+        arr = toLHSVar(node.args[3])
+        @dprintln(3,"DistPass data sink TXT for array: ", arr)
+        if isONE_D(arr,state)
+          # 1D write, add start and count indices of last dimension, total sizes
+          push!(node.args, state.arrs_dist_info[arr].starts[end], state.arrs_dist_info[arr].counts[end],
+                    state.arrs_dist_info[arr].dim_sizes)
+        end
         return [node]
     elseif func==GlobalRef(HPAT.API,:Kmeans) && (isONE_D(toLHSVar(node.args[3]), state) || isONE_D_VAR(toLHSVar(node.args[3]), state))
         # 1st call argument (node.args[2]) is coeffs (lhs of original source code)
