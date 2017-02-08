@@ -773,7 +773,7 @@ function pattern_match_call_data_src_open(f::GlobalRef, id::Int, file_name::Unio
         file_name_str::AbstractString = ParallelAccelerator.CGen.from_expr(file_name, linfo)
         s = """
             MPI_File dsrc_txt_file_$num;
-            int ierr_$num = MPI_File_open(MPI_COMM_WORLD, $file_name_str.data.data, MPI_MODE_RDONLY, MPI_INFO_NULL, &dsrc_txt_file_$num);
+            int ierr_$num = MPI_File_open(MPI_COMM_WORLD, (const char*)$file_name_str.data.data, MPI_MODE_RDONLY, MPI_INFO_NULL, &dsrc_txt_file_$num);
             assert(ierr_$num==0);
             """
     end
@@ -888,6 +888,7 @@ function pattern_match_call_data_src_read(f::GlobalRef, id::Int, arr::RHSVar, st
         carr = ParallelAccelerator.CGen.from_expr(toLHSVar(arr), linfo)
         c_start = ParallelAccelerator.CGen.from_expr(start, linfo)
         c_count = ParallelAccelerator.CGen.from_expr(count, linfo)
+        c_arr = ParallelAccelerator.CGen.from_expr(toLHSVar(arr), linfo)
 
         s = """
             int64_t CGen_txt_start_$num = $c_start;

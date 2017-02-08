@@ -772,12 +772,12 @@ function translate_data_source_TXT(lhs::LHSVar, rhs::Expr, state)
     elem_typ = eltype(arr_typ)
     # generate open call
     # lhs is dummy argument so ParallelIR wouldn't reorder
-    open_call = mk_call(:__hpat_data_source_TXT_open, [dsrc_id_var, txt_file, lhs])
+    open_call = mk_call(GlobalRef(HPAT.API,:__hpat_data_source_TXT_open), [dsrc_id_var, txt_file, lhs])
     push!(res, open_call)
     # generate array size call
     # arr_size_var = addTempVariable(Tuple, state.linfo)
     arr_size_var = addTempVariable(ParallelAccelerator.SizeArr_t, state.linfo)
-    size_call = mk_call(:__hpat_data_source_TXT_size, [dsrc_id_var, lhs])
+    size_call = mk_call(GlobalRef(HPAT.API,:__hpat_data_source_TXT_size), [dsrc_id_var, lhs])
     push!(res, TypedExpr(arr_size_var, :(=), arr_size_var, size_call))
     # generate array allocation
     size_expr = Any[]
@@ -786,16 +786,16 @@ function translate_data_source_TXT(lhs::LHSVar, rhs::Expr, state)
         size_i = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
             size_i_name, Int64, ISASSIGNEDONCE | ISASSIGNED, state.linfo))
         #size_i = addTempVariable(Int64, state.linfo)
-        size_i_call = mk_call(:__hpat_get_TXT_dim_size, [arr_size_var, i])
+        size_i_call = mk_call(GlobalRef(HPAT.API,:__hpat_get_TXT_dim_size), [arr_size_var, i])
         push!(res, TypedExpr(Int64, :(=), size_i, size_i_call))
         push!(size_expr, size_i)
     end
     arrdef = TypedExpr(arr_typ, :alloc, elem_typ, size_expr)
     push!(res, TypedExpr(arr_typ, :(=), lhs, arrdef))
     # generate read call
-    read_call = mk_call(:__hpat_data_source_TXT_read, [dsrc_id_var, lhs])
+    read_call = mk_call(GlobalRef(HPAT.API,:__hpat_data_source_TXT_read), [dsrc_id_var, lhs])
     push!(res, read_call)
-    close_call = mk_call(:__hpat_data_source_TXT_close, [dsrc_id_var])
+    close_call = mk_call(GlobalRef(HPAT.API,:__hpat_data_source_TXT_close), [dsrc_id_var])
     push!(res, close_call)
     return res
 end
