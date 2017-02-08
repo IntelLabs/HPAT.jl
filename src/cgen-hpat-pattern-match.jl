@@ -491,13 +491,25 @@ function pattern_match_call_data_src_open(f::GlobalRef, id::Int, data_var::Union
       s *= "hid_t file_id_$num;\n"
       s *= "ret_$num = H5Pset_fapl_mpio(plist_id_$num, MPI_COMM_WORLD, MPI_INFO_NULL);\n"
       s *= "assert(ret_$num != -1);\n"
-      s *= "file_id_$num = H5Fcreate((const char*)"*ParallelAccelerator.CGen.from_expr(file_name, linfo)*".data.data, H5F_ACC_TRUNC, H5P_DEFAULT, plist_id_$num);\n"
+      s *= "file_id_$num = H5Fopen((const char*)"*ParallelAccelerator.CGen.from_expr(file_name, linfo)*".data.data, H5F_ACC_RDWR, plist_id_$num);\n"
       s *= "assert(file_id_$num != -1);\n"
       s *= "ret_$num = H5Pclose(plist_id_$num);\n"
       s *= "assert(ret_$num != -1);\n"
       #s *= "hid_t dataset_id_$num;\n"
       #s *= "dataset_id_$num = H5Dcreate(file_id_$num, "*ParallelAccelerator.CGen.from_expr(data_var, linfo)*", H5P_DEFAULT);\n"
       #s *= "assert(dataset_id_$num != -1);\n"
+    elseif f.name==:__hpat_data_sink_HDF5_create
+        num = string(id)
+        s = "hid_t plist_id_$num = H5Pcreate(H5P_FILE_ACCESS);\n"
+        s *= "assert(plist_id_$num != -1);\n"
+        s *= "herr_t ret_$num;\n"
+        s *= "hid_t file_id_$num;\n"
+        s *= "ret_$num = H5Pset_fapl_mpio(plist_id_$num, MPI_COMM_WORLD, MPI_INFO_NULL);\n"
+        s *= "assert(ret_$num != -1);\n"
+        s *= "file_id_$num = H5Fcreate((const char*)"*ParallelAccelerator.CGen.from_expr(file_name, linfo)*".data.data, H5F_ACC_TRUNC, H5P_DEFAULT, plist_id_$num);\n"
+        s *= "assert(file_id_$num != -1);\n"
+        s *= "ret_$num = H5Pclose(plist_id_$num);\n"
+        s *= "assert(ret_$num != -1);\n"
     end
     return s
 end

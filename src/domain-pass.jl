@@ -55,6 +55,10 @@ const generatedFuncs = [:__hpat_data_source_HDF5_open,
                         :__hpat_get_H5_dim_size,
                         :__hpat_data_source_HDF5_read,
                         :__hpat_data_source_HDF5_close,
+                        :__hpat_data_sink_HDF5_open,
+                        :__hpat_data_sink_HDF5_create,
+                        :__hpat_data_sink_HDF5_write,
+                        :__hpat_data_sink_HDF5_close,
                         :__hpat_data_source_TXT_open,
                         :__hpat_data_source_TXT_size,
                         :__hpat_get_TXT_dim_size,
@@ -93,7 +97,7 @@ function from_root(function_name, ast)
 
     tableCols, tableTypes, tableIds = get_table_meta(body)
     @dprintln(3,"HPAT tables: ", tableCols,tableTypes)
-    state::DomainState = DomainState(linfo, tableCols, tableTypes, tableIds, 0, -1, lives)
+    state::DomainState = DomainState(linfo, tableCols, tableTypes, tableIds, 0, -1, lives, [])
 
     # transform body
     body.args = from_toplevel_body(body.args, state)
@@ -119,6 +123,7 @@ type DomainState
     # first column src of each table stores id so others reads its size variable
     prev_table_first_src_num::Int
     lives  :: CompilerTools.LivenessAnalysis.BlockLiveness
+    created_sink_files
 end
 
 """
@@ -835,7 +840,14 @@ function translate_data_sink_HDF5(y, hdf5_var, hdf5_file, state)
     elem_typ = eltype(arr_typ)
     # generate open call
     # y is dummy argument so ParallelIR wouldn't reorder
-    open_call = mk_call(GlobalRef(HPAT.API,:__hpat_data_sink_HDF5_open), [dsrc_id_var, hdf5_var, hdf5_file, y])
+    open_call = Expr(:call)
+    if hdf5_file in state.created_sink_files
+        open_call = mk_call(GlobalRef(HPAT.API,:__hpat_data_sink_HDF5_open), [dsrc_id_var, hdf5_var, hdf5_file, y])
+    else
+        open_call = mk_call(GlobalRef(HPAT.API,:__hpat_data_sink_HDF5_create), [dsrc_id_var, hdf5_var, hdf5_file, y])
+        push!(state.created_sink_files, hdf5_file)
+    end
+
     push!(res, open_call)
     #=
     # generate array size call
