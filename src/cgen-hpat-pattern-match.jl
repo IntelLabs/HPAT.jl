@@ -1284,14 +1284,14 @@ function pattern_match_call_data_sink_txt_write(f::GlobalRef, id::Int, arr::RHSV
         c_count = ParallelAccelerator.CGen.from_expr(count, linfo)
         slice_count = string(1)
         if num_dims>1
-            slice_count = mapfoldl(i->string(tot_size[i]), (a,b)->a*"*"*b, 1:num_dims-1)
+            slice_count = mapfoldl(i->ParallelAccelerator.CGen.from_expr(tot_size[i],linfo), (a,b)->a*"*"*b, 1:num_dims-1)
         end
         s *= """
         // convert to string
         std::stringstream CGen_txt_ss_$num;
         for(uint64_t i=0; i<$c_count; i++) {
             for(uint64_t j=0; j <$slice_count; j++) {
-                CGen_txt_ss_$num<<$c_arr.data[i*$slice_count+j];
+                CGen_txt_ss_$num<<$c_arr.data[i*($slice_count)+j];
                 if(j==$slice_count-1)
                     CGen_txt_ss_$num<<"\\n";
                 else
