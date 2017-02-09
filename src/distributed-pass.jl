@@ -85,6 +85,23 @@ function mk_mult_int_expr(args::Array)
     return prev_expr
 end
 
+function mk_add_int_expr(args::Array)
+    if length(args)==0
+        return 0
+    elseif length(args)==1
+        return args[1]
+    end
+    next = 2
+    prev_expr = args[1]
+
+    while next<=length(args)
+        m_call = mk_call(GlobalRef(Base,:add_int),[prev_expr,args[next]])
+        prev_expr  = mk_call(GlobalRef(Base,:box),[Int64,m_call])
+        next += 1
+    end
+    return prev_expr
+end
+
 mk_add_int_expr(a,b) = mk_call(GlobalRef(Base,:box),[Int64, mk_call(GlobalRef(Base,:add_int),[a,b])])
 mk_sub_int_expr(a,b) = mk_call(GlobalRef(Base,:box),[Int64, mk_call(GlobalRef(Base,:sub_int),[a,b])])
 mk_div_int_expr(a,b) = mk_call(GlobalRef(Base,:box),[Int64, mk_call(GlobalRef(Base,:sdiv_int),[a,b])])
@@ -392,8 +409,11 @@ function from_assignment(node::Expr, state::DistPassState, lhs::LHSVar, rhs::Exp
     @assert node.head==:(=) "DistributedPass invalid assignment head"
     if isAllocation(rhs)
       return from_assignment_alloc(node,state,lhs,rhs)
-  elseif rhs.head==:call && (isBaseFunc(rhs.args[1],:reshape) || rhs.args[1]==GlobalRef(ParallelAccelerator.API,:reshape))
+    elseif rhs.head==:call && (isBaseFunc(rhs.args[1],:reshape) ||
+           rhs.args[1]==GlobalRef(ParallelAccelerator.API,:reshape))
       return from_assignment_reshape(node,state,lhs,rhs)
+    elseif rhs.head==:call && isBaseFunc(rhs.args[1],:vcat)
+        return from_assignment_vcat(node,state,lhs,rhs)
     elseif rhs.head==:call && isBaseFunc(rhs.args[1],:gemm_wrapper!)
         return from_assignment_gemm(node,state,lhs,rhs)
     elseif rhs.head==:call && isBaseFunc(rhs.args[1],:gemv!)
@@ -635,6 +655,42 @@ function from_assignment_reshape(node::Expr, state::DistPassState, arr::LHSVar, 
       return res
   end
   return [node]
+end
+
+function from_assignment_vcat(node::Expr, state::DistPassState, arr::LHSVar, rhs::Expr)
+    @dprintln(3,"DistPass vcat array: ", arr)
+    dim_sizes = state.arrs_dist_info[arr].dim_sizes
+    # generate array division
+    # simple 1D partitioning of last dimension, more general partitioning needed
+    # match common big data matrix reperesentation
+    arr_tot_size = dim_sizes[end]
+
+    arr_id = getDistNewID(state)
+    state.arrs_dist_info[arr].arr_id = arr_id
+    darr_start_var_name = Symbol("__hpat_dist_arr_start_"*string(arr_id))
+    darr_div_var_name = Symbol("__hpat_dist_arr_div_"*string(arr_id))
+    darr_count_var_name = Symbol("__hpat_dist_arr_count_"*string(arr_id))
+
+    darr_start_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+        darr_start_var_name, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
+    darr_div_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+        darr_div_var_name, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
+    darr_count_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
+        darr_count_var_name, Int, ISASSIGNEDONCE | ISASSIGNED | ISPRIVATEPARFORLOOP, state.LambdaVarInfo))
+
+    state.arrs_dist_info[arr].starts[end] = darr_start_var
+    state.arrs_dist_info[arr].counts[end] = darr_count_var
+
+    darr_div_expr = Expr(:(=), darr_div_var, mk_div_int_expr(arr_tot_size, state.dist_vars[:num_pes]))
+    # zero-based index to match C interface of HDF5
+    darr_start_expr = Expr(:(=),darr_start_var, mk_mult_int_expr(
+        [state.dist_vars[:node_id], darr_div_var]))
+    #darr_count_expr = :($darr_count_var = __hpat_node_id==__hpat_num_pes-1 ? $arr_tot_size-__hpat_node_id*$darr_div_var : $darr_div_var)
+    darr_count_expr = Expr(:(=), darr_count_var, mk_call(
+        GlobalRef(HPAT.API,:__hpat_get_node_portion),
+            [arr_tot_size, darr_div_var, state.dist_vars[:num_pes], state.dist_vars[:node_id]]))
+    res = [darr_div_expr; darr_start_expr; darr_count_expr; node]
+    return res
 end
 
 function from_assignment_gemm(node::Expr, state::DistPassState, lhs::LHSVar, rhs::Expr)
