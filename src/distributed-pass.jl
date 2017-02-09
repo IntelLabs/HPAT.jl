@@ -622,7 +622,7 @@ function from_assignment_reshape(node::Expr, state::DistPassState, arr::LHSVar, 
               [arr_tot_size, darr_div_var, state.dist_vars[:num_pes], state.dist_vars[:node_id]]))
 
       # create a new tuple for reshape
-      tup_call = Expr(:call, TopNode(:tuple), dim_sizes[1:end-1]... , darr_count_var)
+      tup_call = Expr(:call, GlobalRef(Core,:tuple), dim_sizes[1:end-1]... , darr_count_var)
       reshape_tup_var_name = Symbol("__hpat_dist_tup_var_"*string(arr_id))
       tup_typ = CompilerTools.LambdaHandling.getType(rhs.args[3], state.LambdaVarInfo)
       reshape_tup_var = toLHSVar(CompilerTools.LambdaHandling.addLocalVariable(
