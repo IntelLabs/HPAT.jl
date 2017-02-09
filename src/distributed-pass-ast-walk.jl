@@ -488,7 +488,7 @@ function get_arr_dist_info_assignment(node::Expr, state::DistPassState, top_leve
         elseif func.name == :vcat
             @dprintln(3,"DistPass arr info handling vcat: ", rhs)
             # output and all input arrays have same dim_sizes except first dimension
-            state.arrs_dist_info[lhs].dim_sizes = state.arrs_dist_info[toLHSVar(rhs.args[2])].dim_sizes
+            state.arrs_dist_info[lhs].dim_sizes = copy(state.arrs_dist_info[toLHSVar(rhs.args[2])].dim_sizes)
             # HACK: a call expression summing dimension 1 of all input arrays
             state.arrs_dist_info[lhs].dim_sizes[1] = mk_add_int_expr(map(x->state.arrs_dist_info[x].dim_sizes[1], rhs.args[2:end]))
             #   Expr(:call,:(+), map(x->state.arrs_dist_info[x].dim_sizes[1], rhs.args[2:end])...)
