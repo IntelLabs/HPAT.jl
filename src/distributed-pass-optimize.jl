@@ -165,7 +165,33 @@ function dist_optimize(body::Expr, state::DistPassState)
     recreate_parfor_pre(body, state.LambdaVarInfo)
     @dprintln(3, "dist_optimize after optimizing but before fusion ", body)
     state.LambdaVarInfo, body = ParallelAccelerator.ParallelIR.fusion_pass("dist_opt", state.LambdaVarInfo, body)
+    # fusion changes the output of gemm_pp array to the large dimension, we need to change it back
+    adjust_pp_alloc(body, state)
     return body
+end
+
+function adjust_pp_alloc(body, state)
+    for (arr,sizes) in state.adjust_alloc
+        @dprintln(3,"DistPass optimize adjust_alloc for ", arr," ", sizes)
+        num_dims = length(sizes)
+        for node in body.args
+            if isBareParfor(node)
+                for stmt in node.args[1].preParFor
+                    if isAllocationAssignment(stmt)
+                        @dprintln(3,"DistPass optimize adjust_alloc allocation found ", stmt)
+                        out = stmt.args[1]
+                        alloc = stmt.args[2]
+                        if out==arr
+                            for i in 1:num_dims
+                                alloc.args[7+(i-1)*2] = sizes[i]
+                            end
+                            @dprintln(3,"DistPass optimize adjust_alloc allocation adjusted ", stmt)
+                        end
+                    end
+                end
+            end
+        end
+    end
 end
 
 function dist_optimize_node(node::Expr, top_level_number, state)
@@ -209,6 +235,8 @@ function dist_optimize_assignment(node::Expr, state::DistPassState, top_level_nu
         # labels multipied by samples (e.g. labels*points')
         elseif isSEQ(out,state) && isONE_D(arr1,state) && isONE_D(arr2,state) && !t1 && t2
             @dprintln(3,"DistPass optimize labels times points transpose pattern found")
+            # output array is reused for gemm_pp output but its size needs to change
+            state.adjust_alloc[lhs] = [state.arrs_dist_info[out].dim_sizes[1], state.arrs_dist_info[out].dim_sizes[end]]
             return expand_gemm_pp(lhs, out, arr1, arr2, top_level_number, state)
         end
     end

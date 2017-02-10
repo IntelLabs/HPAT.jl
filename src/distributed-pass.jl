@@ -230,9 +230,10 @@ type DistPassState
     dist_vars::Dict{Symbol,LHSVar} # a dictionary for distributed variables such as __hpat_num_pes
     deps
     parfor_stencils::Dict{Int,Vector{Int}}
+    adjust_alloc::Dict{LHSVar,Vector{Union{LHSVar,Int,Expr}}} # adjust allocation for array after transformation
     function DistPassState(linfo, lives, user_partitionings, deps)
         new(Dict{LHSVar, Array{ArrDistInfo,1}}(), Dict{Int,Partitioning}(), Dict{Int,Vector{LHSVar}}(), linfo,0, lives,
-             Dict{LHSVar,Array{Union{LHSVar,Int},1}}(),0,user_partitionings, Dict{Symbol,LHSVar}(), deps, Dict{Int,Vector{Int}}())
+             Dict{LHSVar,Array{Union{LHSVar,Int},1}}(),0,user_partitionings, Dict{Symbol,LHSVar}(), deps, Dict{Int,Vector{Int}}(), Dict{LHSVar,Vector{Int}}())
     end
 end
 
@@ -313,6 +314,7 @@ function from_toplevel_body(nodes::Array{Any,1}, state::DistPassState)
         new_exprs = from_expr(node, state)
         append!(res, new_exprs)
     end
+    #ParallelAccelerator.ParallelIR.hoistAllocation
     return res
 end
 
@@ -323,6 +325,7 @@ function from_nested_body(nodes::Array{Any,1}, state::DistPassState)
         new_exprs = from_expr(node, state)
         append!(res, new_exprs)
     end
+    #ParallelAccelerator.ParallelIR.hoistAllocation
     return res
 end
 
