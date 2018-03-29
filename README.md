@@ -1,16 +1,19 @@
 # HPAT
 
+## This repository is no longer maintained
+We are currently developing the [Python version](https://github.com/IntelLabs/hpat).
+
 [![Build Status](https://travis-ci.org/IntelLabs/HPAT.jl.svg?branch=master)](https://travis-ci.org/IntelLabs/HPAT.jl)
 
 *High Performance Analytics Toolkit (HPAT)* is a Julia-based framework for big data analytics on clusters that
-is both easy to use and extremely fast; it is orders of magnitude faster than alternatives 
-like [Apache Spark\*](http://spark.apache.org/).  
+is both easy to use and extremely fast; it is orders of magnitude faster than alternatives
+like [Apache Spark\*](http://spark.apache.org/).
 
-HPAT automatically parallelizes analytics tasks written in Julia, generates efficient MPI/C++ code, 
+HPAT automatically parallelizes analytics tasks written in Julia, generates efficient MPI/C++ code,
 and uses existing high performance libraries such as [HDF5](https://www.hdfgroup.org/HDF5/)
-and [Intel&reg; Data Analytics Acceleration Library (Intel&reg; DAAL)](https://software.intel.com/en-us/daal). 
-HPAT is based on [ParallelAccelerator](https://github.com/IntelLabs/ParallelAccelerator.jl) 
-and [CompilerTools](https://github.com/IntelLabs/CompilerTools.jl) packages. 
+and [Intel&reg; Data Analytics Acceleration Library (Intel&reg; DAAL)](https://software.intel.com/en-us/daal).
+HPAT is based on [ParallelAccelerator](https://github.com/IntelLabs/ParallelAccelerator.jl)
+and [CompilerTools](https://github.com/IntelLabs/CompilerTools.jl) packages.
 
 HPAT is in early development and therefore feedback is highly appreciated.
 
@@ -21,10 +24,10 @@ Presentation at [JuliaCon 2016](http://juliacon.org/):
 ## Quick Start
 ```shell
 $ julia -e 'Pkg.add("HPAT")'
-$ mpirun -np 2 julia ~/.julia/v0.4/HPAT/examples/pi.jl --points=1000000 
+$ mpirun -np 2 julia ~/.julia/v0.4/HPAT/examples/pi.jl --points=1000000
 ```
 
-If there were any issues, make sure [MPI.jl](https://github.com/JuliaParallel/MPI.jl) 
+If there were any issues, make sure [MPI.jl](https://github.com/JuliaParallel/MPI.jl)
 and [ParallelAccelerator.jl](https://github.com/IntelLabs/ParallelAccelerator.jl)
 are installed correctly.
 
@@ -54,7 +57,7 @@ $ sudo add-apt-repository ppa:staticfloat/juliareleases
 $ sudo add-apt-repository ppa:staticfloat/julia-deps
 $ sudo apt-get update
 $ sudo apt-get install -y gcc g++ gfortran cmake openmpi-bin openmpi-common libopenmpi-dev libhdf5-openmpi-dev julia libblas-dev libopenblas-dev
-$ julia -e 'Pkg.add("HPAT")' 
+$ julia -e 'Pkg.add("HPAT")'
 ```
 
 
@@ -100,16 +103,14 @@ $ spark-submit $SPARK_HOME/examples/src/main/python/pi.py 100 &> pi_spark.out
 Programmers need to follow these directions in order to use HPAT effectively:
 - The analytics task should be written in a self-contained function
   which is annotated with `@acc hpat`.
-- Reading the input samples should be done using the `DataSource` syntax. 
+- Reading the input samples should be done using the `DataSource` syntax.
 - The computation should be in the form of high-level matrix/vector computations or comprehensions
 since HPAT does not parallelize sequential loops.
 - Julia's column-major order should be followed for matrices since HPAT divides the data across columns.
 This means that features of a sample are in a column of the samples matrix.
 
-## Initialization Time Issue 
+## Initialization Time Issue
 
 Currently, there is a high initialization cost (e.g. 25s) the first time HPAT is
 used within a Julia runtime since package precompilation
 of Julia v0.4 is very limited. We are working on various solutions.
-
-
